@@ -1,17 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, AppState, Keyboard, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
 
-import SummaryHeader from './src/components/SummaryHeader';
-import CategoryBreakdown from './src/components/CategoryBreakdown';
-import ExpenseRow from './src/components/ExpenseRow';
-import AddExpenseSheet from './src/components/AddExpenseSheet';
-import { loadExpenses, saveExpenses } from './src/storage';
+import DashboardScreen from './src/screens/DashboardScreen';
+import AddExpenseScreen from './src/screens/AddExpenseScreen';
+import ExpenseListScreen from './src/screens/ExpenseListScreen';
+import CompareScreen from './src/screens/CompareScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import TabBar, { TAB_BAR_HEIGHT } from './src/components/TabBar';
+import RewardCheck from './src/components/RewardCheck';
+import {
+  loadExpenses,
+  saveExpenses,
+  loadSettings,
+  saveSettings,
+  DEFAULT_SETTINGS,
+} from './src/storage';
 import { buildDemoExpenses } from './src/demoData';
-import { dateKey, dayLabel, formatMoney } from './src/format';
-import { colors, spacing, radius } from './src/theme';
+import { convert, getCurrency } from './src/currency';
+import { getCategory } from './src/categories';
+import { dateKey, dayLabel, monthKeyLabel } from './src/format';
+import { colors, spacing } from './src/theme';
 
 export default function App() {
   return (
@@ -23,8 +34,13 @@ export default function App() {
 
 function ExpenseTracker() {
   const [expenses, setExpenses] = useState([]);
-  const [loaded, setLoaded] = useState(false);
-  const [sheetVisible, setSheetVisible] = useState(false);
+  const [expensesLoaded, setExpensesLoaded] = useState(false);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [tab, setTab] = useState('dashboard'); // 'dashboard' | 'add' | 'list'
+  const [overlay, setOverlay] = useState(null); // null | 'settings' | 'compare'
+  // Increments on every successful add; RewardCheck animates on each change.
+  const [rewardNonce, setRewardNonce] = useState(0);
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
   const [dayStamp, setDayStamp] = useState(() => dateKey(Date.now()));
   const insets = useSafeAreaInsets();
@@ -44,25 +60,37 @@ function ExpenseTracker() {
   useEffect(() => {
     loadExpenses().then((stored) => {
       setExpenses(stored);
-      setLoaded(true);
+      setExpensesLoaded(true);
+    });
+    loadSettings().then((stored) => {
+      setSettings(stored);
+      setSettingsLoaded(true);
     });
   }, []);
 
   useEffect(() => {
-    if (loaded) saveExpenses(expenses);
-  }, [expenses, loaded]);
+    if (expensesLoaded) saveExpenses(expenses);
+  }, [expenses, expensesLoaded]);
 
-  const addExpense = useCallback(({ amount, note, category }) => {
+  useEffect(() => {
+    if (settingsLoaded) saveSettings(settings);
+  }, [settings, settingsLoaded]);
+
+  const addExpense = useCallback(({ amount, currency, note, category, createdAt }) => {
     const expense = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       amount,
+      currency,
       note,
       category,
-      createdAt: Date.now(),
+      createdAt: createdAt ?? Date.now(),
     };
     setExpenses((prev) => [expense, ...prev]);
-    setSheetVisible(false);
+    setRewardNonce((n) => n + 1);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    // The reward check is purely visual; this is the screen-reader equivalent
+    // (a status announcement, not a toast/modal — the spec ban doesn't apply).
+    AccessibilityInfo.announceForAccessibility('Expense added');
   }, []);
 
   const deleteExpense = useCallback((id) => {
@@ -75,80 +103,108 @@ function ExpenseTracker() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, []);
 
-  const { sections, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount } = useMemo(
-    () => deriveViewData(expenses),
-    [expenses, dayStamp]
-  );
+  const updateSettings = useCallback((patch) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      // Re-denominate the budget when the display currency changes so "≈ the
+      // same money" is preserved instead of the raw number silently meaning less.
+      if (
+        patch.displayCurrency &&
+        patch.displayCurrency !== prev.displayCurrency &&
+        prev.monthlyBudget > 0 &&
+        patch.monthlyBudget === undefined
+      ) {
+        const converted = convert(prev.monthlyBudget, prev.displayCurrency, patch.displayCurrency);
+        next.monthlyBudget = Number(converted.toFixed(getCurrency(patch.displayCurrency).decimals));
+      }
+      return next;
+    });
+  }, []);
+
+  const displayCurrency = settings.displayCurrency;
+
+  const { sections, months, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount } =
+    useMemo(
+      () => deriveViewData(expenses, displayCurrency),
+      [expenses, displayCurrency, dayStamp]
+    );
+
+  const loaded = expensesLoaded && settingsLoaded;
+  const hasExpenses = expenses.length > 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar style="light" />
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ExpenseRow expense={item} onDelete={deleteExpense} />}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <Text style={styles.sectionTotal}>{formatMoney(section.total)}</Text>
-          </View>
-        )}
-        ListHeaderComponent={
-          <>
-            <SummaryHeader
-              monthTotal={monthTotal}
-              todayTotal={todayTotal}
-              count={monthCount}
-              avgPerDay={avgPerDay}
-            />
-            <CategoryBreakdown totalsByCategory={totalsByCategory} />
-          </>
-        }
-        ListEmptyComponent={
-          loaded ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyEmoji}>{'\u{1F4B8}'}</Text>
-              <Text style={styles.emptyText}>No expenses yet</Text>
-              <Text style={styles.emptyHint}>
-                Tap + to add your first expense, or load sample data to explore. Tap any
-                expense to delete it.
-              </Text>
-              <Pressable
-                onPress={loadDemo}
-                style={({ pressed }) => [styles.demoButton, pressed && styles.demoButtonPressed]}
-              >
-                <Text style={styles.demoButtonText}>Load demo data</Text>
-              </Pressable>
-            </View>
-          ) : null
-        }
-        contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
-        stickySectionHeadersEnabled={false}
-        showsVerticalScrollIndicator={false}
+
+      <View style={styles.content}>
+        {/* All three tab screens stay mounted so a half-typed expense or a scroll
+            position survives switching tabs; inactive ones are display:none. */}
+        <View style={[styles.screen, tab !== 'dashboard' && styles.screenHidden]}>
+          <DashboardScreen
+            loaded={loaded}
+            hasExpenses={hasExpenses}
+            monthTotal={monthTotal}
+            todayTotal={todayTotal}
+            monthCount={monthCount}
+            avgPerDay={avgPerDay}
+            totalsByCategory={totalsByCategory}
+            displayCurrency={displayCurrency}
+            monthlyBudget={settings.monthlyBudget}
+            onOpenSettings={() => setOverlay('settings')}
+            onOpenCompare={() => setOverlay('compare')}
+            onLoadDemo={loadDemo}
+          />
+        </View>
+        <View style={[styles.screen, tab !== 'add' && styles.screenHidden]}>
+          <AddExpenseScreen displayCurrency={displayCurrency} onSubmit={addExpense} />
+        </View>
+        <View style={[styles.screen, tab !== 'list' && styles.screenHidden]}>
+          <ExpenseListScreen
+            sections={sections}
+            loaded={loaded}
+            hasExpenses={hasExpenses}
+            displayCurrency={displayCurrency}
+            onDelete={deleteExpense}
+            onLoadDemo={loadDemo}
+          />
+        </View>
+      </View>
+
+      {/* Hidden tabs keep mounted TextInputs focused — drop the keyboard so it
+          can't linger over the next screen. */}
+      <TabBar
+        tab={tab}
+        onChange={(next) => {
+          Keyboard.dismiss();
+          setTab(next);
+        }}
       />
 
-      <Pressable
-        onPress={() => setSheetVisible(true)}
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: insets.bottom + spacing.lg },
-          pressed && styles.fabPressed,
-        ]}
-        accessibilityLabel="Add expense"
-      >
-        <Text style={styles.fabIcon}>+</Text>
-      </Pressable>
+      <SettingsScreen
+        visible={overlay === 'settings'}
+        settings={settings}
+        onUpdateSettings={updateSettings}
+        onClose={() => setOverlay(null)}
+      />
+      <CompareScreen
+        visible={overlay === 'compare'}
+        months={months}
+        displayCurrency={displayCurrency}
+        onClose={() => setOverlay(null)}
+      />
 
-      <AddExpenseSheet
-        visible={sheetVisible}
-        onClose={() => setSheetVisible(false)}
-        onSubmit={addExpense}
+      <RewardCheck
+        trigger={rewardNonce}
+        bottomOffset={insets.bottom + TAB_BAR_HEIGHT + spacing.lg}
       />
     </SafeAreaView>
   );
 }
 
-function deriveViewData(expenses) {
+// One pass over expenses computes everything the UI shows, all converted to the
+// display currency: day sections for the list, current-month stats for the
+// dashboard, and per-month aggregates for the compare screen.
+function deriveViewData(expenses, displayCurrency) {
   const now = new Date();
   const todayKey = dateKey(now.getTime());
   const monthPrefix = todayKey.slice(0, 7); // YYYY-MM
@@ -158,28 +214,44 @@ function deriveViewData(expenses) {
   let monthCount = 0;
   const totalsByCategory = {};
   const byDay = new Map();
+  const byMonth = new Map();
 
   const sorted = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
 
   for (const expense of sorted) {
+    const displayAmount = convert(expense.amount, expense.currency, displayCurrency);
+    // Normalize stale stored category ids to their fallback ("Other") here so
+    // the breakdown/compare aggregates group them the same way the list does.
+    const catId = getCategory(expense.category).id;
     const key = dateKey(expense.createdAt);
-    if (key.startsWith(monthPrefix)) {
-      monthTotal += expense.amount;
+    const mKey = key.slice(0, 7);
+
+    if (mKey === monthPrefix) {
+      monthTotal += displayAmount;
       monthCount += 1;
-      totalsByCategory[expense.category] = (totalsByCategory[expense.category] ?? 0) + expense.amount;
+      totalsByCategory[catId] = (totalsByCategory[catId] ?? 0) + displayAmount;
     }
-    if (key === todayKey) todayTotal += expense.amount;
+    if (key === todayKey) todayTotal += displayAmount;
 
     if (!byDay.has(key)) {
       byDay.set(key, { title: dayLabel(expense.createdAt), total: 0, data: [] });
     }
     const day = byDay.get(key);
-    day.total += expense.amount;
-    day.data.push(expense);
+    day.total += displayAmount;
+    day.data.push({ ...expense, displayAmount });
+
+    if (!byMonth.has(mKey)) {
+      byMonth.set(mKey, { key: mKey, label: monthKeyLabel(mKey), total: 0, count: 0, byCategory: {} });
+    }
+    const month = byMonth.get(mKey);
+    month.total += displayAmount;
+    month.count += 1;
+    month.byCategory[catId] = (month.byCategory[catId] ?? 0) + displayAmount;
   }
 
   return {
     sections: [...byDay.values()],
+    months: [...byMonth.values()].sort((a, b) => (a.key < b.key ? 1 : -1)),
     monthTotal,
     todayTotal,
     avgPerDay: monthTotal / now.getDate(),
@@ -193,82 +265,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    paddingHorizontal: spacing.md + 4,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+  content: {
+    flex: 1,
   },
-  sectionTitle: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '700',
+  screen: {
+    flex: 1,
   },
-  sectionTotal: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontVariant: ['tabular-nums'],
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-  },
-  emptyEmoji: {
-    fontSize: 56,
-    marginBottom: spacing.md,
-  },
-  emptyText: {
-    color: colors.textPrimary,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  emptyHint: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    lineHeight: 21,
-  },
-  demoButton: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 4,
-  },
-  demoButtonPressed: {
-    backgroundColor: colors.cardPressed,
-  },
-  demoButtonText: {
-    color: colors.accent,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  fab: {
-    position: 'absolute',
-    right: spacing.lg,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  fabPressed: {
-    backgroundColor: colors.accentDark,
-  },
-  fabIcon: {
-    color: '#06281C',
-    fontSize: 34,
-    fontWeight: '600',
-    marginTop: -2,
+  screenHidden: {
+    display: 'none',
   },
 });

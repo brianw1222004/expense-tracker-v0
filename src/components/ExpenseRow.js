@@ -1,13 +1,23 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, radius } from '../theme';
 import { getCategory } from '../categories';
 import { formatMoney } from '../format';
 
-export default function ExpenseRow({ expense, onDelete }) {
+export default function ExpenseRow({ expense, displayCurrency, onDelete }) {
   const category = getCategory(expense.category);
+  const converted = expense.currency !== displayCurrency;
 
   const confirmDelete = () => {
-    Alert.alert('Delete expense?', `${expense.note || category.label} — ${formatMoney(expense.amount)}`, [
+    const summary = `${expense.note || category.label} — ${formatMoney(
+      expense.displayAmount,
+      displayCurrency
+    )}`;
+    // Alert.alert with buttons is a no-op on react-native-web.
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete expense?\n${summary}`)) onDelete(expense.id);
+      return;
+    }
+    Alert.alert('Delete expense?', summary, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => onDelete(expense.id) },
     ]);
@@ -29,7 +39,14 @@ export default function ExpenseRow({ expense, onDelete }) {
         </Text>
         <Text style={styles.categoryLabel}>{category.label}</Text>
       </View>
-      <Text style={styles.amount}>-{formatMoney(expense.amount)}</Text>
+      <View style={styles.amounts}>
+        <Text style={styles.amount}>-{formatMoney(expense.displayAmount, displayCurrency)}</Text>
+        {converted && (
+          <Text style={styles.originalAmount}>
+            {formatMoney(expense.amount, expense.currency)} {expense.currency}
+          </Text>
+        )}
+      </View>
     </Pressable>
   );
 }
@@ -71,10 +88,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 1,
   },
+  amounts: {
+    alignItems: 'flex-end',
+  },
   amount: {
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  originalAmount: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 1,
     fontVariant: ['tabular-nums'],
   },
 });

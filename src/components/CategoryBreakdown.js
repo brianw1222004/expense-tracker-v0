@@ -3,7 +3,7 @@ import { colors, spacing, radius } from '../theme';
 import { getCategory } from '../categories';
 import { formatMoney } from '../format';
 
-export default function CategoryBreakdown({ totalsByCategory }) {
+export default function CategoryBreakdown({ totalsByCategory, displayCurrency }) {
   const entries = Object.entries(totalsByCategory).sort((a, b) => b[1] - a[1]);
   if (entries.length === 0) return null;
   const max = entries[0][1];
@@ -19,7 +19,7 @@ export default function CategoryBreakdown({ totalsByCategory }) {
             <View style={styles.barArea}>
               <View style={styles.barLabels}>
                 <Text style={styles.categoryLabel}>{category.label}</Text>
-                <Text style={styles.amount}>{formatMoney(total)}</Text>
+                <Text style={styles.amount}>{formatMoney(total, displayCurrency)}</Text>
               </View>
               <View style={styles.barTrack}>
                 <View

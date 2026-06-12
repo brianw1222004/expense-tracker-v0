@@ -1,18 +1,18 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '../theme';
+import { colors, spacing, radius } from '../theme';
 import { formatMoney, formatMoneyShort, monthLabel } from '../format';
 
-export default function SummaryHeader({ monthTotal, todayTotal, count, avgPerDay }) {
+export default function SummaryHeader({ monthTotal, todayTotal, count, avgPerDay, displayCurrency }) {
   return (
     <View style={styles.container}>
       <Text style={styles.monthLabel}>{monthLabel()}</Text>
       <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>
-        {formatMoney(monthTotal)}
+        {formatMoney(monthTotal, displayCurrency)}
       </Text>
       <View style={styles.statsRow}>
-        <Stat value={formatMoneyShort(todayTotal)} label="Today" />
+        <Stat value={formatMoneyShort(todayTotal, displayCurrency)} label="Today" />
         <Stat value={String(count)} label="Expenses" />
-        <Stat value={formatMoneyShort(avgPerDay)} label="Avg / day" />
+        <Stat value={formatMoneyShort(avgPerDay, displayCurrency)} label="Avg / day" />
       </View>
     </View>
   );
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: spacing.md,
     backgroundColor: colors.card,
-    borderRadius: 16,
+    borderRadius: radius.md,
     paddingVertical: spacing.sm + 4,
     alignSelf: 'stretch',
   },
