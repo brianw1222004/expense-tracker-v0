@@ -6,7 +6,7 @@ import { colors, spacing } from '../theme';
 // bottom inset. Screens use this constant to keep content clear of the bar.
 export const TAB_BAR_HEIGHT = 64;
 
-export default function TabBar({ tab, onChange }) {
+export default function TabBar({ tab, onChange, onAddPress, addActive }) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -25,13 +25,18 @@ export default function TabBar({ tab, onChange }) {
 
       <View style={styles.addSlot}>
         <Pressable
-          onPress={() => onChange('add')}
-          accessibilityRole="tab"
+          onPress={onAddPress}
+          accessibilityRole="button"
           accessibilityLabel="Add expense"
-          accessibilityState={{ selected: tab === 'add' }}
+          accessibilityState={{ expanded: addActive }}
           style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
         >
-          <Text style={styles.addGlyph}>+</Text>
+          {/* Drawn with two bars instead of a '+' glyph: font metrics sat the
+              text off-center; geometry centers exactly on every platform. */}
+          <View style={styles.plusIcon}>
+            <View style={styles.plusBarH} />
+            <View style={styles.plusBarV} />
+          </View>
         </Pressable>
       </View>
 
@@ -112,10 +117,26 @@ const styles = StyleSheet.create({
   addButtonPressed: {
     backgroundColor: colors.accentDark,
   },
-  addGlyph: {
-    color: '#06281C',
-    fontSize: 32,
-    fontWeight: '700',
-    marginTop: -2,
+  plusIcon: {
+    width: 22,
+    height: 22,
+  },
+  plusBarH: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 9.5,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#06281C',
+  },
+  plusBarV: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 9.5,
+    width: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#06281C',
   },
 });

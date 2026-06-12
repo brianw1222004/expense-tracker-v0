@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, AppState, Keyboard, StyleSheet, View } from 'react-native';
-import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
 
@@ -9,7 +9,8 @@ import AddExpenseScreen from './src/screens/AddExpenseScreen';
 import ExpenseListScreen from './src/screens/ExpenseListScreen';
 import CompareScreen from './src/screens/CompareScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
-import TabBar, { TAB_BAR_HEIGHT } from './src/components/TabBar';
+import TabBar from './src/components/TabBar';
+import AddExpenseModal from './src/components/AddExpenseModal';
 import RewardCheck from './src/components/RewardCheck';
 import {
   loadExpenses,
@@ -22,7 +23,7 @@ import { buildDemoExpenses } from './src/demoData';
 import { convert, getCurrency } from './src/currency';
 import { getCategory } from './src/categories';
 import { dateKey, dayLabel, monthKeyLabel } from './src/format';
-import { colors, spacing } from './src/theme';
+import { colors } from './src/theme';
 
 export default function App() {
   return (
@@ -37,13 +38,14 @@ function ExpenseTracker() {
   const [expensesLoaded, setExpensesLoaded] = useState(false);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [tab, setTab] = useState('dashboard'); // 'dashboard' | 'add' | 'list'
+  const [tab, setTab] = useState('dashboard'); // 'dashboard' | 'list'
   const [overlay, setOverlay] = useState(null); // null | 'settings' | 'compare'
+  // The add-expense popup sits over whichever tab is active.
+  const [addOpen, setAddOpen] = useState(false);
   // Increments on every successful add; RewardCheck animates on each change.
   const [rewardNonce, setRewardNonce] = useState(0);
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
   const [dayStamp, setDayStamp] = useState(() => dateKey(Date.now()));
-  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const refresh = () => setDayStamp(dateKey(Date.now()));
@@ -86,6 +88,8 @@ function ExpenseTracker() {
       createdAt: createdAt ?? Date.now(),
     };
     setExpenses((prev) => [expense, ...prev]);
+    // Close the popup so the success overlay fades back to the main view.
+    setAddOpen(false);
     setRewardNonce((n) => n + 1);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     // The reward check is purely visual; this is the screen-reader equivalent
@@ -137,8 +141,8 @@ function ExpenseTracker() {
       <StatusBar style="light" />
 
       <View style={styles.content}>
-        {/* All three tab screens stay mounted so a half-typed expense or a scroll
-            position survives switching tabs; inactive ones are display:none. */}
+        {/* Both tab screens stay mounted so scroll position survives switching
+            tabs; the inactive one is display:none. */}
         <View style={[styles.screen, tab !== 'dashboard' && styles.screenHidden]}>
           <DashboardScreen
             loaded={loaded}
@@ -154,9 +158,6 @@ function ExpenseTracker() {
             onOpenCompare={() => setOverlay('compare')}
             onLoadDemo={loadDemo}
           />
-        </View>
-        <View style={[styles.screen, tab !== 'add' && styles.screenHidden]}>
-          <AddExpenseScreen displayCurrency={displayCurrency} onSubmit={addExpense} />
         </View>
         <View style={[styles.screen, tab !== 'list' && styles.screenHidden]}>
           <ExpenseListScreen
@@ -174,11 +175,22 @@ function ExpenseTracker() {
           can't linger over the next screen. */}
       <TabBar
         tab={tab}
+        addActive={addOpen}
         onChange={(next) => {
           Keyboard.dismiss();
           setTab(next);
         }}
+        onAddPress={() => setAddOpen(true)}
       />
+
+      {/* Rendered after the TabBar so the backdrop covers it too. */}
+      <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>
+        <AddExpenseScreen
+          displayCurrency={displayCurrency}
+          onSubmit={addExpense}
+          onClose={() => setAddOpen(false)}
+        />
+      </AddExpenseModal>
 
       <SettingsScreen
         visible={overlay === 'settings'}
@@ -193,10 +205,7 @@ function ExpenseTracker() {
         onClose={() => setOverlay(null)}
       />
 
-      <RewardCheck
-        trigger={rewardNonce}
-        bottomOffset={insets.bottom + TAB_BAR_HEIGHT + spacing.lg}
-      />
+      <RewardCheck trigger={rewardNonce} />
     </SafeAreaView>
   );
 }

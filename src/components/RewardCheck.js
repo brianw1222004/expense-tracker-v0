@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Easing, StyleSheet } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { colors } from '../theme';
 
@@ -12,12 +12,13 @@ const STROKE_WIDTH = 5;
 const CHECK_D = 'M26 46 L39 59 L62 32';
 // Geometric length of CHECK_D; dashoffset animates from this down to 0 to "draw" it.
 const CHECK_LENGTH = 54;
-const SHOW_MS = 1200; // when the fade-out starts
-const FADE_MS = 250;
+const SHOW_MS = 1500; // when the fade-out starts
+const FADE_MS = 300;
 
-// The sole confirmation for adding an expense: a gradient check that pops in
-// above the tab bar, then fades away. Never intercepts touches.
-export default function RewardCheck({ trigger, bottomOffset }) {
+// The sole confirmation for adding an expense: a full-screen light-green
+// backdrop fades in with a gradient check popping in at screen center, then
+// everything fades back to the main view. Never intercepts touches.
+export default function RewardCheck({ trigger }) {
   const [visible, setVisible] = useState(false);
   const scale = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -77,8 +78,10 @@ export default function RewardCheck({ trigger, bottomOffset }) {
   if (!visible) return null;
 
   return (
-    <View pointerEvents="none" style={[styles.container, { bottom: bottomOffset }]}>
-      <Animated.View style={{ opacity, transform: [{ scale }] }}>
+    // One opacity drives backdrop and check together so "everything" fades as
+    // a unit; the backdrop's green strength comes from its color's alpha.
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.overlay, { opacity }]}>
+      <Animated.View style={{ transform: [{ scale }] }}>
         <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
           <Defs>
             <LinearGradient id="rewardCheckGradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -106,15 +109,14 @@ export default function RewardCheck({ trigger, bottomOffset }) {
           />
         </Svg>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
+  overlay: {
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(167, 243, 208, 1)',
   },
 });
