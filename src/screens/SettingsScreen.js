@@ -27,7 +27,14 @@ function budgetToText(value, decimals) {
   return Number.isInteger(value) ? String(value) : value.toFixed(decimals);
 }
 
-export default function SettingsScreen({ visible, settings, onUpdateSettings, onClose }) {
+export default function SettingsScreen({
+  visible,
+  settings,
+  onUpdateSettings,
+  onClose,
+  accountEmail,
+  onSignOut,
+}) {
   const insets = useSafeAreaInsets();
   const currency = getCurrency(settings.displayCurrency);
   const [budgetText, setBudgetText] = useState(() =>
@@ -128,6 +135,36 @@ export default function SettingsScreen({ visible, settings, onUpdateSettings, on
               </View>
             </View>
             <Text style={styles.sectionNote}>Leave empty for no budget.</Text>
+
+            {/* Only rendered when signed in — local-only mode has no account. */}
+            {accountEmail && (
+              <>
+                <Text style={styles.sectionHeader}>Account</Text>
+                <View style={styles.card}>
+                  <View style={styles.row}>
+                    <Text style={styles.comingSoonEmoji}>{'👤'}</Text>
+                    <Text style={styles.accountEmail} numberOfLines={1}>
+                      {accountEmail}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={onSignOut}
+                    accessibilityRole="button"
+                    accessibilityLabel="Sign out"
+                    style={({ pressed }) => [
+                      styles.row,
+                      styles.rowDivider,
+                      pressed && styles.rowPressed,
+                    ]}
+                  >
+                    <Text style={styles.signOutText}>Sign out</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.sectionNote}>
+                  Your expenses are synced to this account and available on any device.
+                </Text>
+              </>
+            )}
 
             <Text style={styles.sectionHeader}>Coming soon</Text>
             <View style={styles.card}>
@@ -266,6 +303,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     paddingVertical: spacing.sm + 4,
     fontVariant: ['tabular-nums'],
+  },
+  accountEmail: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    flex: 1,
+  },
+  signOutText: {
+    color: colors.danger,
+    fontSize: 16,
+    fontWeight: '600',
   },
   comingSoonEmoji: {
     fontSize: 16,
