@@ -9,7 +9,8 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { spacing } from '../theme';
+import { spacing, useTheme } from '../theme';
+import { useT } from '../i18n';
 
 const OPEN_MS = 220;
 const CLOSE_MS = 160;
@@ -18,6 +19,9 @@ const CLOSE_MS = 160;
 // card scales up from 85%. Children stay mounted while closed (display:none)
 // so a half-typed expense survives dismissing the popup.
 export default function AddExpenseModal({ visible, onClose, children }) {
+  // Only the backdrop color is theme-dependent; the rest of the styles stay static.
+  const { colors } = useTheme();
+  const t = useT();
   const progress = useRef(new Animated.Value(0)).current;
   // Stays true until the close animation finishes, then flips to display:none.
   const [hidden, setHidden] = useState(!visible);
@@ -53,12 +57,17 @@ export default function AddExpenseModal({ visible, onClose, children }) {
       style={[StyleSheet.absoluteFill, hidden && styles.hidden]}
       pointerEvents={visible ? 'auto' : 'none'}
     >
-      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: progress }]}>
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: colors.backdrop, opacity: progress },
+        ]}
+      >
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
           accessibilityRole="button"
-          accessibilityLabel="Close add expense"
+          accessibilityLabel={t('common.close')}
         />
       </Animated.View>
       <KeyboardAvoidingView
@@ -77,9 +86,6 @@ export default function AddExpenseModal({ visible, onClose, children }) {
 const styles = StyleSheet.create({
   hidden: {
     display: 'none',
-  },
-  backdrop: {
-    backgroundColor: 'rgba(2, 6, 17, 0.7)',
   },
   center: {
     flex: 1,

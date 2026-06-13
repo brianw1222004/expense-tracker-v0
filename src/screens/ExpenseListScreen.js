@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, SectionList, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, radius } from '../theme';
+import { fonts, radius, spacing, useTheme } from '../theme';
+import { useT } from '../i18n';
 import { CATEGORIES, getCategory } from '../categories';
 import { formatMoney } from '../format';
 import ExpenseRow from '../components/ExpenseRow';
@@ -14,6 +15,9 @@ export default function ExpenseListScreen({
   onDelete,
   onLoadDemo,
 }) {
+  const { colors } = useTheme();
+  const t = useT();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [filter, setFilter] = useState('all'); // 'all' | category id
 
   // Categories that actually appear in the data, in CATEGORIES order. Stale
@@ -59,15 +63,14 @@ export default function ExpenseListScreen({
     return (
       <View style={[styles.container, styles.emptyState]}>
         <Text style={styles.emptyEmoji}>🧾</Text>
-        <Text style={styles.emptyTitle}>No expenses yet</Text>
-        <Text style={styles.emptyHint}>
-          Tap the + button below to add your first expense, or start with some sample data.
-        </Text>
+        <Text style={styles.emptyTitle}>{t('empty.title')}</Text>
+        <Text style={styles.emptyHint}>{t('empty.hint')}</Text>
         <Pressable
           onPress={onLoadDemo}
+          accessibilityRole="button"
           style={({ pressed }) => [styles.demoButton, pressed && styles.demoButtonPressed]}
         >
-          <Text style={styles.demoButtonText}>Load demo data</Text>
+          <Text style={styles.demoButtonText}>{t('empty.loadDemo')}</Text>
         </Pressable>
       </View>
     );
@@ -75,7 +78,7 @@ export default function ExpenseListScreen({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Expenses</Text>
+      <Text style={styles.title}>{t('list.title')}</Text>
 
       <View style={styles.chipsArea}>
         <ScrollView
@@ -84,7 +87,7 @@ export default function ExpenseListScreen({
           contentContainerStyle={styles.chipRow}
         >
           <FilterChip
-            label="All"
+            label={t('list.all')}
             selected={activeFilter === 'all'}
             onPress={() => setFilter('all')}
           />
@@ -92,7 +95,7 @@ export default function ExpenseListScreen({
             <FilterChip
               key={category.id}
               emoji={category.emoji}
-              label={category.label}
+              label={t('cat.' + category.id)}
               color={category.color}
               selected={activeFilter === category.id}
               onPress={() => setFilter(category.id)}
@@ -104,7 +107,7 @@ export default function ExpenseListScreen({
       {filteredSections.length === 0 ? (
         <View style={styles.noMatch}>
           <Text style={styles.noMatchText}>
-            No {getCategory(activeFilter).label.toLowerCase()} expenses yet.
+            {t('list.noMatch', { category: t('cat.' + activeFilter) })}
           </Text>
         </View>
       ) : (
@@ -130,14 +133,18 @@ export default function ExpenseListScreen({
   );
 }
 
-function FilterChip({ emoji, label, color = colors.accent, selected, onPress }) {
+function FilterChip({ emoji, label, color, selected, onPress }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const chipColor = color ?? colors.accent;
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
       accessibilityState={{ selected }}
       style={({ pressed }) => [
         styles.chip,
-        selected && { backgroundColor: `${color}33`, borderColor: color },
+        selected && { backgroundColor: `${chipColor}33`, borderColor: chipColor },
         pressed && !selected && styles.chipPressed,
       ]}
     >
@@ -147,123 +154,126 @@ function FilterChip({ emoji, label, color = colors.accent, selected, onPress }) 
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 28,
-    fontWeight: '800',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
-  chipsArea: {
-    paddingVertical: spacing.sm + 4,
-  },
-  chipRow: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.sm,
-  },
-  chipPressed: {
-    backgroundColor: colors.cardPressed,
-  },
-  chipEmoji: {
-    fontSize: 16,
-    marginRight: 5,
-  },
-  chipLabel: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  chipLabelSelected: {
-    color: colors.textPrimary,
-  },
-  listContent: {
-    // The tab bar sits in-flow below the screen, so only the floating + button's
-    // ~24px overhang needs clearing — not the bar height itself.
-    paddingBottom: spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-  },
-  sectionTitle: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  sectionTotal: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-  },
-  noMatch: {
-    flex: 1,
-    alignItems: 'center',
-    paddingTop: spacing.xl * 2,
-    paddingHorizontal: spacing.lg,
-  },
-  noMatchText: {
-    color: colors.textMuted,
-    fontSize: 15,
-    textAlign: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingBottom: TAB_BAR_HEIGHT,
-  },
-  emptyEmoji: {
-    fontSize: 56,
-    marginBottom: spacing.md,
-  },
-  emptyTitle: {
-    color: colors.textPrimary,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  emptyHint: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    lineHeight: 21,
-  },
-  demoButton: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 4,
-  },
-  demoButtonPressed: {
-    backgroundColor: colors.cardPressed,
-  },
-  demoButtonText: {
-    color: colors.accent,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    title: {
+      color: colors.textPrimary,
+      fontSize: 28,
+      fontFamily: fonts.bold,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+    },
+    chipsArea: {
+      paddingVertical: spacing.sm + 4,
+    },
+    chipRow: {
+      paddingHorizontal: spacing.md,
+      gap: spacing.sm,
+    },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.sm,
+    },
+    chipPressed: {
+      backgroundColor: colors.cardPressed,
+    },
+    chipEmoji: {
+      fontSize: 16,
+      marginRight: 5,
+    },
+    chipLabel: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      fontFamily: fonts.bold,
+    },
+    chipLabelSelected: {
+      color: colors.textPrimary,
+    },
+    listContent: {
+      // The tab bar sits in-flow below the screen, so only the floating + button's
+      // ~24px overhang needs clearing — not the bar height itself.
+      paddingBottom: spacing.xl,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.sm,
+    },
+    sectionTitle: {
+      color: colors.textSecondary,
+      fontSize: 13,
+      fontFamily: fonts.bold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    sectionTotal: {
+      color: colors.textMuted,
+      fontSize: 13,
+      fontFamily: fonts.bold,
+      fontVariant: ['tabular-nums'],
+    },
+    noMatch: {
+      flex: 1,
+      alignItems: 'center',
+      paddingTop: spacing.xl * 2,
+      paddingHorizontal: spacing.lg,
+    },
+    noMatchText: {
+      color: colors.textMuted,
+      fontSize: 15,
+      fontFamily: fonts.regular,
+      textAlign: 'center',
+    },
+    emptyState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xl,
+      paddingBottom: TAB_BAR_HEIGHT,
+    },
+    emptyEmoji: {
+      fontSize: 56,
+      marginBottom: spacing.md,
+    },
+    emptyTitle: {
+      color: colors.textPrimary,
+      fontSize: 20,
+      fontFamily: fonts.bold,
+    },
+    emptyHint: {
+      color: colors.textSecondary,
+      fontSize: 15,
+      fontFamily: fonts.regular,
+      textAlign: 'center',
+      marginTop: spacing.sm,
+      lineHeight: 21,
+    },
+    demoButton: {
+      marginTop: spacing.lg,
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm + 4,
+    },
+    demoButtonPressed: {
+      backgroundColor: colors.cardPressed,
+    },
+    demoButtonText: {
+      color: colors.accent,
+      fontSize: 16,
+      fontFamily: fonts.bold,
+    },
+  });

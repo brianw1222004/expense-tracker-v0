@@ -13,10 +13,18 @@ function scopedKey(base, userId) {
   return userId === LOCAL_USER ? base : `${base}:${userId}`;
 }
 
-// monthlyBudget is in the display currency; 0 means "no budget set".
+// monthlyBudget and every categoryBudgets value are in the display currency;
+// 0 / missing means "no budget set". theme / language / categoryBudgets are
+// DEVICE-LOCAL: the Supabase settings row only has display_currency and
+// monthly_budget columns, so sync.js never pushes the extra fields and App.js
+// merges pulls over the local settings instead of replacing them — pushing
+// unknown columns would error and wedge the whole pending-ops queue.
 export const DEFAULT_SETTINGS = {
   displayCurrency: DEFAULT_CURRENCY,
   monthlyBudget: 0,
+  categoryBudgets: {},
+  theme: 'cookie',
+  language: 'en',
 };
 
 export async function loadExpenses(userId) {
@@ -41,14 +49,27 @@ export async function saveExpenses(userId, expenses) {
   }
 }
 
+// Fresh categoryBudgets object every call — the shallow spread would otherwise
+// hand out DEFAULT_SETTINGS' own object to be mutated.
+function withDefaults(parsed) {
+  const merged = {
+    ...DEFAULT_SETTINGS,
+    categoryBudgets: {},
+    ...(parsed && typeof parsed === 'object' ? parsed : {}),
+  };
+  if (!merged.categoryBudgets || typeof merged.categoryBudgets !== 'object') {
+    merged.categoryBudgets = {};
+  }
+  return merged;
+}
+
 export async function loadSettings(userId) {
   try {
     const raw = await AsyncStorage.getItem(scopedKey(SETTINGS_KEY, userId));
-    if (!raw) return { ...DEFAULT_SETTINGS };
-    const parsed = JSON.parse(raw);
-    return { ...DEFAULT_SETTINGS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+    if (!raw) return withDefaults(null);
+    return withDefaults(JSON.parse(raw));
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return withDefaults(null);
   }
 }
 

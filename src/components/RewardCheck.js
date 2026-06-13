@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import { colors } from '../theme';
+import { useTheme } from '../theme';
 
 // strokeDashoffset is an SVG prop, so it can't use the native driver — it gets
 // its own Animated.Value on an animated Path (never shared with scale/opacity).
@@ -12,13 +12,14 @@ const STROKE_WIDTH = 5;
 const CHECK_D = 'M26 46 L39 59 L62 32';
 // Geometric length of CHECK_D; dashoffset animates from this down to 0 to "draw" it.
 const CHECK_LENGTH = 54;
-const SHOW_MS = 1500; // when the fade-out starts
-const FADE_MS = 300;
+const SHOW_MS = 1050; // when the fade-out starts
+const FADE_MS = 210;
 
 // The sole confirmation for adding an expense: a full-screen light-green
 // backdrop fades in with a gradient check popping in at screen center, then
 // everything fades back to the main view. Never intercepts touches.
 export default function RewardCheck({ trigger }) {
+  const { colors } = useTheme();
   const [visible, setVisible] = useState(false);
   const scale = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -79,14 +80,21 @@ export default function RewardCheck({ trigger }) {
 
   return (
     // One opacity drives backdrop and check together so "everything" fades as
-    // a unit; the backdrop's green strength comes from its color's alpha.
-    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.overlay, { opacity }]}>
+    // a unit; the backdrop color is the theme's solid success-overlay tint.
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFill,
+        styles.overlay,
+        { backgroundColor: colors.successOverlay, opacity },
+      ]}
+    >
       <Animated.View style={{ transform: [{ scale }] }}>
         <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
           <Defs>
             <LinearGradient id="rewardCheckGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <Stop offset="0%" stopColor={colors.accent} />
-              <Stop offset="100%" stopColor={colors.accentTeal} />
+              <Stop offset="0%" stopColor={colors.success} />
+              <Stop offset="100%" stopColor={colors.successAlt} />
             </LinearGradient>
           </Defs>
           <Circle
@@ -117,6 +125,5 @@ const styles = StyleSheet.create({
   overlay: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(167, 243, 208, 1)',
   },
 });

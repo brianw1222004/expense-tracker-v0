@@ -1,5 +1,6 @@
 // Seed expenses: recent days for the list/dashboard, plus two earlier months
-// so Monthly Compare has real data. A few entries are non-USD to show conversion.
+// so the Categories month-over-month trends have real data. A few entries are
+// non-USD to show conversion.
 const RECENT_SEED = [
   { daysAgo: 0, hour: 9, amount: 5.4, currency: 'USD', note: 'Latte', category: 'food' },
   { daysAgo: 0, hour: 12, amount: 14.25, currency: 'USD', note: 'Lunch burrito', category: 'food' },
@@ -18,8 +19,8 @@ const RECENT_SEED = [
   { daysAgo: 9, hour: 21, amount: 480, currency: 'TWD', note: 'Concert parking', category: 'transport' },
 ];
 
-// Older entries pinned by calendar month so the Compare screen always has
-// at least three months regardless of today's date.
+// Older entries pinned by calendar month so the trends always have at least
+// three months regardless of today's date.
 const PAST_SEED = [
   { monthsAgo: 1, day: 3, hour: 9, amount: 4.8, currency: 'USD', note: 'Coffee', category: 'food' },
   { monthsAgo: 1, day: 5, hour: 13, amount: 71.2, currency: 'USD', note: 'Groceries', category: 'groceries' },

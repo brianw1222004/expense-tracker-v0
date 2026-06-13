@@ -11,12 +11,19 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
+import {
+  useFonts,
+  Caladea_400Regular,
+  Caladea_400Regular_Italic,
+  Caladea_700Bold,
+} from '@expo-google-fonts/caladea';
 
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddExpenseScreen from './src/screens/AddExpenseScreen';
 import ExpenseListScreen from './src/screens/ExpenseListScreen';
-import CompareScreen from './src/screens/CompareScreen';
-import SettingsScreen from './src/screens/SettingsScreen';
+import CategoriesScreen from './src/screens/CategoriesScreen';
+import AccountScreen from './src/screens/AccountScreen';
+import BudgetScreen from './src/screens/BudgetScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import TabBar from './src/components/TabBar';
 import AddExpenseModal from './src/components/AddExpenseModal';
@@ -43,9 +50,21 @@ import { buildDemoExpenses } from './src/demoData';
 import { convert, getCurrency } from './src/currency';
 import { getCategory } from './src/categories';
 import { dateKey, dayLabel, monthKeyLabel } from './src/format';
-import { colors } from './src/theme';
+import { ThemeProvider, getTheme } from './src/theme';
+import { I18nProvider, translate } from './src/i18n';
 
 export default function App() {
+  // Caladea is the open, metric-compatible stand-in for Cambria (the requested
+  // font is commercial and can't be bundled). Block first paint until loaded so
+  // no screen ever renders with the fallback face; on a load error render
+  // anyway rather than hanging on a blank screen.
+  const [fontsLoaded, fontsError] = useFonts({
+    Caladea_400Regular,
+    Caladea_400Regular_Italic,
+    Caladea_700Bold,
+  });
+  if (!fontsLoaded && !fontsError) return null;
+
   return (
     <SafeAreaProvider>
       <ExpenseTracker />
@@ -64,8 +83,9 @@ function ExpenseTracker() {
   // skips auth entirely (sessionLoaded starts true, userId is LOCAL_USER).
   const [session, setSession] = useState(null);
   const [sessionLoaded, setSessionLoaded] = useState(!isSupabaseConfigured);
-  const [tab, setTab] = useState('dashboard'); // 'dashboard' | 'list'
-  const [overlay, setOverlay] = useState(null); // null | 'settings' | 'compare'
+  const [tab, setTab] = useState('dashboard'); // 'dashboard' | 'list' | 'categories' | 'account'
+  // The budget editor sheet sits over whichever tab is active.
+  const [overlay, setOverlay] = useState(null); // null | 'budget'
   // The add-expense popup sits over whichever tab is active.
   const [addOpen, setAddOpen] = useState(false);
   // Increments on every successful add; RewardCheck animates on each change.
@@ -74,6 +94,8 @@ function ExpenseTracker() {
   const [dayStamp, setDayStamp] = useState(() => dateKey(Date.now()));
 
   const userId = isSupabaseConfigured ? session?.user?.id ?? null : LOCAL_USER;
+  const language = settings.language;
+  const theme = getTheme(settings.theme);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -101,7 +123,9 @@ function ExpenseTracker() {
   }, []);
 
   // Cache-first load: AsyncStorage renders immediately, then the server's
-  // state (with any still-pending local ops re-applied) replaces it.
+  // state (with any still-pending local ops re-applied) replaces it. Server
+  // settings only carry displayCurrency/monthlyBudget, so they MERGE over the
+  // local settings — theme, language and category budgets are device-local.
   useEffect(() => {
     let active = true;
     setDataUser(null);
@@ -124,7 +148,7 @@ function ExpenseTracker() {
       const result = await syncWithServer(userId);
       if (!active || !result) return;
       setExpenses(applyPendingOps(userId, result.expenses));
-      if (result.settings) setSettings(result.settings);
+      if (result.settings) setSettings((prev) => ({ ...prev, ...result.settings }));
     })();
     return () => {
       active = false;
@@ -141,7 +165,7 @@ function ExpenseTracker() {
       const result = await syncWithServer(userId);
       if (!active || !result) return;
       setExpenses(applyPendingOps(userId, result.expenses));
-      if (result.settings) setSettings(result.settings);
+      if (result.settings) setSettings((prev) => ({ ...prev, ...result.settings }));
     });
     return () => {
       active = false;
@@ -175,9 +199,9 @@ function ExpenseTracker() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       // The reward check is purely visual; this is the screen-reader equivalent
       // (a status announcement, not a toast/modal — the spec ban doesn't apply).
-      AccessibilityInfo.announceForAccessibility('Expense added');
+      AccessibilityInfo.announceForAccessibility(translate(language, 'add.added'));
     },
-    [userId]
+    [userId, language]
   );
 
   const deleteExpense = useCallback(
@@ -199,35 +223,55 @@ function ExpenseTracker() {
   const updateSettings = useCallback(
     (patch) => {
       const next = { ...settings, ...patch };
-      // Re-denominate the budget when the display currency changes so "≈ the
-      // same money" is preserved instead of the raw number silently meaning less.
-      if (
-        patch.displayCurrency &&
-        patch.displayCurrency !== settings.displayCurrency &&
-        settings.monthlyBudget > 0 &&
-        patch.monthlyBudget === undefined
-      ) {
-        const converted = convert(settings.monthlyBudget, settings.displayCurrency, patch.displayCurrency);
-        next.monthlyBudget = Number(converted.toFixed(getCurrency(patch.displayCurrency).decimals));
+      // Re-denominate stored budgets when the display currency changes so "≈
+      // the same money" is preserved instead of the raw numbers silently
+      // meaning less. Applies to the overall budget and every category budget.
+      if (patch.displayCurrency && patch.displayCurrency !== settings.displayCurrency) {
+        const decimals = getCurrency(patch.displayCurrency).decimals;
+        const redenominate = (value) =>
+          Number(convert(value, settings.displayCurrency, patch.displayCurrency).toFixed(decimals));
+        if (settings.monthlyBudget > 0 && patch.monthlyBudget === undefined) {
+          next.monthlyBudget = redenominate(settings.monthlyBudget);
+        }
+        if (patch.categoryBudgets === undefined) {
+          const converted = {};
+          for (const [id, value] of Object.entries(settings.categoryBudgets ?? {})) {
+            if (value > 0) converted[id] = redenominate(value);
+          }
+          next.categoryBudgets = converted;
+        }
       }
       setSettings(next);
-      enqueueSettingsPush(userId, next);
+      // Only currency and the overall budget exist as server columns; pushing
+      // theme/language/categoryBudgets changes would be a no-op write, so skip.
+      if (
+        next.displayCurrency !== settings.displayCurrency ||
+        next.monthlyBudget !== settings.monthlyBudget
+      ) {
+        enqueueSettingsPush(userId, next);
+      }
     },
     [settings, userId]
   );
 
   const signOut = useCallback(async () => {
     // Alert with buttons is a no-op on web; window.confirm is the fallback.
+    const title = translate(language, 'acct.signOut');
+    const body = translate(language, 'acct.signOutBody');
     const confirmed =
       Platform.OS === 'web'
-        ? window.confirm('Sign out of this account?')
+        ? window.confirm(`${title}?\n${body}`)
         : await new Promise((resolve) =>
             Alert.alert(
-              'Sign out',
-              'Your expenses stay synced to your account.',
+              title,
+              body,
               [
-                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-                { text: 'Sign out', style: 'destructive', onPress: () => resolve(true) },
+                {
+                  text: translate(language, 'common.cancel'),
+                  style: 'cancel',
+                  onPress: () => resolve(false),
+                },
+                { text: title, style: 'destructive', onPress: () => resolve(true) },
               ],
               { cancelable: true, onDismiss: () => resolve(false) }
             )
@@ -237,109 +281,135 @@ function ExpenseTracker() {
     await flush(userId); // best-effort push of anything still queued
     // Local scope: clears this device's session even when offline.
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-  }, [userId]);
+  }, [userId, language]);
 
   const displayCurrency = settings.displayCurrency;
 
   const { sections, months, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount } =
     useMemo(
-      () => deriveViewData(expenses, displayCurrency),
-      [expenses, displayCurrency, dayStamp]
+      () => deriveViewData(expenses, displayCurrency, language),
+      [expenses, displayCurrency, language, dayStamp]
     );
 
   const loaded = dataUser != null && dataUser === userId;
   const hasExpenses = expenses.length > 0;
+  const currentMonthKey = dayStamp.slice(0, 7);
 
   // Signed out (or session still restoring): the auth screen is the app.
   if (isSupabaseConfigured && !session) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <StatusBar style="light" />
-        {sessionLoaded && <AuthScreen />}
-      </SafeAreaView>
+      <ThemeProvider themeName={settings.theme}>
+        <I18nProvider language={language}>
+          <SafeAreaView
+            style={[styles.safeArea, { backgroundColor: theme.background }]}
+            edges={['top', 'left', 'right']}
+          >
+            <StatusBar style={theme.statusBarStyle} />
+            {sessionLoaded && <AuthScreen />}
+          </SafeAreaView>
+        </I18nProvider>
+      </ThemeProvider>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <StatusBar style="light" />
+    <ThemeProvider themeName={settings.theme}>
+      <I18nProvider language={language}>
+        <SafeAreaView
+          style={[styles.safeArea, { backgroundColor: theme.background }]}
+          edges={['top', 'left', 'right']}
+        >
+          <StatusBar style={theme.statusBarStyle} />
 
-      <View style={styles.content}>
-        {/* Both tab screens stay mounted so scroll position survives switching
-            tabs; the inactive one is display:none. */}
-        <View style={[styles.screen, tab !== 'dashboard' && styles.screenHidden]}>
-          <DashboardScreen
-            loaded={loaded}
-            hasExpenses={hasExpenses}
-            monthTotal={monthTotal}
-            todayTotal={todayTotal}
-            monthCount={monthCount}
-            avgPerDay={avgPerDay}
-            totalsByCategory={totalsByCategory}
-            displayCurrency={displayCurrency}
-            monthlyBudget={settings.monthlyBudget}
-            onOpenSettings={() => setOverlay('settings')}
-            onOpenCompare={() => setOverlay('compare')}
-            onLoadDemo={loadDemo}
+          <View style={styles.content}>
+            {/* All four tab screens stay mounted so scroll position survives
+                switching tabs; the inactive ones are display:none. */}
+            <View style={[styles.screen, tab !== 'dashboard' && styles.screenHidden]}>
+              <DashboardScreen
+                loaded={loaded}
+                hasExpenses={hasExpenses}
+                monthTotal={monthTotal}
+                todayTotal={todayTotal}
+                monthCount={monthCount}
+                avgPerDay={avgPerDay}
+                totalsByCategory={totalsByCategory}
+                displayCurrency={displayCurrency}
+                monthlyBudget={settings.monthlyBudget}
+                categoryBudgets={settings.categoryBudgets}
+                onEditBudgets={() => setOverlay('budget')}
+                onLoadDemo={loadDemo}
+              />
+            </View>
+            <View style={[styles.screen, tab !== 'list' && styles.screenHidden]}>
+              <ExpenseListScreen
+                sections={sections}
+                loaded={loaded}
+                hasExpenses={hasExpenses}
+                displayCurrency={displayCurrency}
+                onDelete={deleteExpense}
+                onLoadDemo={loadDemo}
+              />
+            </View>
+            <View style={[styles.screen, tab !== 'categories' && styles.screenHidden]}>
+              <CategoriesScreen
+                months={months}
+                currentMonthKey={currentMonthKey}
+                loaded={loaded}
+                hasExpenses={hasExpenses}
+                displayCurrency={displayCurrency}
+                onLoadDemo={loadDemo}
+              />
+            </View>
+            <View style={[styles.screen, tab !== 'account' && styles.screenHidden]}>
+              <AccountScreen
+                settings={settings}
+                onUpdateSettings={updateSettings}
+                accountEmail={session?.user?.email}
+                onSignOut={signOut}
+              />
+            </View>
+          </View>
+
+          {/* Hidden tabs keep mounted TextInputs focused — drop the keyboard so
+              it can't linger over the next screen. */}
+          <TabBar
+            tab={tab}
+            addActive={addOpen}
+            onChange={(next) => {
+              Keyboard.dismiss();
+              setTab(next);
+            }}
+            onAddPress={() => setAddOpen(true)}
           />
-        </View>
-        <View style={[styles.screen, tab !== 'list' && styles.screenHidden]}>
-          <ExpenseListScreen
-            sections={sections}
-            loaded={loaded}
-            hasExpenses={hasExpenses}
-            displayCurrency={displayCurrency}
-            onDelete={deleteExpense}
-            onLoadDemo={loadDemo}
+
+          {/* Rendered after the TabBar so the backdrop covers it too. */}
+          <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>
+            <AddExpenseScreen
+              displayCurrency={displayCurrency}
+              onSubmit={addExpense}
+              onClose={() => setAddOpen(false)}
+            />
+          </AddExpenseModal>
+
+          <BudgetScreen
+            visible={overlay === 'budget'}
+            settings={settings}
+            onUpdateSettings={updateSettings}
+            onClose={() => setOverlay(null)}
           />
-        </View>
-      </View>
 
-      {/* Hidden tabs keep mounted TextInputs focused — drop the keyboard so it
-          can't linger over the next screen. */}
-      <TabBar
-        tab={tab}
-        addActive={addOpen}
-        onChange={(next) => {
-          Keyboard.dismiss();
-          setTab(next);
-        }}
-        onAddPress={() => setAddOpen(true)}
-      />
-
-      {/* Rendered after the TabBar so the backdrop covers it too. */}
-      <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>
-        <AddExpenseScreen
-          displayCurrency={displayCurrency}
-          onSubmit={addExpense}
-          onClose={() => setAddOpen(false)}
-        />
-      </AddExpenseModal>
-
-      <SettingsScreen
-        visible={overlay === 'settings'}
-        settings={settings}
-        onUpdateSettings={updateSettings}
-        onClose={() => setOverlay(null)}
-        accountEmail={session?.user?.email}
-        onSignOut={signOut}
-      />
-      <CompareScreen
-        visible={overlay === 'compare'}
-        months={months}
-        displayCurrency={displayCurrency}
-        onClose={() => setOverlay(null)}
-      />
-
-      <RewardCheck trigger={rewardNonce} />
-    </SafeAreaView>
+          <RewardCheck trigger={rewardNonce} />
+        </SafeAreaView>
+      </I18nProvider>
+    </ThemeProvider>
   );
 }
 
 // One pass over expenses computes everything the UI shows, all converted to the
 // display currency: day sections for the list, current-month stats for the
-// dashboard, and per-month aggregates for the compare screen.
-function deriveViewData(expenses, displayCurrency) {
+// dashboard, and per-month aggregates for the categories screen. Labels are
+// rendered in the app language, so the memo must re-run when it changes.
+function deriveViewData(expenses, displayCurrency, language) {
   const now = new Date();
   const todayKey = dateKey(now.getTime());
   const monthPrefix = todayKey.slice(0, 7); // YYYY-MM
@@ -369,14 +439,20 @@ function deriveViewData(expenses, displayCurrency) {
     if (key === todayKey) todayTotal += displayAmount;
 
     if (!byDay.has(key)) {
-      byDay.set(key, { title: dayLabel(expense.createdAt), total: 0, data: [] });
+      byDay.set(key, { title: dayLabel(expense.createdAt, language), total: 0, data: [] });
     }
     const day = byDay.get(key);
     day.total += displayAmount;
     day.data.push({ ...expense, displayAmount });
 
     if (!byMonth.has(mKey)) {
-      byMonth.set(mKey, { key: mKey, label: monthKeyLabel(mKey), total: 0, count: 0, byCategory: {} });
+      byMonth.set(mKey, {
+        key: mKey,
+        label: monthKeyLabel(mKey, language),
+        total: 0,
+        count: 0,
+        byCategory: {},
+      });
     }
     const month = byMonth.get(mKey);
     month.total += displayAmount;
@@ -398,7 +474,6 @@ function deriveViewData(expenses, displayCurrency) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   content: {
     flex: 1,

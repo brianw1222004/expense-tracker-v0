@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,12 +11,16 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../supabase';
-import { colors, spacing, radius } from '../theme';
+import { fonts, spacing, radius, useTheme } from '../theme';
+import { useT } from '../i18n';
 
 // Email + password only: both work inside Expo Go on phone and web with zero
 // deep-link configuration. Magic links / OAuth need a redirect scheme, so
 // they're a later addition. Errors render inline (Alert is a no-op on web).
 export default function AuthScreen() {
+  const { colors } = useTheme();
+  const t = useT();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [mode, setMode] = useState('signIn'); // 'signIn' | 'signUp'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +35,7 @@ export default function AuthScreen() {
     if (busy) return;
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !password) {
-      setError('Enter your email and a password.');
+      setError(t('auth.missingFields'));
       return;
     }
     setBusy(true);
@@ -54,12 +58,12 @@ export default function AuthScreen() {
           setError(authError.message);
         } else if (!data.session) {
           // Email confirmation is on in the Supabase project: no session yet.
-          setNotice('Almost there — confirm the link we emailed you, then sign in.');
+          setNotice(t('auth.confirmEmail'));
           setMode('signIn');
         }
       }
     } catch {
-      setError("Couldn't reach the server. Check your connection and try again.");
+      setError(t('auth.network'));
     } finally {
       setBusy(false);
     }
@@ -82,11 +86,9 @@ export default function AuthScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.logo}>{'💸'}</Text>
-        <Text style={styles.title}>Expense Tracker</Text>
+        <Text style={styles.title}>{t('auth.title')}</Text>
         <Text style={styles.subtitle}>
-          {signIn
-            ? 'Sign in to see your expenses on any device.'
-            : 'Create an account to keep your expenses backed up.'}
+          {signIn ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}
         </Text>
 
         <View style={styles.card}>
@@ -94,14 +96,14 @@ export default function AuthScreen() {
             style={styles.input}
             value={email}
             onChangeText={setEmail}
-            placeholder="Email"
+            placeholder={t('auth.email')}
             placeholderTextColor={colors.textMuted}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="email"
             textContentType="emailAddress"
-            keyboardAppearance="dark"
+            keyboardAppearance={colors.keyboardAppearance}
             returnKeyType="next"
             onSubmitEditing={() => passwordRef.current?.focus()}
           />
@@ -110,13 +112,13 @@ export default function AuthScreen() {
             style={[styles.input, styles.inputDivider]}
             value={password}
             onChangeText={setPassword}
-            placeholder={signIn ? 'Password' : 'Password (min. 6 characters)'}
+            placeholder={signIn ? t('auth.password') : t('auth.passwordNew')}
             placeholderTextColor={colors.textMuted}
             secureTextEntry
             autoCapitalize="none"
             autoComplete={signIn ? 'current-password' : 'new-password'}
             textContentType={signIn ? 'password' : 'newPassword'}
-            keyboardAppearance="dark"
+            keyboardAppearance={colors.keyboardAppearance}
             returnKeyType="go"
             onSubmitEditing={submit}
           />
@@ -136,16 +138,18 @@ export default function AuthScreen() {
           ]}
         >
           {busy ? (
-            <ActivityIndicator color={colors.background} />
+            <ActivityIndicator color={colors.onAccent} />
           ) : (
-            <Text style={styles.submitText}>{signIn ? 'Sign in' : 'Create account'}</Text>
+            <Text style={styles.submitText}>{signIn ? t('auth.signIn') : t('auth.signUp')}</Text>
           )}
         </Pressable>
 
         <Pressable onPress={switchMode} hitSlop={8} accessibilityRole="button">
           <Text style={styles.switchText}>
-            {signIn ? 'New here? ' : 'Already have an account? '}
-            <Text style={styles.switchAction}>{signIn ? 'Create an account' : 'Sign in'}</Text>
+            {signIn ? t('auth.switchToSignUpPrefix') : t('auth.switchToSignInPrefix')}
+            <Text style={styles.switchAction}>
+              {signIn ? t('auth.switchToSignUpAction') : t('auth.switchToSignInAction')}
+            </Text>
           </Text>
         </Pressable>
       </ScrollView>
@@ -153,96 +157,102 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
-  container: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-    maxWidth: 440,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  logo: {
-    fontSize: 44,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 26,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  subtitle: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    lineHeight: 21,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  input: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 6,
-  },
-  inputDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 14,
-    lineHeight: 19,
-    marginTop: spacing.md,
-    textAlign: 'center',
-  },
-  notice: {
-    color: colors.accent,
-    fontSize: 14,
-    lineHeight: 19,
-    marginTop: spacing.md,
-    textAlign: 'center',
-  },
-  submit: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    marginTop: spacing.lg,
-    minHeight: 52,
-  },
-  submitPressed: {
-    backgroundColor: colors.accentDark,
-  },
-  submitBusy: {
-    opacity: 0.7,
-  },
-  submitText: {
-    color: colors.background,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  switchText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: spacing.lg,
-    paddingVertical: spacing.xs,
-  },
-  switchAction: {
-    color: colors.accent,
-    fontWeight: '700',
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    flex: {
+      flex: 1,
+    },
+    container: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.xl,
+      maxWidth: 440,
+      width: '100%',
+      alignSelf: 'center',
+    },
+    logo: {
+      fontSize: 44,
+      textAlign: 'center',
+      marginBottom: spacing.sm,
+    },
+    title: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 26,
+      textAlign: 'center',
+    },
+    subtitle: {
+      color: colors.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      lineHeight: 21,
+      textAlign: 'center',
+      marginTop: spacing.sm,
+      marginBottom: spacing.lg,
+    },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      overflow: 'hidden',
+    },
+    input: {
+      color: colors.textPrimary,
+      fontFamily: fonts.regular,
+      fontSize: 16,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 6,
+    },
+    inputDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    error: {
+      color: colors.danger,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      lineHeight: 19,
+      marginTop: spacing.md,
+      textAlign: 'center',
+    },
+    notice: {
+      color: colors.accent,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      lineHeight: 19,
+      marginTop: spacing.md,
+      textAlign: 'center',
+    },
+    submit: {
+      backgroundColor: colors.accent,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: spacing.md,
+      marginTop: spacing.lg,
+      minHeight: 52,
+    },
+    submitPressed: {
+      backgroundColor: colors.accentDark,
+    },
+    submitBusy: {
+      opacity: 0.7,
+    },
+    submitText: {
+      color: colors.onAccent,
+      fontFamily: fonts.bold,
+      fontSize: 17,
+    },
+    switchText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      textAlign: 'center',
+      marginTop: spacing.lg,
+      paddingVertical: spacing.xs,
+    },
+    switchAction: {
+      color: colors.accent,
+      fontFamily: fonts.bold,
+    },
+  });

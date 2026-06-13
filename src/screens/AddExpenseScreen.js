@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Keyboard,
@@ -9,14 +9,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, radius } from '../theme';
+import { fonts, spacing, radius, useTheme } from '../theme';
+import { getDateNames, useLanguage, useT } from '../i18n';
 import { CATEGORIES, getCategory } from '../categories';
 import { CURRENCIES, getCurrency } from '../currency';
 import { dayLabel, monthLabel } from '../format';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const COLOR_MS = 350;
-const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 // The chosen day at 12:00 local — keeps the entry safely inside the day even
 // across DST shifts, while today keeps the real timestamp (set on submit).
@@ -51,6 +51,11 @@ function buildCalendarWeeks(year, month) {
 // Rendered inside AddExpenseModal as the popup card. The card's border and
 // background tint follow the selected category's color (animated).
 export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose }) {
+  const { colors } = useTheme();
+  const t = useT();
+  const language = useLanguage();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [amountText, setAmountText] = useState('');
   const [note, setNote] = useState('');
   const [categoryId, setCategoryId] = useState(CATEGORIES[0].id);
@@ -172,12 +177,12 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Add expense</Text>
+          <Text style={styles.title}>{t('add.title')}</Text>
           <Pressable
             onPress={onClose}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={t('common.close')}
             style={({ pressed }) => [styles.closeButton, pressed && styles.chipPressed]}
           >
             <Text style={styles.closeGlyph}>{'✕'}</Text>
@@ -193,14 +198,14 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
             placeholder={currency.decimals === 0 ? '0' : '0.00'}
             placeholderTextColor={colors.textMuted}
             keyboardType={currency.decimals === 0 ? 'number-pad' : 'decimal-pad'}
-            keyboardAppearance="dark"
+            keyboardAppearance={colors.keyboardAppearance}
             maxLength={9}
           />
           <Pressable
             onPress={() => setCurrencyPickerOpen((open) => !open)}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={`Currency: ${currencyCode}`}
+            accessibilityLabel={t('add.currency', { code: currencyCode })}
             accessibilityState={{ expanded: currencyPickerOpen }}
             style={({ pressed }) => [styles.currencyChip, pressed && styles.chipPressed]}
           >
@@ -244,10 +249,10 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
           style={styles.noteInput}
           value={note}
           onChangeText={setNote}
-          placeholder="What was it for?"
+          placeholder={t('add.notePlaceholder')}
           placeholderTextColor={colors.textMuted}
           maxLength={60}
-          keyboardAppearance="dark"
+          keyboardAppearance={colors.keyboardAppearance}
           returnKeyType="done"
           onSubmitEditing={handleSubmit}
         />
@@ -269,7 +274,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
               >
                 <Text style={styles.categoryEmoji}>{category.emoji}</Text>
                 <Text style={[styles.categoryLabel, selected && { color: colors.textPrimary }]}>
-                  {category.label}
+                  {t('cat.' + category.id)}
                 </Text>
               </Pressable>
             );
@@ -282,7 +287,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
               onPress={toggleDatePicker}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Choose date"
+              accessibilityLabel={t('add.chooseDate')}
               accessibilityState={{ expanded: datePickerOpen }}
               style={({ pressed }) => [styles.dateArrow, pressed && styles.chipPressed]}
             >
@@ -291,17 +296,19 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
             <Pressable
               onPress={() => setDayOffset((offset) => offset - 1)}
               hitSlop={8}
-              accessibilityLabel="Previous day"
+              accessibilityLabel={t('add.prevDay')}
               style={({ pressed }) => [styles.dateArrow, pressed && styles.chipPressed]}
             >
               <Text style={styles.dateArrowText}>{'◀'}</Text>
             </Pressable>
-            <Text style={styles.dateLabel}>{dayLabel(dateForOffset(dayOffset).getTime())}</Text>
+            <Text style={styles.dateLabel}>
+              {dayLabel(dateForOffset(dayOffset).getTime(), language)}
+            </Text>
             <Pressable
               onPress={() => setDayOffset((offset) => Math.min(0, offset + 1))}
               disabled={dayOffset === 0}
               hitSlop={8}
-              accessibilityLabel="Next day"
+              accessibilityLabel={t('add.nextDay')}
               style={({ pressed }) => [
                 styles.dateArrow,
                 dayOffset === 0 && styles.dateArrowDisabled,
@@ -318,19 +325,19 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
                 <Pressable
                   onPress={() => shiftCalMonth(-1)}
                   hitSlop={8}
-                  accessibilityLabel="Previous month"
+                  accessibilityLabel={t('add.prevMonth')}
                   style={({ pressed }) => [styles.dateArrow, pressed && styles.chipPressed]}
                 >
                   <Text style={styles.dateArrowText}>{'◀'}</Text>
                 </Pressable>
                 <Text style={styles.calendarMonthLabel}>
-                  {monthLabel(new Date(calMonth.year, calMonth.month, 1))}
+                  {monthLabel(new Date(calMonth.year, calMonth.month, 1), language)}
                 </Text>
                 <Pressable
                   onPress={() => shiftCalMonth(1)}
                   disabled={viewingCurrentMonth}
                   hitSlop={8}
-                  accessibilityLabel="Next month"
+                  accessibilityLabel={t('add.nextMonth')}
                   style={({ pressed }) => [
                     styles.dateArrow,
                     viewingCurrentMonth && styles.dateArrowDisabled,
@@ -341,7 +348,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
                 </Pressable>
               </View>
               <View style={styles.calendarWeekRow}>
-                {WEEKDAY_LETTERS.map((letter, i) => (
+                {getDateNames(language).weekdayLetters.map((letter, i) => (
                   <Text key={i} style={styles.calendarWeekday}>
                     {letter}
                   </Text>
@@ -394,257 +401,260 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
             pressed && isValid && styles.saveButtonPressed,
           ]}
         >
-          <Text style={styles.saveButtonText}>Add expense</Text>
+          <Text style={styles.saveButtonText}>{t('add.save')}</Text>
         </Pressable>
       </ScrollView>
     </Animated.View>
   );
 }
 
-const styles = StyleSheet.create({
-  // flexShrink (not a % maxHeight, which doesn't resolve against an
-  // auto-height parent) lets the modal's maxHeight bound squeeze the card so
-  // the ScrollView scrolls instead of overflowing.
-  card: {
-    backgroundColor: colors.background,
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    flexShrink: 1,
-    overflow: 'hidden',
-  },
-  scroll: {
-    flexGrow: 0,
-    flexShrink: 1,
-  },
-  scrollContent: {
-    padding: spacing.lg,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-  },
-  closeGlyph: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  amountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  currencySymbol: {
-    color: colors.textSecondary,
-    fontSize: 34,
-    fontWeight: '600',
-    marginRight: spacing.xs,
-  },
-  amountInput: {
-    color: colors.textPrimary,
-    fontSize: 44,
-    fontWeight: '800',
-    minWidth: 130,
-    textAlign: 'center',
-    fontVariant: ['tabular-nums'],
-  },
-  currencyChip: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.xs + 2,
-    marginLeft: spacing.sm,
-  },
-  currencyChipText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  chipPressed: {
-    backgroundColor: colors.cardPressed,
-  },
-  currencyOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  currencyOption: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.sm,
-  },
-  currencyOptionSelected: {
-    backgroundColor: `${colors.accent}33`,
-    borderColor: colors.accent,
-  },
-  currencyOptionText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  currencyOptionTextSelected: {
-    color: colors.textPrimary,
-  },
-  noteInput: {
-    backgroundColor: colors.card,
-    color: colors.textPrimary,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 4,
-    fontSize: 16,
-    marginBottom: spacing.md,
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.sm,
-  },
-  categoryEmoji: {
-    fontSize: 16,
-    marginRight: 5,
-  },
-  categoryLabel: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  dateSection: {
-    marginBottom: spacing.lg,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  calendarIcon: {
-    fontSize: 16,
-  },
-  dateArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dateArrowDisabled: {
-    opacity: 0.3,
-  },
-  dateArrowText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
-  dateLabel: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  calendar: {
-    backgroundColor: colors.card,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  calendarMonthLabel: {
-    flex: 1,
-    textAlign: 'center',
-    color: colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  calendarWeekRow: {
-    flexDirection: 'row',
-  },
-  calendarWeekday: {
-    flex: 1,
-    textAlign: 'center',
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    paddingVertical: spacing.xs,
-  },
-  calendarCell: {
-    flex: 1,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 17,
-  },
-  calendarCellSelected: {
-    backgroundColor: colors.accent,
-  },
-  calendarCellText: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  calendarCellTextDisabled: {
-    color: colors.textMuted,
-    opacity: 0.5,
-  },
-  calendarCellTextSelected: {
-    color: '#06281C',
-    fontWeight: '800',
-  },
-  saveButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-  },
-  saveButtonPressed: {
-    backgroundColor: colors.accentDark,
-  },
-  saveButtonDisabled: {
-    opacity: 0.4,
-  },
-  saveButtonText: {
-    color: '#06281C',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    // flexShrink (not a % maxHeight, which doesn't resolve against an
+    // auto-height parent) lets the modal's maxHeight bound squeeze the card so
+    // the ScrollView scrolls instead of overflowing.
+    card: {
+      backgroundColor: colors.background,
+      borderRadius: radius.lg,
+      borderWidth: 1.5,
+      flexShrink: 1,
+      overflow: 'hidden',
+    },
+    scroll: {
+      flexGrow: 0,
+      flexShrink: 1,
+    },
+    scrollContent: {
+      padding: spacing.lg,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+    },
+    title: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 20,
+    },
+    closeButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+    },
+    closeGlyph: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 15,
+    },
+    amountRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.md,
+    },
+    currencySymbol: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 34,
+      marginRight: spacing.xs,
+    },
+    amountInput: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 44,
+      minWidth: 130,
+      textAlign: 'center',
+      fontVariant: ['tabular-nums'],
+    },
+    currencyChip: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.xs + 2,
+      marginLeft: spacing.sm,
+    },
+    currencyChipText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+    },
+    chipPressed: {
+      backgroundColor: colors.cardPressed,
+    },
+    currencyOptions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    currencyOption: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.sm,
+    },
+    currencyOptionSelected: {
+      backgroundColor: `${colors.accent}33`,
+      borderColor: colors.accent,
+    },
+    currencyOptionText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+    },
+    currencyOptionTextSelected: {
+      color: colors.textPrimary,
+    },
+    noteInput: {
+      backgroundColor: colors.card,
+      color: colors.textPrimary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 4,
+      fontFamily: fonts.regular,
+      fontSize: 16,
+      marginBottom: spacing.md,
+    },
+    categoryGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    categoryChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.sm,
+    },
+    categoryEmoji: {
+      fontSize: 16,
+      marginRight: 5,
+    },
+    categoryLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+    },
+    dateSection: {
+      marginBottom: spacing.lg,
+    },
+    dateRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    calendarIcon: {
+      fontSize: 16,
+    },
+    dateArrow: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    dateArrowDisabled: {
+      opacity: 0.3,
+    },
+    dateArrowText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+    },
+    dateLabel: {
+      flex: 1,
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 16,
+      textAlign: 'center',
+    },
+    calendar: {
+      backgroundColor: colors.card,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    calendarHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: spacing.xs,
+    },
+    calendarMonthLabel: {
+      flex: 1,
+      textAlign: 'center',
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 15,
+    },
+    calendarWeekRow: {
+      flexDirection: 'row',
+    },
+    calendarWeekday: {
+      flex: 1,
+      textAlign: 'center',
+      color: colors.textMuted,
+      fontFamily: fonts.bold,
+      fontSize: 11,
+      paddingVertical: spacing.xs,
+    },
+    calendarCell: {
+      flex: 1,
+      height: 34,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 17,
+    },
+    calendarCellSelected: {
+      backgroundColor: colors.accent,
+    },
+    calendarCellText: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+      fontVariant: ['tabular-nums'],
+    },
+    calendarCellTextDisabled: {
+      color: colors.textMuted,
+      opacity: 0.5,
+    },
+    calendarCellTextSelected: {
+      color: colors.onAccent,
+    },
+    saveButton: {
+      backgroundColor: colors.accent,
+      borderRadius: radius.md,
+      paddingVertical: spacing.md,
+      alignItems: 'center',
+    },
+    saveButtonPressed: {
+      backgroundColor: colors.accentDark,
+    },
+    saveButtonDisabled: {
+      opacity: 0.4,
+    },
+    saveButtonText: {
+      color: colors.onAccent,
+      fontFamily: fonts.bold,
+      fontSize: 17,
+    },
+  });

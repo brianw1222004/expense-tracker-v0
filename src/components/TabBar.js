@@ -1,13 +1,27 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing } from '../theme';
+import { fonts, spacing, useTheme } from '../theme';
+import { useT } from '../i18n';
 
 // Content height of the bar; the rendered bar additionally pads the safe-area
 // bottom inset. Screens use this constant to keep content clear of the bar.
 export const TAB_BAR_HEIGHT = 64;
 
+const TABS_LEFT = [
+  { id: 'dashboard', emoji: '\u{1F4CA}', labelKey: 'tabs.dashboard' },
+  { id: 'list', emoji: '\u{1F9FE}', labelKey: 'tabs.expenses' },
+];
+const TABS_RIGHT = [
+  { id: 'categories', emoji: '\u{1F5C2}\u{FE0F}', labelKey: 'tabs.categories' },
+  { id: 'account', emoji: '\u{1F464}', labelKey: 'tabs.account' },
+];
+
 export default function TabBar({ tab, onChange, onAddPress, addActive }) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const t = useT();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View
@@ -16,18 +30,22 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
         { height: TAB_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom },
       ]}
     >
-      <TabItem
-        label="Dashboard"
-        emoji={'\u{1F4CA}'}
-        selected={tab === 'dashboard'}
-        onPress={() => onChange('dashboard')}
-      />
+      {TABS_LEFT.map((item) => (
+        <TabItem
+          key={item.id}
+          styles={styles}
+          label={t(item.labelKey)}
+          emoji={item.emoji}
+          selected={tab === item.id}
+          onPress={() => onChange(item.id)}
+        />
+      ))}
 
       <View style={styles.addSlot}>
         <Pressable
           onPress={onAddPress}
           accessibilityRole="button"
-          accessibilityLabel="Add expense"
+          accessibilityLabel={t('tabs.add')}
           accessibilityState={{ expanded: addActive }}
           style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
         >
@@ -40,17 +58,21 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
         </Pressable>
       </View>
 
-      <TabItem
-        label="Expenses"
-        emoji={'\u{1F9FE}'}
-        selected={tab === 'list'}
-        onPress={() => onChange('list')}
-      />
+      {TABS_RIGHT.map((item) => (
+        <TabItem
+          key={item.id}
+          styles={styles}
+          label={t(item.labelKey)}
+          emoji={item.emoji}
+          selected={tab === item.id}
+          onPress={() => onChange(item.id)}
+        />
+      ))}
     </View>
   );
 }
 
-function TabItem({ label, emoji, selected, onPress }) {
+function TabItem({ styles, label, emoji, selected, onPress }) {
   return (
     <Pressable
       onPress={onPress}
@@ -59,84 +81,88 @@ function TabItem({ label, emoji, selected, onPress }) {
       style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
     >
       <Text style={[styles.itemEmoji, !selected && styles.itemEmojiInactive]}>{emoji}</Text>
-      <Text style={[styles.itemLabel, selected && styles.itemLabelSelected]}>{label}</Text>
+      <Text style={[styles.itemLabel, selected && styles.itemLabelSelected]} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  bar: {
-    flexDirection: 'row',
-    backgroundColor: colors.background,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  item: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  itemPressed: {
-    opacity: 0.7,
-  },
-  itemEmoji: {
-    fontSize: 22,
-  },
-  itemEmojiInactive: {
-    opacity: 0.5,
-  },
-  itemLabel: {
-    // textSecondary, not textMuted: 11px nav labels need ≥4.5:1 contrast (AA).
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  itemLabelSelected: {
-    color: colors.accent,
-  },
-  addSlot: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  addButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    // Negative top margin floats the button above the bar like the old FAB.
-    marginTop: -spacing.lg,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  addButtonPressed: {
-    backgroundColor: colors.accentDark,
-  },
-  plusIcon: {
-    width: 22,
-    height: 22,
-  },
-  plusBarH: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 9.5,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#06281C',
-  },
-  plusBarV: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 9.5,
-    width: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#06281C',
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    bar: {
+      flexDirection: 'row',
+      backgroundColor: colors.background,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    item: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+    },
+    itemPressed: {
+      opacity: 0.7,
+    },
+    itemEmoji: {
+      fontSize: 22,
+    },
+    itemEmojiInactive: {
+      opacity: 0.5,
+    },
+    itemLabel: {
+      // textSecondary, not textMuted: small nav labels need ≥4.5:1 contrast (AA).
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      // 10px so the longest label ('Categorías') fits a 5-way split on narrow phones.
+      fontSize: 10,
+    },
+    itemLabelSelected: {
+      color: colors.accent,
+    },
+    addSlot: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    addButton: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      // Negative top margin floats the button above the bar like the old FAB.
+      marginTop: -spacing.lg,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOpacity: 0.35,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 6,
+    },
+    addButtonPressed: {
+      backgroundColor: colors.accentDark,
+    },
+    plusIcon: {
+      width: 22,
+      height: 22,
+    },
+    plusBarH: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 9.5,
+      height: 3,
+      borderRadius: 1.5,
+      backgroundColor: colors.onAccent,
+    },
+    plusBarV: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 9.5,
+      width: 3,
+      borderRadius: 1.5,
+      backgroundColor: colors.onAccent,
+    },
+  });
