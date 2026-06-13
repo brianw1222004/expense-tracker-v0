@@ -34,7 +34,7 @@ export default function BudgetGauge({ spent, budget, displayCurrency, empty }) {
               opacity={0.5}
             />
           </Svg>
-          <View style={styles.center}>
+          <View style={[StyleSheet.absoluteFill, styles.center]}>
             <Text style={styles.emptyIcon}>{'\u{1F3AF}'}</Text>
             <Text style={[styles.emptyLabel, { color: colors.textMuted }]}>
               {t('budget.noBudget')}
@@ -81,7 +81,7 @@ export default function BudgetGauge({ spent, budget, displayCurrency, empty }) {
             />
           )}
         </Svg>
-        <View style={styles.center}>
+        <View style={[StyleSheet.absoluteFill, styles.center]}>
           <Text
             style={[styles.centerValue, { color: over ? colors.danger : colors.textPrimary }]}
             numberOfLines={1}
@@ -113,7 +113,6 @@ const styles = StyleSheet.create({
     height: SIZE,
   },
   center: {
-    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -183,7 +183,7 @@ function CategoryDonut({ byCategory, total, displayCurrency, colors, styles }) {
           );
         })}
       </Svg>
-      <View style={styles.donutCenter}>
+      <View style={[StyleSheet.absoluteFill, styles.donutCenter]}>
         <Text
           style={[styles.donutTotal, { color: colors.textPrimary }]}
           numberOfLines={1}
@@ -262,7 +262,6 @@ const createStyles = (colors) =>
       height: DONUT_SIZE,
     },
     donutCenter: {
-      ...StyleSheet.absoluteFillObject,
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: DONUT_STROKE + 8,

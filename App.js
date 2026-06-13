@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Alert,
+  Animated,
   AppState,
+  Easing,
   Keyboard,
   Platform,
   StyleSheet,
@@ -53,6 +55,8 @@ import { dateKey, dayLabel, monthKeyLabel } from './src/format';
 import { ThemeProvider, getTheme } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 
+const TAB_INDEX = { dashboard: 0, list: 1, categories: 2, account: 3 };
+
 export default function App() {
   // Caladea is the open, metric-compatible stand-in for Cambria (the requested
   // font is commercial and can't be bundled). Block first paint until loaded so
@@ -84,6 +88,9 @@ function ExpenseTracker() {
   const [session, setSession] = useState(null);
   const [sessionLoaded, setSessionLoaded] = useState(!isSupabaseConfigured);
   const [tab, setTab] = useState('dashboard'); // 'dashboard' | 'list' | 'categories' | 'account'
+  const [prevTab, setPrevTab] = useState('dashboard');
+  const flipAnim = useRef(new Animated.Value(1)).current;
+  const flipDirRef = useRef(1);
   // The budget editor sheet sits over whichever tab is active.
   const [overlay, setOverlay] = useState(null); // null | 'budget'
   // The add-expense popup sits over whichever tab is active.
@@ -254,6 +261,53 @@ function ExpenseTracker() {
     [settings, userId]
   );
 
+  const changeTab = useCallback(
+    (next) => {
+      if (next === tab) return;
+      Keyboard.dismiss();
+      flipAnim.stopAnimation();
+      flipDirRef.current = TAB_INDEX[next] > TAB_INDEX[tab] ? 1 : -1;
+      setPrevTab(tab);
+      setTab(next);
+      flipAnim.setValue(0);
+      Animated.timing(flipAnim, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    },
+    [tab, flipAnim]
+  );
+
+  const screenStyle = (screenTab) => {
+    if (prevTab === tab) {
+      return screenTab === tab ? { opacity: 1 } : { opacity: 0 };
+    }
+    const dir = flipDirRef.current;
+    if (screenTab === tab) {
+      return {
+        zIndex: 2,
+        opacity: flipAnim.interpolate({ inputRange: [0, 0.49, 0.51, 1], outputRange: [0, 0, 1, 1] }),
+        transform: [
+          { perspective: 800 },
+          { rotateY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [`${-dir * 90}deg`, `${-dir * 90}deg`, '0deg'] }) },
+        ],
+      };
+    }
+    if (screenTab === prevTab) {
+      return {
+        zIndex: 1,
+        opacity: flipAnim.interpolate({ inputRange: [0, 0.49, 0.51, 1], outputRange: [1, 1, 0, 0] }),
+        transform: [
+          { perspective: 800 },
+          { rotateY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['0deg', `${dir * 90}deg`, `${dir * 90}deg`] }) },
+        ],
+      };
+    }
+    return { opacity: 0 };
+  };
+
   const signOut = useCallback(async () => {
     // Alert with buttons is a no-op on web; window.confirm is the fallback.
     const title = translate(language, 'acct.signOut');
@@ -322,9 +376,7 @@ function ExpenseTracker() {
           <StatusBar style={theme.statusBarStyle} />
 
           <View style={styles.content}>
-            {/* All four tab screens stay mounted so scroll position survives
-                switching tabs; the inactive ones are display:none. */}
-            <View style={[styles.screen, tab !== 'dashboard' && styles.screenHidden]}>
+            <Animated.View style={[styles.screen, screenStyle('dashboard')]} pointerEvents={tab === 'dashboard' ? 'auto' : 'none'}>
               <DashboardScreen
                 loaded={loaded}
                 hasExpenses={hasExpenses}
@@ -339,8 +391,8 @@ function ExpenseTracker() {
                 onEditBudgets={() => setOverlay('budget')}
                 onLoadDemo={loadDemo}
               />
-            </View>
-            <View style={[styles.screen, tab !== 'list' && styles.screenHidden]}>
+            </Animated.View>
+            <Animated.View style={[styles.screen, screenStyle('list')]} pointerEvents={tab === 'list' ? 'auto' : 'none'}>
               <ExpenseListScreen
                 sections={sections}
                 loaded={loaded}
@@ -349,8 +401,8 @@ function ExpenseTracker() {
                 onDelete={deleteExpense}
                 onLoadDemo={loadDemo}
               />
-            </View>
-            <View style={[styles.screen, tab !== 'categories' && styles.screenHidden]}>
+            </Animated.View>
+            <Animated.View style={[styles.screen, screenStyle('categories')]} pointerEvents={tab === 'categories' ? 'auto' : 'none'}>
               <CategoriesScreen
                 months={months}
                 currentMonthKey={currentMonthKey}
@@ -359,26 +411,21 @@ function ExpenseTracker() {
                 displayCurrency={displayCurrency}
                 onLoadDemo={loadDemo}
               />
-            </View>
-            <View style={[styles.screen, tab !== 'account' && styles.screenHidden]}>
+            </Animated.View>
+            <Animated.View style={[styles.screen, screenStyle('account')]} pointerEvents={tab === 'account' ? 'auto' : 'none'}>
               <AccountScreen
                 settings={settings}
                 onUpdateSettings={updateSettings}
                 accountEmail={session?.user?.email}
                 onSignOut={signOut}
               />
-            </View>
+            </Animated.View>
           </View>
 
-          {/* Hidden tabs keep mounted TextInputs focused — drop the keyboard so
-              it can't linger over the next screen. */}
           <TabBar
             tab={tab}
             addActive={addOpen}
-            onChange={(next) => {
-              Keyboard.dismiss();
-              setTab(next);
-            }}
+            onChange={changeTab}
             onAddPress={() => setAddOpen(true)}
           />
 
@@ -479,9 +526,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   screen: {
-    flex: 1,
-  },
-  screenHidden: {
-    display: 'none',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });
