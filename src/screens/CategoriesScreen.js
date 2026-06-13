@@ -1,14 +1,19 @@
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
-import { useT, useLanguage, getDateNames } from '../i18n';
-import { formatMoney, monthKeyLabelShort } from '../format';
+import { useT } from '../i18n';
+import { formatMoney } from '../format';
 import { CATEGORIES } from '../categories';
 import { getCurrency } from '../currency';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 
-// Height of the mini chart's bar track; bars scale within it per card.
-const CHART_HEIGHT = 56;
+const DONUT_SIZE = 130;
+const DONUT_STROKE = 12;
+const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2;
+const DONUT_CX = DONUT_SIZE / 2;
+const DONUT_CY = DONUT_SIZE / 2;
+const DONUT_CIRC = 2 * Math.PI * DONUT_R;
 
 export default function CategoriesScreen({
   months,
@@ -20,44 +25,34 @@ export default function CategoriesScreen({
 }) {
   const { colors } = useTheme();
   const t = useT();
-  const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const monthsShort = getDateNames(language).monthsShort;
 
-  // The last 6 calendar months ending at the current one, oldest first. Months
-  // with no expenses are absent from `months` (possibly including the current
-  // month), so each slot is looked up and missing data becomes zero. Keys are
-  // computed with date math — Date normalizes month overflow across year ends.
-  const windowMonths = useMemo(() => {
+  const { thisMonth, lastMonth } = useMemo(() => {
     const [year, month] = currentMonthKey.split('-').map(Number);
     const byKey = new Map(months.map((m) => [m.key, m]));
-    const slots = [];
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(year, month - 1 - i, 1);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const data = byKey.get(key);
-      slots.push({
-        key,
-        monthIndex: date.getMonth(),
-        total: data?.total ?? 0,
-        byCategory: data?.byCategory ?? {},
-      });
-    }
-    return slots;
+
+    const prevDate = new Date(year, month - 2, 1);
+    const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+    return {
+      thisMonth: byKey.get(currentMonthKey) ?? { key: currentMonthKey, total: 0, byCategory: {} },
+      lastMonth: byKey.get(prevKey) ?? { key: prevKey, total: 0, byCategory: {} },
+    };
   }, [months, currentMonthKey]);
 
-  // One row per category with spending anywhere in the window; values align
-  // with the window slots (oldest first, current month last).
   const categoryRows = useMemo(
     () =>
       CATEGORIES.map((category) => ({
         category,
-        values: windowMonths.map((slot) => slot.byCategory[category.id] ?? 0),
+        thisVal: thisMonth.byCategory[category.id] ?? 0,
+        lastVal: lastMonth.byCategory[category.id] ?? 0,
       }))
-        .filter((row) => row.values.some((value) => value > 0))
-        .sort((a, b) => b.values[5] - a.values[5] || b.values[4] - a.values[4]),
-    [windowMonths]
+        .filter((row) => row.thisVal > 0 || row.lastVal > 0)
+        .sort((a, b) => b.thisVal - a.thisVal || b.lastVal - a.lastVal),
+    [thisMonth, lastMonth]
   );
+
+  const eps = 0.5 / 10 ** getCurrency(displayCurrency).decimals;
 
   if (!loaded) {
     return <View style={styles.container} />;
@@ -80,14 +75,6 @@ export default function CategoriesScreen({
     );
   }
 
-  const allValues = windowMonths.map((slot) => slot.total);
-  // Delta compares the current month against the immediately previous calendar
-  // month; both come from the window so absent months read as zero.
-  const prevLabel = monthKeyLabelShort(windowMonths[4].key, language);
-  // "Same" is judged at display precision: totals are unrounded float sums, and
-  // a sub-unit residue must not render as a colored up/down line.
-  const eps = 0.5 / 10 ** getCurrency(displayCurrency).decimals;
-
   return (
     <ScrollView
       style={styles.container}
@@ -96,30 +83,30 @@ export default function CategoriesScreen({
     >
       <Text style={styles.title}>{t('cats.title')}</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.allLabel}>{t('cats.allSpending')}</Text>
-        <Text style={styles.allTotal} numberOfLines={1} adjustsFontSizeToFit>
-          {formatMoney(allValues[5], displayCurrency)}
-        </Text>
-        <DeltaLine
-          curr={allValues[5]}
-          prev={allValues[4]}
-          prevLabel={prevLabel}
-          eps={eps}
-          colors={colors}
-          styles={styles}
-          t={t}
-        />
-        <MiniChart
-          values={allValues}
-          windowMonths={windowMonths}
-          color={colors.accent}
-          monthsShort={monthsShort}
-          styles={styles}
-        />
+      <View style={styles.donutRow}>
+        <View style={styles.donutCard}>
+          <Text style={styles.donutLabel}>{t('cats.thisMonth')}</Text>
+          <CategoryDonut
+            byCategory={thisMonth.byCategory}
+            total={thisMonth.total}
+            displayCurrency={displayCurrency}
+            colors={colors}
+            styles={styles}
+          />
+        </View>
+        <View style={styles.donutCard}>
+          <Text style={styles.donutLabel}>{t('cats.lastMonth')}</Text>
+          <CategoryDonut
+            byCategory={lastMonth.byCategory}
+            total={lastMonth.total}
+            displayCurrency={displayCurrency}
+            colors={colors}
+            styles={styles}
+          />
+        </View>
       </View>
 
-      {categoryRows.map(({ category, values }) => (
+      {categoryRows.map(({ category, thisVal, lastVal }) => (
         <View key={category.id} style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={[styles.emojiCircle, { backgroundColor: `${category.color}26` }]}>
@@ -128,25 +115,28 @@ export default function CategoriesScreen({
             <Text style={styles.categoryName} numberOfLines={1}>
               {t(`cat.${category.id}`)}
             </Text>
-            <Text style={styles.categoryAmount} numberOfLines={1}>
-              {formatMoney(values[5], displayCurrency)}
-            </Text>
+          </View>
+          <View style={styles.compareRow}>
+            <View style={styles.compareCol}>
+              <Text style={styles.compareLabel}>{t('cats.thisMonth')}</Text>
+              <Text style={styles.compareValue}>
+                {formatMoney(thisVal, displayCurrency)}
+              </Text>
+            </View>
+            <View style={styles.compareCol}>
+              <Text style={styles.compareLabel}>{t('cats.lastMonth')}</Text>
+              <Text style={[styles.compareValue, styles.compareValueMuted]}>
+                {formatMoney(lastVal, displayCurrency)}
+              </Text>
+            </View>
           </View>
           <DeltaLine
-            curr={values[5]}
-            prev={values[4]}
-            prevLabel={prevLabel}
+            curr={thisVal}
+            prev={lastVal}
             eps={eps}
             colors={colors}
             styles={styles}
             t={t}
-          />
-          <MiniChart
-            values={values}
-            windowMonths={windowMonths}
-            color={category.color}
-            monthsShort={monthsShort}
-            styles={styles}
           />
         </View>
       ))}
@@ -154,14 +144,64 @@ export default function CategoriesScreen({
   );
 }
 
-function DeltaLine({ curr, prev, prevLabel, eps, colors, styles, t }) {
+function CategoryDonut({ byCategory, total, displayCurrency, colors, styles }) {
+  const segments = useMemo(() => {
+    if (total <= 0) return [];
+    return CATEGORIES
+      .map((cat) => ({ color: cat.color, value: byCategory[cat.id] ?? 0 }))
+      .filter((s) => s.value > 0);
+  }, [byCategory, total]);
+
+  return (
+    <View style={styles.donut}>
+      <Svg width="100%" height="100%" viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}>
+        <Circle
+          cx={DONUT_CX}
+          cy={DONUT_CY}
+          r={DONUT_R}
+          stroke={colors.cardPressed}
+          strokeWidth={DONUT_STROKE}
+          fill="none"
+        />
+        {segments.map((seg, i) => {
+          const len = (seg.value / total) * DONUT_CIRC;
+          const offset =
+            DONUT_CIRC * 0.25 -
+            segments.slice(0, i).reduce((s, p) => s + (p.value / total) * DONUT_CIRC, 0);
+          return (
+            <Circle
+              key={i}
+              cx={DONUT_CX}
+              cy={DONUT_CY}
+              r={DONUT_R}
+              stroke={seg.color}
+              strokeWidth={DONUT_STROKE}
+              fill="none"
+              strokeDasharray={`${len} ${DONUT_CIRC - len}`}
+              strokeDashoffset={offset}
+            />
+          );
+        })}
+      </Svg>
+      <View style={styles.donutCenter}>
+        <Text
+          style={[styles.donutTotal, { color: colors.textPrimary }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {formatMoney(total, displayCurrency)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function DeltaLine({ curr, prev, eps, colors, styles, t }) {
   if (prev <= 0) {
-    // Nothing last month: a fresh amount is noted neutrally, two zero months
-    // need no line at all.
     if (curr <= 0) return null;
     return (
       <Text style={[styles.delta, { color: colors.textMuted }]}>
-        {t('cats.new', { month: prevLabel })}
+        {t('cats.new', { month: t('cats.lastMonth') })}
       </Text>
     );
   }
@@ -170,52 +210,15 @@ function DeltaLine({ curr, prev, prevLabel, eps, colors, styles, t }) {
   if (pct === 0) {
     return (
       <Text style={[styles.delta, { color: colors.textMuted }]}>
-        {t('cats.same', { month: prevLabel })}
+        {t('cats.same', { month: t('cats.lastMonth') })}
       </Text>
     );
   }
   const up = curr > prev;
-  // Spending more reads as bad (danger), less as good (success).
   return (
     <Text style={[styles.delta, { color: up ? colors.danger : colors.success }]}>
-      {t(up ? 'cats.up' : 'cats.down', { pct, month: prevLabel })}
+      {t(up ? 'cats.up' : 'cats.down', { pct, month: t('cats.lastMonth') })}
     </Text>
-  );
-}
-
-function MiniChart({ values, windowMonths, color, monthsShort, styles }) {
-  // Bars scale against this chart's own window max so every card uses its
-  // full height; the min height keeps tiny non-zero months visible.
-  const max = Math.max(...values);
-  return (
-    <View style={styles.chart}>
-      {values.map((value, i) => {
-        const isCurrent = i === values.length - 1;
-        return (
-          <View key={windowMonths[i].key} style={styles.chartCol}>
-            <View style={styles.chartTrack}>
-              {value > 0 ? (
-                <View
-                  style={[
-                    styles.chartBar,
-                    {
-                      height: Math.max(3, (value / max) * CHART_HEIGHT),
-                      // Earlier months at 45% alpha so the current bar leads.
-                      backgroundColor: isCurrent ? color : `${color}73`,
-                    },
-                  ]}
-                />
-              ) : (
-                <View style={styles.chartStub} />
-              )}
-            </View>
-            <Text style={styles.chartMonth} numberOfLines={1}>
-              {monthsShort[windowMonths[i].monthIndex]}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
   );
 }
 
@@ -235,24 +238,44 @@ const createStyles = (colors) =>
       fontSize: 28,
       paddingTop: spacing.md,
     },
+    donutRow: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    donutCard: {
+      flex: 1,
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      alignItems: 'center',
+    },
+    donutLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: spacing.sm,
+    },
+    donut: {
+      width: DONUT_SIZE,
+      height: DONUT_SIZE,
+    },
+    donutCenter: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: DONUT_STROKE + 8,
+    },
+    donutTotal: {
+      fontFamily: fonts.bold,
+      fontSize: 16,
+      fontVariant: ['tabular-nums'],
+    },
     card: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       padding: spacing.md,
-    },
-    allLabel: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 1,
-    },
-    allTotal: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 34,
-      fontVariant: ['tabular-nums'],
-      marginTop: spacing.xs,
     },
     cardHeader: {
       flexDirection: 'row',
@@ -276,52 +299,35 @@ const createStyles = (colors) =>
       fontSize: 16,
       marginRight: spacing.sm,
     },
-    categoryAmount: {
+    compareRow: {
+      flexDirection: 'row',
+      marginTop: spacing.sm + 2,
+      gap: spacing.md,
+    },
+    compareCol: {
+      flex: 1,
+    },
+    compareLabel: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      marginBottom: 2,
+    },
+    compareValue: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 16,
+      fontSize: 18,
       fontVariant: ['tabular-nums'],
-      textAlign: 'right',
+    },
+    compareValueMuted: {
+      color: colors.textSecondary,
+      fontSize: 16,
     },
     delta: {
       fontFamily: fonts.regular,
       fontSize: 13,
       fontVariant: ['tabular-nums'],
       marginTop: spacing.xs + 2,
-    },
-    chart: {
-      flexDirection: 'row',
-      gap: spacing.sm - 2,
-      marginTop: spacing.sm + 4,
-    },
-    chartCol: {
-      flex: 1,
-      alignItems: 'center',
-    },
-    chartTrack: {
-      height: CHART_HEIGHT,
-      width: '100%',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-    },
-    chartBar: {
-      width: '58%',
-      maxWidth: 26,
-      borderTopLeftRadius: 3,
-      borderTopRightRadius: 3,
-    },
-    chartStub: {
-      width: '58%',
-      maxWidth: 26,
-      height: 2,
-      borderRadius: 1,
-      backgroundColor: colors.cardPressed,
-    },
-    chartMonth: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 10,
-      marginTop: spacing.xs,
     },
     emptyState: {
       alignItems: 'center',

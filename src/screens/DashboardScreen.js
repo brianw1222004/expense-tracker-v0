@@ -6,7 +6,7 @@ import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { formatMoneyShort } from '../format';
 import { getCurrency } from '../currency';
-import { CATEGORIES } from '../categories';
+import { REGULAR_CATEGORIES, EXTERNAL_CATEGORIES } from '../categories';
 
 export default function DashboardScreen({
   loaded,
@@ -26,21 +26,30 @@ export default function DashboardScreen({
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const budgetedCategories = CATEGORIES.filter(
+  const budgetedCategories = REGULAR_CATEGORIES.filter(
+    (category) => (categoryBudgets?.[category.id] ?? 0) > 0
+  );
+  const budgetedExternal = EXTERNAL_CATEGORIES.filter(
     (category) => (categoryBudgets?.[category.id] ?? 0) > 0
   );
   const hasBudgets = monthlyBudget > 0 || budgetedCategories.length > 0;
 
-  // With no overall budget, the gauge compares the sum of the category budgets
-  // against spending in ONLY the budgeted categories, so both sides of the
-  // dial measure the same money.
+  const regularSpent = REGULAR_CATEGORIES.reduce(
+    (sum, category) => sum + (totalsByCategory[category.id] ?? 0),
+    0
+  );
+  const externalSpent = EXTERNAL_CATEGORIES.reduce(
+    (sum, category) => sum + (totalsByCategory[category.id] ?? 0),
+    0
+  );
+
   const gaugeBudget =
     monthlyBudget > 0
       ? monthlyBudget
       : budgetedCategories.reduce((sum, category) => sum + categoryBudgets[category.id], 0);
   const gaugeSpent =
     monthlyBudget > 0
-      ? monthTotal
+      ? regularSpent
       : budgetedCategories.reduce(
           (sum, category) => sum + (totalsByCategory[category.id] ?? 0),
           0
@@ -64,42 +73,25 @@ export default function DashboardScreen({
         displayCurrency={displayCurrency}
       />
 
-      {/* Budget area stays hidden until storage has loaded (hasExpenses is
-          false while loading) so an empty first frame can't flash a zeroed
-          gauge before stored expenses arrive. */}
-      {hasExpenses && !hasBudgets && (
+      {hasExpenses && (
         <Pressable
           onPress={onEditBudgets}
           accessibilityRole="button"
-          accessibilityLabel={t('budget.setTitle')}
-          style={({ pressed }) => [styles.setCard, pressed && styles.cardPressed]}
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
         >
-          <Text style={styles.setEmoji}>{'\u{1F3AF}'}</Text>
-          <View style={styles.setTextArea}>
-            <Text style={styles.setTitle}>{t('budget.setTitle')}</Text>
-            <Text style={styles.setHint}>{t('budget.setHint')}</Text>
-          </View>
-          <Text style={styles.chevron}>{'›'}</Text>
-        </Pressable>
-      )}
-
-      {hasExpenses && hasBudgets && (
-        <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>{t('budget.title')}</Text>
-            <Pressable
-              onPress={onEditBudgets}
-              hitSlop={8}
-              accessibilityRole="button"
-              style={({ pressed }) => pressed && styles.editPressed}
-            >
-              <Text style={styles.editLabel}>{t('budget.edit')}</Text>
-            </Pressable>
+            <Text style={styles.editLabel}>{t('budget.edit')}</Text>
           </View>
 
-          <BudgetGauge spent={gaugeSpent} budget={gaugeBudget} displayCurrency={displayCurrency} />
+          <BudgetGauge
+            spent={gaugeSpent}
+            budget={gaugeBudget}
+            displayCurrency={displayCurrency}
+            empty={!hasBudgets}
+          />
 
-          {budgetedCategories.length > 0 && (
+          {hasBudgets && budgetedCategories.length > 0 && (
             <>
               <View style={styles.divider} />
               <Text style={styles.cardTitle}>{t('budget.categoryTitle')}</Text>
@@ -138,7 +130,52 @@ export default function DashboardScreen({
               })}
             </>
           )}
-        </View>
+
+          {externalSpent > 0 && (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.externalRow}>
+                <Text style={styles.externalLabel}>{t('budget.externalTotal')}</Text>
+                <Text style={styles.externalAmount}>
+                  {formatMoneyShort(externalSpent, displayCurrency)}
+                </Text>
+              </View>
+              {budgetedExternal.map((category) => {
+                const budget = categoryBudgets[category.id];
+                const spent =
+                  Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor;
+                const over = spent > budget;
+                return (
+                  <View key={category.id} style={styles.categoryRow}>
+                    <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                    <View style={styles.categoryBarArea}>
+                      <View style={styles.categoryLabels}>
+                        <Text style={styles.categoryName}>{t('cat.' + category.id)}</Text>
+                        <Text style={styles.categoryAmount}>
+                          {t('budget.spentOf', {
+                            spent: formatMoneyShort(spent, displayCurrency),
+                            budget: formatMoneyShort(budget, displayCurrency),
+                          })}
+                        </Text>
+                      </View>
+                      <View style={styles.categoryTrack}>
+                        <View
+                          style={[
+                            styles.categoryFill,
+                            {
+                              width: `${Math.min(100, (spent / budget) * 100)}%`,
+                              backgroundColor: over ? colors.danger : category.color,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </>
+          )}
+        </Pressable>
       )}
 
       {loaded && !hasExpenses && (
@@ -201,39 +238,6 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 14,
     },
-    setCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      padding: spacing.md,
-      marginHorizontal: spacing.md,
-      marginBottom: spacing.lg,
-    },
-    setEmoji: {
-      fontSize: 22,
-      width: 34,
-    },
-    setTextArea: {
-      flex: 1,
-    },
-    setTitle: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 16,
-    },
-    setHint: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      marginTop: 2,
-    },
-    chevron: {
-      color: colors.textMuted,
-      fontFamily: fonts.bold,
-      fontSize: 22,
-      marginLeft: spacing.sm,
-    },
     divider: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: colors.border,
@@ -279,6 +283,25 @@ const createStyles = (colors) =>
     categoryFill: {
       height: '100%',
       borderRadius: 4,
+    },
+    externalRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.xs,
+    },
+    externalLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 13,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    externalAmount: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+      fontVariant: ['tabular-nums'],
     },
     emptyState: {
       flex: 1,

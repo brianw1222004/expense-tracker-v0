@@ -12,8 +12,8 @@ const STROKE_WIDTH = 5;
 const CHECK_D = 'M26 46 L39 59 L62 32';
 // Geometric length of CHECK_D; dashoffset animates from this down to 0 to "draw" it.
 const CHECK_LENGTH = 54;
-const SHOW_MS = 1050; // when the fade-out starts
-const FADE_MS = 210;
+const SHOW_MS = 735;
+const FADE_MS = 147;
 
 // The sole confirmation for adding an expense: a full-screen light-green
 // backdrop fades in with a gradient check popping in at screen center, then

@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { CURRENCIES, getCurrency } from '../currency';
-import { CATEGORIES } from '../categories';
+import { REGULAR_CATEGORIES, EXTERNAL_CATEGORIES } from '../categories';
 
 // Strict shape check before parseFloat (same approach as the amount field):
 // bare parseFloat accepts '1.2.3' as 1.2 and would silently save a different
@@ -164,7 +164,7 @@ export default function BudgetScreen({ visible, settings, onUpdateSettings, onCl
 
             <Text style={styles.sectionHeader}>{t('budget.categorySection')}</Text>
             <View style={styles.card}>
-              {CATEGORIES.map((category, index) => (
+              {REGULAR_CATEGORIES.map((category, index) => (
                 <View
                   key={category.id}
                   style={[styles.categoryRow, index > 0 && styles.rowDivider]}
@@ -186,6 +186,31 @@ export default function BudgetScreen({ visible, settings, onUpdateSettings, onCl
               ))}
             </View>
             <Text style={styles.sectionNote}>{t('budget.categoryNote')}</Text>
+
+            <Text style={styles.sectionHeader}>{t('budget.externalSection')}</Text>
+            <View style={styles.card}>
+              {EXTERNAL_CATEGORIES.map((category, index) => (
+                <View
+                  key={category.id}
+                  style={[styles.categoryRow, index > 0 && styles.rowDivider]}
+                >
+                  <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                  <Text style={styles.categoryLabel} numberOfLines={1}>
+                    {t('cat.' + category.id)}
+                  </Text>
+                  <Text style={styles.categorySymbol}>{currency.symbol}</Text>
+                  <AmountField
+                    key={category.id}
+                    value={categoryBudgets[category.id] ?? 0}
+                    decimals={currency.decimals}
+                    onCommit={(committed) => commitCategory(category.id, committed)}
+                    style={styles.categoryInput}
+                    accessibilityLabel={t('cat.' + category.id)}
+                  />
+                </View>
+              ))}
+            </View>
+            <Text style={styles.sectionNote}>{t('budget.externalNote')}</Text>
           </ScrollView>
         </View>
       </KeyboardAvoidingView>

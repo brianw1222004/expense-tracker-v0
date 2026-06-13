@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, SectionList, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, SectionList, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { CATEGORIES, getCategory } from '../categories';
@@ -18,10 +18,9 @@ export default function ExpenseListScreen({
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [filter, setFilter] = useState('all'); // 'all' | category id
+  const [filter, setFilter] = useState('all');
+  const [pendingDelete, setPendingDelete] = useState(null);
 
-  // Categories that actually appear in the data, in CATEGORIES order. Stale
-  // stored ids are normalized through getCategory so they group under "Other".
   const presentCategories = useMemo(() => {
     const present = new Set();
     for (const section of sections) {
@@ -30,9 +29,6 @@ export default function ExpenseListScreen({
     return CATEGORIES.filter((category) => present.has(category.id));
   }, [sections]);
 
-  // The selected category can vanish (its last entry deleted) — fall back to
-  // All for the same frame, and actually clear the stale state so the old
-  // selection can't spring back to life if the category reappears later.
   const activeFilter =
     filter !== 'all' && !presentCategories.some((c) => c.id === filter) ? 'all' : filter;
   useEffect(() => {
@@ -55,6 +51,12 @@ export default function ExpenseListScreen({
       .filter((section) => section.data.length > 0);
   }, [sections, activeFilter]);
 
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    onDelete(pendingDelete.id);
+    setPendingDelete(null);
+  };
+
   if (!loaded) {
     return <View style={styles.container} />;
   }
@@ -75,6 +77,8 @@ export default function ExpenseListScreen({
       </View>
     );
   }
+
+  const deleteCategory = pendingDelete ? getCategory(pendingDelete.category) : null;
 
   return (
     <View style={styles.container}>
@@ -115,7 +119,11 @@ export default function ExpenseListScreen({
           sections={filteredSections}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <ExpenseRow expense={item} displayCurrency={displayCurrency} onDelete={onDelete} />
+            <ExpenseRow
+              expense={item}
+              displayCurrency={displayCurrency}
+              onRequestDelete={setPendingDelete}
+            />
           )}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
@@ -129,6 +137,57 @@ export default function ExpenseListScreen({
           contentContainerStyle={styles.listContent}
         />
       )}
+
+      <Modal
+        visible={pendingDelete != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPendingDelete(null)}
+      >
+        <Pressable
+          style={[StyleSheet.absoluteFill, styles.backdrop]}
+          onPress={() => setPendingDelete(null)}
+        />
+        <View style={styles.modalCenter}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('list.deleteTitle')}</Text>
+
+            {pendingDelete && (
+              <View style={styles.modalExpense}>
+                <View style={[styles.modalIcon, { backgroundColor: `${deleteCategory.color}26` }]}>
+                  <Text style={styles.modalEmoji}>{deleteCategory.emoji}</Text>
+                </View>
+                <View style={styles.modalInfo}>
+                  <Text style={styles.modalNote} numberOfLines={1}>
+                    {pendingDelete.note || t('cat.' + deleteCategory.id)}
+                  </Text>
+                  <Text style={styles.modalCategory}>{t('cat.' + deleteCategory.id)}</Text>
+                </View>
+                <Text style={styles.modalAmount}>
+                  {formatMoney(pendingDelete.displayAmount, displayCurrency)}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                onPress={() => setPendingDelete(null)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.modalBtn, styles.modalBtnCancel, pressed && styles.modalBtnPressed]}
+              >
+                <Text style={styles.modalBtnCancelText}>{t('common.cancel')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={confirmDelete}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.modalBtn, styles.modalBtnDelete, pressed && styles.modalBtnDeletePressed]}
+              >
+                <Text style={styles.modalBtnDeleteText}>{t('common.delete')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -199,8 +258,6 @@ const createStyles = (colors) =>
       color: colors.textPrimary,
     },
     listContent: {
-      // The tab bar sits in-flow below the screen, so only the floating + button's
-      // ~24px overhang needs clearing — not the bar height itself.
       paddingBottom: spacing.xl,
     },
     sectionHeader: {
@@ -235,6 +292,99 @@ const createStyles = (colors) =>
       fontSize: 15,
       fontFamily: fonts.regular,
       textAlign: 'center',
+    },
+    backdrop: {
+      backgroundColor: colors.backdrop,
+    },
+    modalCenter: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: spacing.lg,
+    },
+    modalCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      width: '100%',
+      maxWidth: 340,
+    },
+    modalTitle: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 18,
+      marginBottom: spacing.md,
+    },
+    modalExpense: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+      borderRadius: radius.md,
+      padding: spacing.sm + 4,
+      marginBottom: spacing.lg,
+    },
+    modalIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modalEmoji: {
+      fontSize: 18,
+    },
+    modalInfo: {
+      flex: 1,
+      marginHorizontal: spacing.sm + 2,
+    },
+    modalNote: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 15,
+    },
+    modalCategory: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      marginTop: 1,
+    },
+    modalAmount: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 15,
+      fontVariant: ['tabular-nums'],
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    modalBtn: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: spacing.sm + 4,
+      borderRadius: radius.sm,
+    },
+    modalBtnCancel: {
+      backgroundColor: colors.background,
+    },
+    modalBtnPressed: {
+      opacity: 0.7,
+    },
+    modalBtnCancelText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 15,
+    },
+    modalBtnDelete: {
+      backgroundColor: colors.danger,
+    },
+    modalBtnDeletePressed: {
+      opacity: 0.8,
+    },
+    modalBtnDeleteText: {
+      color: '#fff',
+      fontFamily: fonts.bold,
+      fontSize: 15,
     },
     emptyState: {
       alignItems: 'center',

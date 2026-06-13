@@ -1,37 +1,21 @@
 import { useMemo } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { getCategory } from '../categories';
 import { formatMoney } from '../format';
 
-export default function ExpenseRow({ expense, displayCurrency, onDelete }) {
+export default function ExpenseRow({ expense, displayCurrency, onRequestDelete }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const category = getCategory(expense.category);
   const converted = expense.currency !== displayCurrency;
 
-  const confirmDelete = () => {
-    const summary = `${expense.note || t('cat.' + category.id)} — ${formatMoney(
-      expense.displayAmount,
-      displayCurrency
-    )}`;
-    // Alert.alert with buttons is a no-op on react-native-web.
-    if (Platform.OS === 'web') {
-      if (window.confirm(t('list.deleteTitle') + '\n' + summary)) onDelete(expense.id);
-      return;
-    }
-    Alert.alert(t('list.deleteTitle'), summary, [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('common.delete'), style: 'destructive', onPress: () => onDelete(expense.id) },
-    ]);
-  };
-
   return (
     <Pressable
-      onPress={confirmDelete}
-      onLongPress={confirmDelete}
+      onPress={() => onRequestDelete(expense)}
+      onLongPress={() => onRequestDelete(expense)}
       delayLongPress={350}
       accessibilityRole="button"
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
