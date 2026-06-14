@@ -8,6 +8,7 @@ import {
   Keyboard,
   Platform,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -16,7 +17,6 @@ import * as Haptics from 'expo-haptics';
 import {
   useFonts,
   Caladea_400Regular,
-  Caladea_400Regular_Italic,
   Caladea_700Bold,
 } from '@expo-google-fonts/caladea';
 
@@ -27,6 +27,7 @@ import CategoriesScreen from './src/screens/CategoriesScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import BudgetScreen from './src/screens/BudgetScreen';
 import AuthScreen from './src/screens/AuthScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 import TabBar from './src/components/TabBar';
 import AddExpenseModal from './src/components/AddExpenseModal';
 import RewardCheck from './src/components/RewardCheck';
@@ -64,7 +65,6 @@ export default function App() {
   // anyway rather than hanging on a blank screen.
   const [fontsLoaded, fontsError] = useFonts({
     Caladea_400Regular,
-    Caladea_400Regular_Italic,
     Caladea_700Bold,
   });
   if (!fontsLoaded && !fontsError) return null;
@@ -89,8 +89,8 @@ function ExpenseTracker() {
   const [sessionLoaded, setSessionLoaded] = useState(!isSupabaseConfigured);
   const [tab, setTab] = useState('dashboard'); // 'dashboard' | 'list' | 'categories' | 'account'
   const [prevTab, setPrevTab] = useState('dashboard');
-  const flipAnim = useRef(new Animated.Value(1)).current;
-  const flipDirRef = useRef(1);
+  const slideAnim = useRef(new Animated.Value(1)).current;
+  const slideDirRef = useRef(1);
   // The budget editor sheet sits over whichever tab is active.
   const [overlay, setOverlay] = useState(null); // null | 'budget'
   // The add-expense popup sits over whichever tab is active.
@@ -99,6 +99,8 @@ function ExpenseTracker() {
   const [rewardNonce, setRewardNonce] = useState(0);
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
   const [dayStamp, setDayStamp] = useState(() => dateKey(Date.now()));
+  const settingsVersionRef = useRef(0);
+  const { width: screenWidth } = useWindowDimensions();
 
   const userId = isSupabaseConfigured ? session?.user?.id ?? null : LOCAL_USER;
   const language = settings.language;
@@ -152,10 +154,13 @@ function ExpenseTracker() {
       setSettings(cachedSettings);
       setDataUser(userId);
 
+      const versionBeforeSync = settingsVersionRef.current;
       const result = await syncWithServer(userId);
       if (!active || !result) return;
       setExpenses(applyPendingOps(userId, result.expenses));
-      if (result.settings) setSettings((prev) => ({ ...prev, ...result.settings }));
+      if (result.settings && settingsVersionRef.current === versionBeforeSync) {
+        setSettings((prev) => ({ ...prev, ...result.settings }));
+      }
     })();
     return () => {
       active = false;
@@ -169,10 +174,13 @@ function ExpenseTracker() {
     let active = true;
     const subscription = AppState.addEventListener('change', async (state) => {
       if (state !== 'active') return;
+      const versionBeforeSync = settingsVersionRef.current;
       const result = await syncWithServer(userId);
       if (!active || !result) return;
       setExpenses(applyPendingOps(userId, result.expenses));
-      if (result.settings) setSettings((prev) => ({ ...prev, ...result.settings }));
+      if (result.settings && settingsVersionRef.current === versionBeforeSync) {
+        setSettings((prev) => ({ ...prev, ...result.settings }));
+      }
     });
     return () => {
       active = false;
@@ -229,79 +237,87 @@ function ExpenseTracker() {
 
   const updateSettings = useCallback(
     (patch) => {
-      const next = { ...settings, ...patch };
-      // Re-denominate stored budgets when the display currency changes so "≈
-      // the same money" is preserved instead of the raw numbers silently
-      // meaning less. Applies to the overall budget and every category budget.
-      if (patch.displayCurrency && patch.displayCurrency !== settings.displayCurrency) {
-        const decimals = getCurrency(patch.displayCurrency).decimals;
-        const redenominate = (value) =>
-          Number(convert(value, settings.displayCurrency, patch.displayCurrency).toFixed(decimals));
-        if (settings.monthlyBudget > 0 && patch.monthlyBudget === undefined) {
-          next.monthlyBudget = redenominate(settings.monthlyBudget);
-        }
-        if (patch.categoryBudgets === undefined) {
-          const converted = {};
-          for (const [id, value] of Object.entries(settings.categoryBudgets ?? {})) {
-            if (value > 0) converted[id] = redenominate(value);
+      settingsVersionRef.current += 1;
+      let pushNext = null;
+      setSettings((prev) => {
+        const next = { ...prev, ...patch };
+        if (patch.displayCurrency && patch.displayCurrency !== prev.displayCurrency) {
+          const decimals = getCurrency(patch.displayCurrency).decimals;
+          const redenominate = (value) =>
+            Number(convert(value, prev.displayCurrency, patch.displayCurrency).toFixed(decimals));
+          if (prev.monthlyBudget > 0 && patch.monthlyBudget === undefined) {
+            next.monthlyBudget = redenominate(prev.monthlyBudget);
           }
-          next.categoryBudgets = converted;
+          if (patch.categoryBudgets === undefined) {
+            const converted = {};
+            for (const [id, value] of Object.entries(prev.categoryBudgets ?? {})) {
+              if (value > 0) converted[id] = redenominate(value);
+            }
+            next.categoryBudgets = converted;
+          }
         }
-      }
-      setSettings(next);
-      // Only currency and the overall budget exist as server columns; pushing
-      // theme/language/categoryBudgets changes would be a no-op write, so skip.
-      if (
-        next.displayCurrency !== settings.displayCurrency ||
-        next.monthlyBudget !== settings.monthlyBudget
-      ) {
-        enqueueSettingsPush(userId, next);
-      }
+        if (
+          next.displayCurrency !== prev.displayCurrency ||
+          next.monthlyBudget !== prev.monthlyBudget
+        ) {
+          pushNext = { displayCurrency: next.displayCurrency, monthlyBudget: next.monthlyBudget };
+        }
+        return next;
+      });
+      if (pushNext) enqueueSettingsPush(userId, pushNext);
     },
-    [settings, userId]
+    [userId]
   );
 
   const changeTab = useCallback(
     (next) => {
       if (next === tab) return;
       Keyboard.dismiss();
-      flipAnim.stopAnimation();
-      flipDirRef.current = TAB_INDEX[next] > TAB_INDEX[tab] ? 1 : -1;
+      slideAnim.stopAnimation();
+      slideDirRef.current = TAB_INDEX[next] > TAB_INDEX[tab] ? 1 : -1;
       setPrevTab(tab);
       setTab(next);
-      flipAnim.setValue(0);
-      Animated.timing(flipAnim, {
+      slideAnim.setValue(0);
+      Animated.timing(slideAnim, {
         toValue: 1,
-        duration: 500,
-        easing: Easing.inOut(Easing.ease),
+        duration: 250,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start();
     },
-    [tab, flipAnim]
+    [tab, slideAnim]
   );
 
   const screenStyle = (screenTab) => {
     if (prevTab === tab) {
       return screenTab === tab ? { opacity: 1 } : { opacity: 0 };
     }
-    const dir = flipDirRef.current;
+    const dir = slideDirRef.current;
     if (screenTab === tab) {
       return {
         zIndex: 2,
-        opacity: flipAnim.interpolate({ inputRange: [0, 0.49, 0.51, 1], outputRange: [0, 0, 1, 1] }),
+        opacity: 1,
         transform: [
-          { perspective: 800 },
-          { rotateY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [`${-dir * 90}deg`, `${-dir * 90}deg`, '0deg'] }) },
+          {
+            translateX: slideAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [dir * screenWidth, 0],
+            }),
+          },
         ],
       };
     }
     if (screenTab === prevTab) {
       return {
         zIndex: 1,
-        opacity: flipAnim.interpolate({ inputRange: [0, 0.49, 0.51, 1], outputRange: [1, 1, 0, 0] }),
+        opacity: 1,
         transform: [
-          { perspective: 800 },
-          { rotateY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['0deg', `${dir * 90}deg`, `${dir * 90}deg`] }) },
+          {
+            translateX: slideAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, -dir * screenWidth],
+            }),
+          },
         ],
       };
     }
@@ -339,7 +355,7 @@ function ExpenseTracker() {
 
   const displayCurrency = settings.displayCurrency;
 
-  const { sections, months, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount } =
+  const { sections, months, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount, dailyTotals } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language),
       [expenses, displayCurrency, language, dayStamp]
@@ -366,6 +382,40 @@ function ExpenseTracker() {
     );
   }
 
+  if (isSupabaseConfigured && session && !loaded) {
+    return (
+      <ThemeProvider themeName={settings.theme}>
+        <I18nProvider language={language}>
+          <SafeAreaView
+            style={[styles.safeArea, { backgroundColor: theme.background }]}
+            edges={['top', 'left', 'right']}
+          >
+            <StatusBar style={theme.statusBarStyle} />
+          </SafeAreaView>
+        </I18nProvider>
+      </ThemeProvider>
+    );
+  }
+
+  if (isSupabaseConfigured && loaded && !settings.onboardingDone) {
+    return (
+      <ThemeProvider themeName={settings.theme}>
+        <I18nProvider language={language}>
+          <SafeAreaView
+            style={[styles.safeArea, { backgroundColor: theme.background }]}
+            edges={['top', 'left', 'right']}
+          >
+            <StatusBar style={theme.statusBarStyle} />
+            <OnboardingScreen
+              settings={settings}
+              onUpdateSettings={updateSettings}
+            />
+          </SafeAreaView>
+        </I18nProvider>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider themeName={settings.theme}>
       <I18nProvider language={language}>
@@ -384,11 +434,13 @@ function ExpenseTracker() {
                 todayTotal={todayTotal}
                 monthCount={monthCount}
                 avgPerDay={avgPerDay}
+                dailyTotals={dailyTotals}
                 totalsByCategory={totalsByCategory}
                 displayCurrency={displayCurrency}
                 monthlyBudget={settings.monthlyBudget}
                 categoryBudgets={settings.categoryBudgets}
                 onEditBudgets={() => setOverlay('budget')}
+                onAddPress={() => setAddOpen(true)}
                 onLoadDemo={loadDemo}
               />
             </Animated.View>
@@ -399,6 +451,7 @@ function ExpenseTracker() {
                 hasExpenses={hasExpenses}
                 displayCurrency={displayCurrency}
                 onDelete={deleteExpense}
+                onAddPress={() => setAddOpen(true)}
                 onLoadDemo={loadDemo}
               />
             </Animated.View>
@@ -409,6 +462,7 @@ function ExpenseTracker() {
                 loaded={loaded}
                 hasExpenses={hasExpenses}
                 displayCurrency={displayCurrency}
+                onAddPress={() => setAddOpen(true)}
                 onLoadDemo={loadDemo}
               />
             </Animated.View>
@@ -507,6 +561,13 @@ function deriveViewData(expenses, displayCurrency, language) {
     month.byCategory[catId] = (month.byCategory[catId] ?? 0) + displayAmount;
   }
 
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const dailyTotals = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dk = `${monthPrefix}-${String(d).padStart(2, '0')}`;
+    dailyTotals.push(byDay.has(dk) ? byDay.get(dk).total : 0);
+  }
+
   return {
     sections: [...byDay.values()],
     months: [...byMonth.values()].sort((a, b) => (a.key < b.key ? 1 : -1)),
@@ -515,6 +576,7 @@ function deriveViewData(expenses, displayCurrency, language) {
     avgPerDay: monthTotal / now.getDate(),
     totalsByCategory,
     monthCount,
+    dailyTotals,
   };
 }
 
@@ -524,6 +586,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    overflow: 'hidden',
   },
   screen: {
     position: 'absolute',

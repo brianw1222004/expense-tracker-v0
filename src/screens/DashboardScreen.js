@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import SummaryHeader from '../components/SummaryHeader';
+import { LinearGradient } from 'expo-linear-gradient';
 import BudgetGauge from '../components/BudgetGauge';
+import SpendingChart from '../components/SpendingChart';
 import { fonts, spacing, radius, useTheme } from '../theme';
-import { useT } from '../i18n';
-import { formatMoneyShort } from '../format';
+import { useT, useLanguage } from '../i18n';
+import { formatMoney, formatMoneyShort, monthLabel } from '../format';
 import { getCurrency } from '../currency';
 import { REGULAR_CATEGORIES, EXTERNAL_CATEGORIES } from '../categories';
 
@@ -15,15 +16,18 @@ export default function DashboardScreen({
   todayTotal,
   monthCount,
   avgPerDay,
+  dailyTotals,
   totalsByCategory,
   displayCurrency,
   monthlyBudget,
   categoryBudgets,
   onEditBudgets,
+  onAddPress,
   onLoadDemo,
 }) {
   const { colors } = useTheme();
   const t = useT();
+  const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const budgetedCategories = REGULAR_CATEGORIES.filter(
@@ -55,8 +59,6 @@ export default function DashboardScreen({
           0
         );
 
-  // Compare at display precision so a sub-cent float residue can't flip a row
-  // red while both rendered numbers look identical (same rule as BudgetGauge).
   const factor = 10 ** getCurrency(displayCurrency).decimals;
 
   return (
@@ -65,22 +67,36 @@ export default function DashboardScreen({
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <SummaryHeader
-        monthTotal={monthTotal}
-        todayTotal={todayTotal}
-        count={monthCount}
-        avgPerDay={avgPerDay}
-        displayCurrency={displayCurrency}
-      />
+      <LinearGradient
+        colors={[colors.gradientStart, colors.gradientEnd]}
+        style={styles.gradient}
+      >
+        <Text style={styles.monthLabel}>
+          {monthLabel(new Date(), language)}
+        </Text>
+        <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
+          {formatMoney(monthTotal, displayCurrency)}
+        </Text>
+      </LinearGradient>
+
+      {hasExpenses && dailyTotals && (
+        <SpendingChart
+          dailyTotals={dailyTotals}
+          displayCurrency={displayCurrency}
+          title={t('dash.trend')}
+        />
+      )}
+
+      {!hasExpenses && <View style={styles.chartPlaceholder} />}
 
       {hasExpenses && (
         <Pressable
           onPress={onEditBudgets}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+          style={({ pressed }) => [styles.section, pressed && styles.sectionPressed]}
         >
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>{t('budget.title')}</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t('budget.title')}</Text>
             <Text style={styles.editLabel}>{t('budget.edit')}</Text>
           </View>
 
@@ -94,40 +110,19 @@ export default function DashboardScreen({
           {hasBudgets && budgetedCategories.length > 0 && (
             <>
               <View style={styles.divider} />
-              <Text style={styles.cardTitle}>{t('budget.categoryTitle')}</Text>
-              {budgetedCategories.map((category) => {
-                const budget = categoryBudgets[category.id];
-                const spent =
-                  Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor;
-                const over = spent > budget;
-                return (
-                  <View key={category.id} style={styles.categoryRow}>
-                    <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                    <View style={styles.categoryBarArea}>
-                      <View style={styles.categoryLabels}>
-                        <Text style={styles.categoryName}>{t('cat.' + category.id)}</Text>
-                        <Text style={styles.categoryAmount}>
-                          {t('budget.spentOf', {
-                            spent: formatMoneyShort(spent, displayCurrency),
-                            budget: formatMoneyShort(budget, displayCurrency),
-                          })}
-                        </Text>
-                      </View>
-                      <View style={styles.categoryTrack}>
-                        <View
-                          style={[
-                            styles.categoryFill,
-                            {
-                              width: `${Math.min(100, (spent / budget) * 100)}%`,
-                              backgroundColor: over ? colors.danger : category.color,
-                            },
-                          ]}
-                        />
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
+              <Text style={styles.sectionTitle}>{t('budget.categoryTitle')}</Text>
+              {budgetedCategories.map((category) => (
+                <CategoryBar
+                  key={category.id}
+                  category={category}
+                  budget={categoryBudgets[category.id]}
+                  spent={Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor}
+                  displayCurrency={displayCurrency}
+                  styles={styles}
+                  colors={colors}
+                  t={t}
+                />
+              ))}
             </>
           )}
 
@@ -140,55 +135,59 @@ export default function DashboardScreen({
                   {formatMoneyShort(externalSpent, displayCurrency)}
                 </Text>
               </View>
-              {budgetedExternal.map((category) => {
-                const budget = categoryBudgets[category.id];
-                const spent =
-                  Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor;
-                const over = spent > budget;
-                return (
-                  <View key={category.id} style={styles.categoryRow}>
-                    <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                    <View style={styles.categoryBarArea}>
-                      <View style={styles.categoryLabels}>
-                        <Text style={styles.categoryName}>{t('cat.' + category.id)}</Text>
-                        <Text style={styles.categoryAmount}>
-                          {t('budget.spentOf', {
-                            spent: formatMoneyShort(spent, displayCurrency),
-                            budget: formatMoneyShort(budget, displayCurrency),
-                          })}
-                        </Text>
-                      </View>
-                      <View style={styles.categoryTrack}>
-                        <View
-                          style={[
-                            styles.categoryFill,
-                            {
-                              width: `${Math.min(100, (spent / budget) * 100)}%`,
-                              backgroundColor: over ? colors.danger : category.color,
-                            },
-                          ]}
-                        />
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
+              {budgetedExternal.map((category) => (
+                <CategoryBar
+                  key={category.id}
+                  category={category}
+                  budget={categoryBudgets[category.id]}
+                  spent={Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor}
+                  displayCurrency={displayCurrency}
+                  styles={styles}
+                  colors={colors}
+                  t={t}
+                />
+              ))}
             </>
           )}
         </Pressable>
       )}
 
+      {hasExpenses && (
+        <View style={styles.statsRow}>
+          <StatCell
+            label={t('dash.today')}
+            value={formatMoneyShort(todayTotal, displayCurrency)}
+            styles={styles}
+          />
+          <View style={styles.statDivider} />
+          <StatCell
+            label={t('dash.expenses')}
+            value={String(monthCount)}
+            styles={styles}
+          />
+          <View style={styles.statDivider} />
+          <StatCell
+            label={t('dash.avgPerDay')}
+            value={formatMoneyShort(avgPerDay, displayCurrency)}
+            styles={styles}
+          />
+        </View>
+      )}
+
       {loaded && !hasExpenses && (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyEmoji}>{'\u{1F4B8}'}</Text>
+          <Text style={[styles.emptyEmoji, { color: colors.icon }]}>{'○'}</Text>
           <Text style={styles.emptyTitle}>{t('empty.title')}</Text>
           <Text style={styles.emptyHint}>{t('empty.hint')}</Text>
           <Pressable
-            onPress={onLoadDemo}
+            onPress={onAddPress}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.demoButton, pressed && styles.demoButtonPressed]}
+            style={({ pressed }) => [styles.addFirstButton, pressed && styles.addFirstButtonPressed]}
           >
-            <Text style={styles.demoButtonText}>{t('empty.loadDemo')}</Text>
+            <Text style={styles.addFirstButtonText}>{t('empty.addFirst')}</Text>
+          </Pressable>
+          <Pressable onPress={onLoadDemo} accessibilityRole="button" hitSlop={8}>
+            <Text style={styles.demoLink}>{t('empty.loadDemo')}</Text>
           </Pressable>
         </View>
       )}
@@ -196,42 +195,135 @@ export default function DashboardScreen({
   );
 }
 
+function CategoryBar({ category, budget, spent, displayCurrency, styles, colors, t }) {
+  const over = spent > budget;
+  return (
+    <View style={styles.categoryRow}>
+      <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+      <View style={styles.categoryBarArea}>
+        <View style={styles.categoryLabels}>
+          <Text style={styles.categoryName}>{t('cat.' + category.id)}</Text>
+          <Text style={styles.categoryAmount}>
+            {t('budget.spentOf', {
+              spent: formatMoneyShort(spent, displayCurrency),
+              budget: formatMoneyShort(budget, displayCurrency),
+            })}
+          </Text>
+        </View>
+        <View style={styles.categoryTrack}>
+          <View
+            style={[
+              styles.categoryFill,
+              {
+                width: `${Math.min(100, (spent / budget) * 100)}%`,
+                backgroundColor: over ? colors.danger : category.color,
+              },
+            ]}
+          />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function StatCell({ label, value, styles }) {
+  return (
+    <View style={styles.statCell}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+}
+
 const createStyles = (colors) =>
   StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: colors.background,
     },
     content: {
       flexGrow: 1,
-      // The tab bar is in-flow below the screen; this only clears the floating
-      // + button's overhang above the bar.
       paddingBottom: spacing.xl,
     },
-    card: {
+
+    gradient: {
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.xl + spacing.lg,
+      alignItems: 'center',
+      borderBottomLeftRadius: radius.lg,
+      borderBottomRightRadius: radius.lg,
+    },
+    monthLabel: {
+      color: colors.headerTextSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+      textTransform: 'uppercase',
+      letterSpacing: 1.2,
+    },
+    heroTotal: {
+      color: colors.headerText,
+      fontFamily: fonts.bold,
+      fontSize: 44,
+      marginTop: spacing.xs,
+      fontVariant: ['tabular-nums'],
+    },
+
+    statsRow: {
+      flexDirection: 'row',
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
+      paddingVertical: spacing.md,
+      overflow: 'hidden',
+    },
+    statCell: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    statLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      marginBottom: 4,
+    },
+    statValue: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 16,
+      fontVariant: ['tabular-nums'],
+    },
+    statDivider: {
+      width: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      alignSelf: 'stretch',
+    },
+    chartPlaceholder: {
+      marginTop: -(spacing.xl),
+    },
+
+    section: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       padding: spacing.md,
       marginHorizontal: spacing.md,
-      marginBottom: spacing.lg,
+      marginTop: spacing.md,
     },
-    cardPressed: {
+    sectionPressed: {
       backgroundColor: colors.cardPressed,
     },
-    cardHeader: {
+    sectionHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: spacing.sm + 4,
     },
-    cardTitle: {
+    sectionTitle: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 13,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
-    },
-    editPressed: {
-      opacity: 0.6,
     },
     editLabel: {
       color: colors.accent,
@@ -303,6 +395,7 @@ const createStyles = (colors) =>
       fontSize: 14,
       fontVariant: ['tabular-nums'],
     },
+
     emptyState: {
       flex: 1,
       alignItems: 'center',
@@ -327,19 +420,28 @@ const createStyles = (colors) =>
       textAlign: 'center',
       marginTop: spacing.sm,
     },
-    demoButton: {
-      backgroundColor: colors.card,
+    addFirstButton: {
+      backgroundColor: colors.accent,
       borderRadius: radius.md,
       paddingVertical: spacing.sm + 4,
       paddingHorizontal: spacing.lg,
       marginTop: spacing.lg,
+      minHeight: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    demoButtonPressed: {
-      backgroundColor: colors.cardPressed,
+    addFirstButtonPressed: {
+      backgroundColor: colors.accentDark,
     },
-    demoButtonText: {
-      color: colors.accent,
+    addFirstButtonText: {
+      color: colors.onAccent,
       fontFamily: fonts.bold,
       fontSize: 16,
+    },
+    demoLink: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      marginTop: spacing.md,
     },
   });

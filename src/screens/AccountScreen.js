@@ -21,7 +21,7 @@ export default function AccountScreen({ settings, onUpdateSettings, accountEmail
         <>
           <View style={styles.card}>
             <View style={styles.row}>
-              <Text style={styles.rowEmoji}>{'\u{1F464}'}</Text>
+              <Text style={[styles.rowEmoji, { color: colors.icon }]}>{'●'}</Text>
               <Text style={styles.rowLabel} numberOfLines={1}>
                 {accountEmail}
               </Text>
@@ -41,43 +41,13 @@ export default function AccountScreen({ settings, onUpdateSettings, accountEmail
         <>
           <View style={styles.card}>
             <View style={styles.row}>
-              <Text style={styles.rowEmoji}>{'\u{1F4F1}'}</Text>
+              <Text style={[styles.rowEmoji, { color: colors.icon }]}>{'●'}</Text>
               <Text style={styles.rowLabel}>{t('acct.localTitle')}</Text>
             </View>
           </View>
           <Text style={styles.sectionNote}>{t('acct.localNote')}</Text>
         </>
       )}
-
-      <Text style={styles.sectionHeader}>{t('acct.appearance')}</Text>
-      <View style={styles.card}>
-        {[
-          { name: 'cookie', emoji: '\u{1F36A}', label: 'acct.themeCookie', hint: 'acct.themeCookieHint' },
-          { name: 'midnight', emoji: '\u{1F319}', label: 'acct.themeMidnight', hint: 'acct.themeMidnightHint' },
-        ].map((theme, index) => {
-          const selected = settings.theme === theme.name;
-          return (
-            <Pressable
-              key={theme.name}
-              onPress={() => onUpdateSettings({ theme: theme.name })}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-              style={({ pressed }) => [
-                styles.row,
-                index > 0 && styles.rowDivider,
-                pressed && styles.rowPressed,
-              ]}
-            >
-              <Text style={styles.rowEmoji}>{theme.emoji}</Text>
-              <View style={styles.themeText}>
-                <Text style={styles.themeLabel}>{t(theme.label)}</Text>
-                <Text style={styles.themeHint}>{t(theme.hint)}</Text>
-              </View>
-              {selected && <Text style={styles.checkmark}>{'✓'}</Text>}
-            </Pressable>
-          );
-        })}
-      </View>
 
       <Text style={styles.sectionHeader}>{t('acct.language')}</Text>
       <View style={styles.card}>
@@ -108,7 +78,7 @@ export default function AccountScreen({ settings, onUpdateSettings, accountEmail
       <Text style={styles.sectionHeader}>{t('acct.comingSoon')}</Text>
       <View style={styles.card}>
         <View style={styles.row}>
-          <Text style={styles.comingSoonEmoji}>{'\u{1F4C4}'}</Text>
+          <Text style={[styles.comingSoonEmoji, { color: colors.icon }]}>{'●'}</Text>
           <Text style={styles.comingSoonLabel}>{t('acct.exportCsv')}</Text>
           <Text style={styles.comingSoonTag}>{t('acct.soon')}</Text>
         </View>
@@ -180,20 +150,6 @@ const createStyles = (colors) =>
       color: colors.danger,
       fontSize: 16,
       fontFamily: fonts.bold,
-    },
-    themeText: {
-      flex: 1,
-    },
-    themeLabel: {
-      color: colors.textPrimary,
-      fontSize: 16,
-      fontFamily: fonts.regular,
-    },
-    themeHint: {
-      color: colors.textMuted,
-      fontSize: 13,
-      fontFamily: fonts.regular,
-      marginTop: 1,
     },
     checkmark: {
       color: colors.accent,

@@ -23,8 +23,9 @@ export const DEFAULT_SETTINGS = {
   displayCurrency: DEFAULT_CURRENCY,
   monthlyBudget: 0,
   categoryBudgets: {},
-  theme: 'cookie',
+  theme: 'slate',
   language: 'en',
+  onboardingDone: false,
 };
 
 export async function loadExpenses(userId) {
@@ -59,6 +60,9 @@ function withDefaults(parsed) {
   };
   if (!merged.categoryBudgets || typeof merged.categoryBudgets !== 'object') {
     merged.categoryBudgets = {};
+  }
+  if (parsed && typeof parsed === 'object' && parsed.onboardingDone === undefined) {
+    merged.onboardingDone = true;
   }
   return merged;
 }

@@ -21,6 +21,7 @@ export default function CategoriesScreen({
   loaded,
   hasExpenses,
   displayCurrency,
+  onAddPress,
   onLoadDemo,
 }) {
   const { colors } = useTheme();
@@ -61,15 +62,18 @@ export default function CategoriesScreen({
   if (!hasExpenses) {
     return (
       <View style={[styles.container, styles.emptyState]}>
-        <Text style={styles.emptyEmoji}>{'\u{1F5C2}\u{FE0F}'}</Text>
+        <Text style={[styles.emptyEmoji, { color: colors.icon }]}>{'○'}</Text>
         <Text style={styles.emptyTitle}>{t('empty.title')}</Text>
         <Text style={styles.emptyHint}>{t('cats.emptyHint')}</Text>
         <Pressable
-          onPress={onLoadDemo}
+          onPress={onAddPress}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.demoButton, pressed && styles.demoButtonPressed]}
+          style={({ pressed }) => [styles.addFirstButton, pressed && styles.addFirstButtonPressed]}
         >
-          <Text style={styles.demoButtonText}>{t('empty.loadDemo')}</Text>
+          <Text style={styles.addFirstButtonText}>{t('empty.addFirst')}</Text>
+        </Pressable>
+        <Pressable onPress={onLoadDemo} accessibilityRole="button" hitSlop={8}>
+          <Text style={styles.demoLink}>{t('empty.loadDemo')}</Text>
         </Pressable>
       </View>
     );
@@ -351,21 +355,28 @@ const createStyles = (colors) =>
       marginTop: spacing.sm,
       lineHeight: 21,
     },
-    demoButton: {
-      marginTop: spacing.lg,
-      backgroundColor: colors.card,
+    addFirstButton: {
+      backgroundColor: colors.accent,
       borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.border,
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm + 4,
+      marginTop: spacing.lg,
+      minHeight: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    demoButtonPressed: {
-      backgroundColor: colors.cardPressed,
+    addFirstButtonPressed: {
+      backgroundColor: colors.accentDark,
     },
-    demoButtonText: {
-      color: colors.accent,
+    addFirstButtonText: {
+      color: colors.onAccent,
       fontFamily: fonts.bold,
       fontSize: 16,
+    },
+    demoLink: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      marginTop: spacing.md,
     },
   });

@@ -35,7 +35,7 @@ export default function BudgetGauge({ spent, budget, displayCurrency, empty }) {
             />
           </Svg>
           <View style={[StyleSheet.absoluteFill, styles.center]}>
-            <Text style={styles.emptyIcon}>{'\u{1F3AF}'}</Text>
+            <Text style={[styles.emptyIcon, { color: colors.icon }]}>{'○'}</Text>
             <Text style={[styles.emptyLabel, { color: colors.textMuted }]}>
               {t('budget.noBudget')}
             </Text>

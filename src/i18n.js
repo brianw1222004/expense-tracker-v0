@@ -27,16 +27,16 @@ const STRINGS = {
     'common.delete': 'Delete',
 
     'empty.title': 'No expenses yet',
-    'empty.hint': 'Tap the + button below to add your first expense, or start with some sample data.',
-    'empty.loadDemo': 'Load demo data',
+    'empty.hint': 'Start tracking your spending by recording your first expense.',
+    'empty.addFirst': 'Add your first expense',
+    'empty.loadDemo': 'or try with sample data',
 
     'dash.today': 'Today',
     'dash.expenses': 'Expenses',
     'dash.avgPerDay': 'Avg / day',
+    'dash.trend': 'This Month',
 
     'budget.title': 'Budget',
-    'budget.left': '{amount} left',
-    'budget.over': '{amount} over',
     'budget.spentOf': '{spent} of {budget}',
     'budget.remaining': 'Remaining',
     'budget.overBy': 'Over budget',
@@ -57,12 +57,12 @@ const STRINGS = {
     'list.title': 'Expenses',
     'list.all': 'All',
     'list.noMatch': 'No {category} expenses yet.',
+    'list.noneOnDay': 'No expenses on this day.',
     'list.deleteTitle': 'Delete expense?',
 
     'add.title': 'Add expense',
     'add.notePlaceholder': 'What was it for?',
     'add.save': 'Add expense',
-    'add.currency': 'Currency: {code}',
     'add.chooseDate': 'Choose date',
     'add.prevDay': 'Previous day',
     'add.nextDay': 'Next day',
@@ -71,7 +71,6 @@ const STRINGS = {
     'add.added': 'Expense added',
 
     'cats.title': 'Categories',
-    'cats.allSpending': 'All spending',
     'cats.up': 'Up {pct}% vs {month}',
     'cats.down': 'Down {pct}% vs {month}',
     'cats.same': 'Same as {month}',
@@ -87,11 +86,6 @@ const STRINGS = {
     'acct.syncedNote': 'Your expenses are synced to this account and available on any device.',
     'acct.signOut': 'Sign out',
     'acct.signOutBody': 'Your expenses stay synced to your account.',
-    'acct.appearance': 'Appearance',
-    'acct.themeCookie': 'Cookie',
-    'acct.themeCookieHint': 'Warm and light',
-    'acct.themeMidnight': 'Midnight',
-    'acct.themeMidnightHint': 'Cool and dark',
     'acct.language': 'Language',
     'acct.comingSoon': 'Coming soon',
     'acct.exportCsv': 'Export CSV',
@@ -110,7 +104,9 @@ const STRINGS = {
     'auth.switchToSignInPrefix': 'Already have an account? ',
     'auth.switchToSignInAction': 'Sign in',
     'auth.missingFields': 'Enter your email and a password.',
-    'auth.confirmEmail': 'Almost there — confirm the link we emailed you, then sign in.',
+    'auth.confirmTitle': 'Check your email',
+    'auth.confirmBody': 'We sent a confirmation link to {email}. Tap the link to activate your account, then come back to sign in.',
+    'auth.backToSignIn': 'Back to sign in',
     'auth.network': "Couldn't reach the server. Check your connection and try again.",
 
     'cat.food': 'Food',
@@ -121,6 +117,14 @@ const STRINGS = {
     'cat.health': 'Health',
     'cat.bills': 'Bills',
     'cat.other': 'Other',
+
+    'onboard.welcome': 'Welcome!',
+    'onboard.subtitle': "Let's set up your preferences.",
+    'onboard.budget': 'Monthly budget',
+    'onboard.budgetHint': 'A spending limit for the month. You can always change it later.',
+    'onboard.budgetPlaceholder': 'e.g. 1000',
+    'onboard.language': 'Language',
+    'onboard.getStarted': 'Get started',
 
     'date.today': 'Today',
     'date.yesterday': 'Yesterday',
@@ -138,16 +142,16 @@ const STRINGS = {
     'common.delete': '刪除',
 
     'empty.title': '還沒有任何支出',
-    'empty.hint': '點下方的 + 按鈕記下第一筆支出，或先載入範例資料。',
-    'empty.loadDemo': '載入範例資料',
+    'empty.hint': '記下你的第一筆支出，開始追蹤花費。',
+    'empty.addFirst': '新增第一筆支出',
+    'empty.loadDemo': '或使用範例資料體驗',
 
     'dash.today': '今天',
     'dash.expenses': '筆數',
     'dash.avgPerDay': '日均',
+    'dash.trend': '本月趨勢',
 
     'budget.title': '預算',
-    'budget.left': '剩餘 {amount}',
-    'budget.over': '超支 {amount}',
     'budget.spentOf': '已花 {spent}／{budget}',
     'budget.remaining': '剩餘',
     'budget.overBy': '超支',
@@ -168,12 +172,12 @@ const STRINGS = {
     'list.title': '支出',
     'list.all': '全部',
     'list.noMatch': '還沒有「{category}」的支出。',
+    'list.noneOnDay': '這天沒有支出。',
     'list.deleteTitle': '刪除這筆支出？',
 
     'add.title': '新增支出',
     'add.notePlaceholder': '這筆花在哪裡？',
     'add.save': '新增支出',
-    'add.currency': '貨幣：{code}',
     'add.chooseDate': '選擇日期',
     'add.prevDay': '前一天',
     'add.nextDay': '後一天',
@@ -182,7 +186,6 @@ const STRINGS = {
     'add.added': '已新增支出',
 
     'cats.title': '分類',
-    'cats.allSpending': '全部支出',
     'cats.up': '比{month}多 {pct}%',
     'cats.down': '比{month}少 {pct}%',
     'cats.same': '與{month}持平',
@@ -198,11 +201,6 @@ const STRINGS = {
     'acct.syncedNote': '支出已同步至此帳戶，任何裝置都能存取。',
     'acct.signOut': '登出',
     'acct.signOutBody': '你的支出仍會保留在帳戶中。',
-    'acct.appearance': '外觀',
-    'acct.themeCookie': '餅乾',
-    'acct.themeCookieHint': '溫暖明亮',
-    'acct.themeMidnight': '午夜',
-    'acct.themeMidnightHint': '沉穩深色',
     'acct.language': '語言',
     'acct.comingSoon': '即將推出',
     'acct.exportCsv': '匯出 CSV',
@@ -221,7 +219,9 @@ const STRINGS = {
     'auth.switchToSignInPrefix': '已經有帳戶了？',
     'auth.switchToSignInAction': '登入',
     'auth.missingFields': '請輸入電子郵件和密碼。',
-    'auth.confirmEmail': '快完成了——請點擊寄給你的確認連結，然後登入。',
+    'auth.confirmTitle': '請查看你的信箱',
+    'auth.confirmBody': '我們已將確認連結寄到 {email}。點擊連結啟用帳戶，然後回來登入。',
+    'auth.backToSignIn': '返回登入',
     'auth.network': '無法連線到伺服器，請檢查網路後再試一次。',
 
     'cat.food': '餐飲',
@@ -232,6 +232,14 @@ const STRINGS = {
     'cat.health': '健康',
     'cat.bills': '帳單',
     'cat.other': '其他',
+
+    'onboard.welcome': '歡迎！',
+    'onboard.subtitle': '先來設定你的偏好。',
+    'onboard.budget': '每月預算',
+    'onboard.budgetHint': '每月的支出上限，之後隨時可以修改。',
+    'onboard.budgetPlaceholder': '例如 1000',
+    'onboard.language': '語言',
+    'onboard.getStarted': '開始使用',
 
     'date.today': '今天',
     'date.yesterday': '昨天',
@@ -249,16 +257,16 @@ const STRINGS = {
     'common.delete': 'Eliminar',
 
     'empty.title': 'Aún no hay gastos',
-    'empty.hint': 'Toca el botón + para añadir tu primer gasto, o empieza con datos de ejemplo.',
-    'empty.loadDemo': 'Cargar datos de ejemplo',
+    'empty.hint': 'Empieza a controlar tus gastos registrando el primero.',
+    'empty.addFirst': 'Añadir tu primer gasto',
+    'empty.loadDemo': 'o prueba con datos de ejemplo',
 
     'dash.today': 'Hoy',
     'dash.expenses': 'Gastos',
     'dash.avgPerDay': 'Media/día',
+    'dash.trend': 'Este mes',
 
     'budget.title': 'Presupuesto',
-    'budget.left': 'Quedan {amount}',
-    'budget.over': '{amount} de más',
     'budget.spentOf': '{spent} de {budget}',
     'budget.remaining': 'Restante',
     'budget.overBy': 'Sobre presupuesto',
@@ -279,12 +287,12 @@ const STRINGS = {
     'list.title': 'Gastos',
     'list.all': 'Todo',
     'list.noMatch': 'Aún no hay gastos de {category}.',
+    'list.noneOnDay': 'Sin gastos en este día.',
     'list.deleteTitle': '¿Eliminar gasto?',
 
     'add.title': 'Añadir gasto',
     'add.notePlaceholder': '¿En qué fue?',
     'add.save': 'Añadir gasto',
-    'add.currency': 'Moneda: {code}',
     'add.chooseDate': 'Elegir fecha',
     'add.prevDay': 'Día anterior',
     'add.nextDay': 'Día siguiente',
@@ -293,7 +301,6 @@ const STRINGS = {
     'add.added': 'Gasto añadido',
 
     'cats.title': 'Categorías',
-    'cats.allSpending': 'Gasto total',
     'cats.up': '{pct}% más que en {month}',
     'cats.down': '{pct}% menos que en {month}',
     'cats.same': 'Igual que en {month}',
@@ -309,11 +316,6 @@ const STRINGS = {
     'acct.syncedNote': 'Tus gastos se sincronizan con esta cuenta y están disponibles en cualquier dispositivo.',
     'acct.signOut': 'Cerrar sesión',
     'acct.signOutBody': 'Tus gastos seguirán sincronizados con tu cuenta.',
-    'acct.appearance': 'Apariencia',
-    'acct.themeCookie': 'Galleta',
-    'acct.themeCookieHint': 'Cálido y claro',
-    'acct.themeMidnight': 'Medianoche',
-    'acct.themeMidnightHint': 'Frío y oscuro',
     'acct.language': 'Idioma',
     'acct.comingSoon': 'Próximamente',
     'acct.exportCsv': 'Exportar CSV',
@@ -332,7 +334,9 @@ const STRINGS = {
     'auth.switchToSignInPrefix': '¿Ya tienes cuenta? ',
     'auth.switchToSignInAction': 'Inicia sesión',
     'auth.missingFields': 'Introduce tu correo y una contraseña.',
-    'auth.confirmEmail': 'Casi listo: confirma el enlace que te enviamos por correo y luego inicia sesión.',
+    'auth.confirmTitle': 'Revisa tu correo',
+    'auth.confirmBody': 'Enviamos un enlace de confirmación a {email}. Toca el enlace para activar tu cuenta y luego vuelve para iniciar sesión.',
+    'auth.backToSignIn': 'Volver a iniciar sesión',
     'auth.network': 'No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.',
 
     'cat.food': 'Comida',
@@ -343,6 +347,14 @@ const STRINGS = {
     'cat.health': 'Salud',
     'cat.bills': 'Facturas',
     'cat.other': 'Otros',
+
+    'onboard.welcome': '¡Bienvenido!',
+    'onboard.subtitle': 'Configura tus preferencias.',
+    'onboard.budget': 'Presupuesto mensual',
+    'onboard.budgetHint': 'Un límite de gasto mensual. Puedes cambiarlo en cualquier momento.',
+    'onboard.budgetPlaceholder': 'ej. 1000',
+    'onboard.language': 'Idioma',
+    'onboard.getStarted': 'Empezar',
 
     'date.today': 'Hoy',
     'date.yesterday': 'Ayer',
@@ -407,7 +419,7 @@ export function I18nProvider({ language, children }) {
   return <I18nContext.Provider value={language || DEFAULT_LANGUAGE}>{children}</I18nContext.Provider>;
 }
 
-// Components: const t = useT(); t('budget.left', { amount: '$12' })
+// Components: const t = useT(); t('budget.spentOf', { spent: '$12', budget: '$50' })
 export function useT() {
   const language = useContext(I18nContext);
   return useCallback((key, vars) => translate(language, key, vars), [language]);

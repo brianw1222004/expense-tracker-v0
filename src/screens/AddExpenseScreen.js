@@ -13,7 +13,7 @@ import { fonts, spacing, radius, useTheme } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
 import { CATEGORIES, getCategory } from '../categories';
 import { CURRENCIES, getCurrency } from '../currency';
-import { dayLabel, monthLabel } from '../format';
+import { buildCalendarWeeks, dayLabel, monthLabel } from '../format';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const COLOR_MS = 350;
@@ -36,18 +36,6 @@ function offsetForDay(year, month, day) {
   return Math.round((picked - today) / MS_PER_DAY);
 }
 
-// Rows of 7 cells (Sunday-first); null pads days outside the month.
-function buildCalendarWeeks(year, month) {
-  const startWeekday = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = Array(startWeekday).fill(null);
-  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
-  while (cells.length % 7 !== 0) cells.push(null);
-  const weeks = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return weeks;
-}
-
 // Rendered inside AddExpenseModal as the popup card. The card's border and
 // background tint follow the selected category's color (animated).
 export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose }) {
@@ -61,7 +49,6 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
   const [categoryId, setCategoryId] = useState(CATEGORIES[0].id);
   // null = follow displayCurrency; set once the user picks a chip themselves.
   const [manualCurrency, setManualCurrency] = useState(null);
-  const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
   // Days back from today; 0 = today, never positive (no future expenses).
   const [dayOffset, setDayOffset] = useState(0);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -85,7 +72,9 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
   // 0-decimal currencies (JPY, TWD) only accept whole numbers.
   const normalized = amountText.replace(',', '.');
   const amount = parseFloat(normalized);
-  const pattern = currency.decimals === 0 ? /^\d+$/ : /^(\d+(\.\d{0,2})?|\.\d{1,2})$/;
+  const pattern = currency.decimals === 0
+    ? /^\d+$/
+    : new RegExp(`^(\\d+(\\.\\d{0,${currency.decimals}})?|\\.\\d{1,${currency.decimals}})$`);
   const isValid = pattern.test(normalized) && amount > 0;
 
   const reset = () => {
@@ -93,7 +82,6 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
     setNote('');
     setCategoryId(CATEGORIES[0].id);
     setManualCurrency(null);
-    setCurrencyPickerOpen(false);
     setDayOffset(0);
     setDatePickerOpen(false);
     colorFrom.current = CATEGORIES[0].color;
@@ -117,7 +105,10 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
 
   const pickCurrency = (code) => {
     setManualCurrency(code);
-    setCurrencyPickerOpen(false);
+  };
+
+  const handleAmountChange = (text) => {
+    setAmountText(text.replace(/[^0-9.,]/g, ''));
   };
 
   const pickCategory = (id) => {
@@ -189,98 +180,6 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
           </Pressable>
         </View>
 
-        <View style={styles.amountRow}>
-          <Text style={styles.currencySymbol}>{currency.symbol}</Text>
-          <TextInput
-            style={styles.amountInput}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={currency.decimals === 0 ? '0' : '0.00'}
-            placeholderTextColor={colors.textMuted}
-            keyboardType={currency.decimals === 0 ? 'number-pad' : 'decimal-pad'}
-            keyboardAppearance={colors.keyboardAppearance}
-            maxLength={9}
-          />
-          <Pressable
-            onPress={() => setCurrencyPickerOpen((open) => !open)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={t('add.currency', { code: currencyCode })}
-            accessibilityState={{ expanded: currencyPickerOpen }}
-            style={({ pressed }) => [styles.currencyChip, pressed && styles.chipPressed]}
-          >
-            <Text style={styles.currencyChipText}>
-              {currencyCode} {currencyPickerOpen ? '▴' : '▾'}
-            </Text>
-          </Pressable>
-        </View>
-
-        {currencyPickerOpen && (
-          <View style={styles.currencyOptions}>
-            {CURRENCIES.map((option) => {
-              const selected = option.code === currencyCode;
-              return (
-                <Pressable
-                  key={option.code}
-                  onPress={() => pickCurrency(option.code)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  style={({ pressed }) => [
-                    styles.currencyOption,
-                    selected && styles.currencyOptionSelected,
-                    pressed && !selected && styles.chipPressed,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.currencyOptionText,
-                      selected && styles.currencyOptionTextSelected,
-                    ]}
-                  >
-                    {option.code}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-
-        <TextInput
-          style={styles.noteInput}
-          value={note}
-          onChangeText={setNote}
-          placeholder={t('add.notePlaceholder')}
-          placeholderTextColor={colors.textMuted}
-          maxLength={60}
-          keyboardAppearance={colors.keyboardAppearance}
-          returnKeyType="done"
-          onSubmitEditing={handleSubmit}
-        />
-
-        <View style={styles.categoryGrid}>
-          {CATEGORIES.map((category) => {
-            const selected = category.id === categoryId;
-            return (
-              <Pressable
-                key={category.id}
-                onPress={() => pickCategory(category.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                style={({ pressed }) => [
-                  styles.categoryChip,
-                  selected && { backgroundColor: `${category.color}33`, borderColor: category.color },
-                  pressed && !selected && styles.chipPressed,
-                ]}
-              >
-                <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                <Text style={[styles.categoryLabel, selected && { color: colors.textPrimary }]}>
-                  {t('cat.' + category.id)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
         <View style={styles.dateSection}>
           <View style={styles.dateRow}>
             <Pressable
@@ -291,7 +190,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
               accessibilityState={{ expanded: datePickerOpen }}
               style={({ pressed }) => [styles.dateArrow, pressed && styles.chipPressed]}
             >
-              <Text style={styles.calendarIcon}>{'\u{1F4C5}'}</Text>
+              <Text style={[styles.calendarIcon, { color: colors.icon }]}>{'■'}</Text>
             </Pressable>
             <Pressable
               onPress={() => setDayOffset((offset) => offset - 1)}
@@ -360,7 +259,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
                     if (day === null) return <View key={di} style={styles.calendarCell} />;
                     const offset = offsetForDay(calMonth.year, calMonth.month, day);
                     const selected = offset === dayOffset;
-                    const disabled = offset > 0; // no future expenses
+                    const disabled = offset > 0;
                     return (
                       <Pressable
                         key={di}
@@ -390,6 +289,90 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
               ))}
             </View>
           )}
+        </View>
+
+        <View style={styles.amountRow}>
+          <Text style={styles.currencySymbol}>{currency.symbol}</Text>
+          <TextInput
+            style={styles.amountInput}
+            value={amountText}
+            onChangeText={handleAmountChange}
+            placeholder={currency.decimals === 0 ? '0' : '0.00'}
+            placeholderTextColor={colors.textMuted}
+            keyboardType={currency.decimals === 0 ? 'number-pad' : 'decimal-pad'}
+            keyboardAppearance={colors.keyboardAppearance}
+            maxLength={9}
+          />
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.currencyScroll}
+          contentContainerStyle={styles.currencyRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {CURRENCIES.map((option) => {
+            const selected = option.code === currencyCode;
+            return (
+              <Pressable
+                key={option.code}
+                onPress={() => pickCurrency(option.code)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                style={({ pressed }) => [
+                  styles.currencyChipInline,
+                  selected && styles.currencyChipInlineSelected,
+                  pressed && !selected && styles.chipPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.currencyChipInlineText,
+                    selected && styles.currencyChipInlineTextSelected,
+                  ]}
+                >
+                  {option.symbol} {option.code}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <TextInput
+          style={styles.noteInput}
+          value={note}
+          onChangeText={setNote}
+          placeholder={t('add.notePlaceholder')}
+          placeholderTextColor={colors.textMuted}
+          maxLength={60}
+          keyboardAppearance={colors.keyboardAppearance}
+          returnKeyType="done"
+          onSubmitEditing={handleSubmit}
+        />
+
+        <View style={styles.categoryGrid}>
+          {CATEGORIES.map((category) => {
+            const selected = category.id === categoryId;
+            return (
+              <Pressable
+                key={category.id}
+                onPress={() => pickCategory(category.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                style={({ pressed }) => [
+                  styles.categoryChip,
+                  selected && { backgroundColor: `${category.color}33`, borderColor: category.color },
+                  pressed && !selected && styles.chipPressed,
+                ]}
+              >
+                <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                <Text style={[styles.categoryLabel, selected && { color: colors.textPrimary }]}>
+                  {t('cat.' + category.id)}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <Pressable
@@ -455,7 +438,7 @@ const createStyles = (colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: spacing.md,
+      marginBottom: spacing.sm,
     },
     currencySymbol: {
       color: colors.textSecondary,
@@ -471,48 +454,37 @@ const createStyles = (colors) =>
       textAlign: 'center',
       fontVariant: ['tabular-nums'],
     },
-    currencyChip: {
-      backgroundColor: colors.card,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: spacing.sm + 4,
-      paddingVertical: spacing.xs + 2,
-      marginLeft: spacing.sm,
-    },
-    currencyChipText: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 14,
-    },
     chipPressed: {
       backgroundColor: colors.cardPressed,
     },
-    currencyOptions: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      gap: spacing.sm,
+    currencyScroll: {
       marginBottom: spacing.md,
+      flexGrow: 0,
     },
-    currencyOption: {
+    currencyRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      flexGrow: 1,
+    },
+    currencyChipInline: {
       backgroundColor: colors.card,
-      borderRadius: 20,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: 'transparent',
-      paddingHorizontal: spacing.sm + 4,
-      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
     },
-    currencyOptionSelected: {
+    currencyChipInlineSelected: {
       backgroundColor: `${colors.accent}33`,
       borderColor: colors.accent,
     },
-    currencyOptionText: {
+    currencyChipInlineText: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 13,
     },
-    currencyOptionTextSelected: {
+    currencyChipInlineTextSelected: {
       color: colors.textPrimary,
     },
     noteInput: {
@@ -551,7 +523,7 @@ const createStyles = (colors) =>
       fontSize: 14,
     },
     dateSection: {
-      marginBottom: spacing.lg,
+      marginBottom: spacing.md,
     },
     dateRow: {
       flexDirection: 'row',

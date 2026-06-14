@@ -217,7 +217,10 @@ export async function syncWithServer(userId) {
     const queuedSettings = [...queue].reverse().find((op) => op.type === 'settings');
     let settings = null;
     if (queuedSettings) {
-      settings = queuedSettings.settings;
+      settings = {
+        displayCurrency: queuedSettings.settings.displayCurrency,
+        monthlyBudget: queuedSettings.settings.monthlyBudget,
+      };
     } else if (settingsRes.data) {
       settings = {
         displayCurrency: settingsRes.data.display_currency || DEFAULT_SETTINGS.displayCurrency,

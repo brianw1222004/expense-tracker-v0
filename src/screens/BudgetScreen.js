@@ -41,7 +41,7 @@ function AmountField({ value, decimals, onCommit, style, accessibilityLabel }) {
   }, [value, decimals]);
 
   const commit = () => {
-    const normalized = text.trim().replace(',', '.');
+    const normalized = text.trim().replace(/,(\d{3})\b/g, '$1').replace(',', '.');
     const parsed = parseFloat(normalized);
     const isValid = isValidBudgetText(normalized, decimals) && parsed > 0;
     const committed = isValid ? Number(parsed.toFixed(decimals)) : 0;
@@ -345,7 +345,6 @@ const createStyles = (colors) =>
       alignItems: 'center',
       paddingHorizontal: spacing.md,
     },
-    // Emoji-only text: no fontFamily (Caladea has no emoji glyphs).
     categoryEmoji: {
       fontSize: 16,
       width: 34,

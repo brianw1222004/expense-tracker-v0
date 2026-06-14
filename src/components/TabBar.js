@@ -9,12 +9,12 @@ import { useT } from '../i18n';
 export const TAB_BAR_HEIGHT = 64;
 
 const TABS_LEFT = [
-  { id: 'dashboard', emoji: '\u{1F4CA}', labelKey: 'tabs.dashboard' },
-  { id: 'list', emoji: '\u{1F9FE}', labelKey: 'tabs.expenses' },
+  { id: 'dashboard', emoji: '◆', labelKey: 'tabs.dashboard' },
+  { id: 'list', emoji: '■', labelKey: 'tabs.expenses' },
 ];
 const TABS_RIGHT = [
-  { id: 'categories', emoji: '\u{1F5C2}\u{FE0F}', labelKey: 'tabs.categories' },
-  { id: 'account', emoji: '\u{1F464}', labelKey: 'tabs.account' },
+  { id: 'categories', emoji: '◇', labelKey: 'tabs.categories' },
+  { id: 'account', emoji: '●', labelKey: 'tabs.account' },
 ];
 
 export default function TabBar({ tab, onChange, onAddPress, addActive }) {
@@ -106,10 +106,11 @@ const createStyles = (colors) =>
       opacity: 0.7,
     },
     itemEmoji: {
-      fontSize: 22,
+      fontSize: 24,
+      color: colors.accent,
     },
     itemEmojiInactive: {
-      opacity: 0.5,
+      color: colors.textMuted,
     },
     itemLabel: {
       // textSecondary, not textMuted: small nav labels need ≥4.5:1 contrast (AA).

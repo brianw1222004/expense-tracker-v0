@@ -14,19 +14,15 @@ import { supabase } from '../supabase';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT } from '../i18n';
 
-// Email + password only: both work inside Expo Go on phone and web with zero
-// deep-link configuration. Magic links / OAuth need a redirect scheme, so
-// they're a later addition. Errors render inline (Alert is a no-op on web).
 export default function AuthScreen() {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [mode, setMode] = useState('signIn'); // 'signIn' | 'signUp'
+  const [mode, setMode] = useState('signIn'); // 'signIn' | 'signUp' | 'confirm'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
   const passwordRef = useRef(null);
 
   const signIn = mode === 'signIn';
@@ -40,14 +36,12 @@ export default function AuthScreen() {
     }
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       if (signIn) {
         const { error: authError } = await supabase.auth.signInWithPassword({
           email: trimmedEmail,
           password,
         });
-        // On success onAuthStateChange in App.js swaps this screen out.
         if (authError) setError(authError.message);
       } else {
         const { data, error: authError } = await supabase.auth.signUp({
@@ -57,9 +51,7 @@ export default function AuthScreen() {
         if (authError) {
           setError(authError.message);
         } else if (!data.session) {
-          // Email confirmation is on in the Supabase project: no session yet.
-          setNotice(t('auth.confirmEmail'));
-          setMode('signIn');
+          setMode('confirm');
         }
       }
     } catch {
@@ -72,8 +64,39 @@ export default function AuthScreen() {
   const switchMode = () => {
     setMode(signIn ? 'signUp' : 'signIn');
     setError(null);
-    setNotice(null);
   };
+
+  const backToSignIn = () => {
+    setMode('signIn');
+    setPassword('');
+    setError(null);
+  };
+
+  if (mode === 'confirm') {
+    return (
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.logo, { color: colors.icon }]}>{'●'}</Text>
+        <Text style={styles.title}>{t('auth.confirmTitle')}</Text>
+        <Text style={styles.confirmBody}>
+          {t('auth.confirmBody', { email: email.trim() })}
+        </Text>
+
+        <Pressable
+          onPress={backToSignIn}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.submit,
+            pressed && styles.submitPressed,
+          ]}
+        >
+          <Text style={styles.submitText}>{t('auth.backToSignIn')}</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -85,7 +108,7 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.logo}>{'💸'}</Text>
+        <Text style={[styles.logo, { color: colors.icon }]}>{'●'}</Text>
         <Text style={styles.title}>{t('auth.title')}</Text>
         <Text style={styles.subtitle}>
           {signIn ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}
@@ -125,7 +148,6 @@ export default function AuthScreen() {
         </View>
 
         {error && <Text style={styles.error}>{error}</Text>}
-        {notice && <Text style={styles.notice}>{notice}</Text>}
 
         <Pressable
           onPress={submit}
@@ -191,6 +213,15 @@ const createStyles = (colors) =>
       marginTop: spacing.sm,
       marginBottom: spacing.lg,
     },
+    confirmBody: {
+      color: colors.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 16,
+      lineHeight: 24,
+      textAlign: 'center',
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+    },
     card: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
@@ -209,14 +240,6 @@ const createStyles = (colors) =>
     },
     error: {
       color: colors.danger,
-      fontFamily: fonts.regular,
-      fontSize: 14,
-      lineHeight: 19,
-      marginTop: spacing.md,
-      textAlign: 'center',
-    },
-    notice: {
-      color: colors.accent,
       fontFamily: fonts.regular,
       fontSize: 14,
       lineHeight: 19,

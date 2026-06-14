@@ -1,7 +1,3 @@
-// Colors are mid-tone so chips, bars and icon tints read on BOTH themes (the
-// cream 'cookie' background and the navy 'midnight' one) — neither neon-bright
-// nor muddy. Labels here are the English fallback; screens render the
-// translated name via t(`cat.${id}`).
 export const CATEGORIES = [
   { id: 'food', label: 'Food', emoji: '\u{1F354}', color: '#D97706', external: false },
   { id: 'groceries', label: 'Groceries', emoji: '\u{1F6D2}', color: '#34A05F', external: false },

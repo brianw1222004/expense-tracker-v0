@@ -68,19 +68,21 @@ export function monthLabel(date = new Date(), language = DEFAULT_LANGUAGE) {
   });
 }
 
+// Rows of 7 cells (Sunday-first); null pads days outside the month.
+export function buildCalendarWeeks(year, month) {
+  const startWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = Array(startWeekday).fill(null);
+  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+
 // 'June 2026' from a 'YYYY-MM' month key.
 export function monthKeyLabel(key, language = DEFAULT_LANGUAGE) {
   const [year, month] = key.split('-');
   const names = getDateNames(language);
   return fill(names.monthYear, { month: names.months[Number(month) - 1], year });
-}
-
-// Short form for chips / chart axes: 'Jun ’26'
-export function monthKeyLabelShort(key, language = DEFAULT_LANGUAGE) {
-  const [year, month] = key.split('-');
-  const names = getDateNames(language);
-  return fill(names.monthShortYear, {
-    month: names.monthsShort[Number(month) - 1],
-    yy: year.slice(2),
-  });
 }
