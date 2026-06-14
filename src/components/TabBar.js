@@ -3,18 +3,19 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
+import { HIcon } from '../icons';
 
 // Content height of the bar; the rendered bar additionally pads the safe-area
 // bottom inset. Screens use this constant to keep content clear of the bar.
 export const TAB_BAR_HEIGHT = 64;
 
 const TABS_LEFT = [
-  { id: 'dashboard', emoji: '◆', labelKey: 'tabs.dashboard' },
-  { id: 'list', emoji: '■', labelKey: 'tabs.expenses' },
+  { id: 'dashboard', icon: 'home-01', labelKey: 'tabs.dashboard' },
+  { id: 'list', icon: 'receipt-text', labelKey: 'tabs.expenses' },
 ];
 const TABS_RIGHT = [
-  { id: 'categories', emoji: '◇', labelKey: 'tabs.categories' },
-  { id: 'account', emoji: '●', labelKey: 'tabs.account' },
+  { id: 'categories', icon: 'grid-view', labelKey: 'tabs.categories' },
+  { id: 'account', icon: 'user-circle', labelKey: 'tabs.account' },
 ];
 
 export default function TabBar({ tab, onChange, onAddPress, addActive }) {
@@ -35,7 +36,7 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
           key={item.id}
           styles={styles}
           label={t(item.labelKey)}
-          emoji={item.emoji}
+          icon={item.icon}
           selected={tab === item.id}
           onPress={() => onChange(item.id)}
         />
@@ -49,8 +50,6 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
           accessibilityState={{ expanded: addActive }}
           style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
         >
-          {/* Drawn with two bars instead of a '+' glyph: font metrics sat the
-              text off-center; geometry centers exactly on every platform. */}
           <View style={styles.plusIcon}>
             <View style={styles.plusBarH} />
             <View style={styles.plusBarV} />
@@ -63,7 +62,7 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
           key={item.id}
           styles={styles}
           label={t(item.labelKey)}
-          emoji={item.emoji}
+          icon={item.icon}
           selected={tab === item.id}
           onPress={() => onChange(item.id)}
         />
@@ -72,7 +71,8 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
   );
 }
 
-function TabItem({ styles, label, emoji, selected, onPress }) {
+function TabItem({ styles, label, icon, selected, onPress }) {
+  const { colors } = useTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -80,7 +80,12 @@ function TabItem({ styles, label, emoji, selected, onPress }) {
       accessibilityState={{ selected }}
       style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
     >
-      <Text style={[styles.itemEmoji, !selected && styles.itemEmojiInactive]}>{emoji}</Text>
+      <HIcon
+        name={icon}
+        size={24}
+        color={selected ? colors.accent : colors.textMuted}
+        strokeWidth={selected ? 2 : 1.5}
+      />
       <Text style={[styles.itemLabel, selected && styles.itemLabelSelected]} numberOfLines={1}>
         {label}
       </Text>
@@ -104,13 +109,6 @@ const createStyles = (colors) =>
     },
     itemPressed: {
       opacity: 0.7,
-    },
-    itemEmoji: {
-      fontSize: 24,
-      color: colors.accent,
-    },
-    itemEmojiInactive: {
-      color: colors.textMuted,
     },
     itemLabel: {
       // textSecondary, not textMuted: small nav labels need ≥4.5:1 contrast (AA).

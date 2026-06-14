@@ -13,6 +13,7 @@ import {
 import { supabase } from '../supabase';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT } from '../i18n';
+import { HIcon } from '../icons';
 
 export default function AuthScreen() {
   const { colors } = useTheme();
@@ -78,7 +79,7 @@ export default function AuthScreen() {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.logo, { color: colors.icon }]}>{'●'}</Text>
+        <HIcon name="receipt-text" size={40} color={colors.icon} />
         <Text style={styles.title}>{t('auth.confirmTitle')}</Text>
         <Text style={styles.confirmBody}>
           {t('auth.confirmBody', { email: email.trim() })}
@@ -108,7 +109,7 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.logo, { color: colors.icon }]}>{'●'}</Text>
+        <HIcon name="receipt-text" size={40} color={colors.icon} />
         <Text style={styles.title}>{t('auth.title')}</Text>
         <Text style={styles.subtitle}>
           {signIn ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}
@@ -192,11 +193,6 @@ const createStyles = (colors) =>
       maxWidth: 440,
       width: '100%',
       alignSelf: 'center',
-    },
-    logo: {
-      fontSize: 44,
-      textAlign: 'center',
-      marginBottom: spacing.sm,
     },
     title: {
       color: colors.textPrimary,

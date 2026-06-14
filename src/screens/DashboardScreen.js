@@ -7,7 +7,8 @@ import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthLabel } from '../format';
 import { getCurrency } from '../currency';
-import { REGULAR_CATEGORIES, EXTERNAL_CATEGORIES } from '../categories';
+import { getCategoryLabel } from '../categories';
+import { HIcon } from '../icons';
 
 export default function DashboardScreen({
   loaded,
@@ -24,25 +25,27 @@ export default function DashboardScreen({
   onEditBudgets,
   onAddPress,
   onLoadDemo,
+  regularCategories,
+  externalCategories,
 }) {
   const { colors } = useTheme();
   const t = useT();
   const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const budgetedCategories = REGULAR_CATEGORIES.filter(
+  const budgetedCategories = regularCategories.filter(
     (category) => (categoryBudgets?.[category.id] ?? 0) > 0
   );
-  const budgetedExternal = EXTERNAL_CATEGORIES.filter(
+  const budgetedExternal = externalCategories.filter(
     (category) => (categoryBudgets?.[category.id] ?? 0) > 0
   );
   const hasBudgets = monthlyBudget > 0 || budgetedCategories.length > 0;
 
-  const regularSpent = REGULAR_CATEGORIES.reduce(
+  const regularSpent = regularCategories.reduce(
     (sum, category) => sum + (totalsByCategory[category.id] ?? 0),
     0
   );
-  const externalSpent = EXTERNAL_CATEGORIES.reduce(
+  const externalSpent = externalCategories.reduce(
     (sum, category) => sum + (totalsByCategory[category.id] ?? 0),
     0
   );
@@ -176,7 +179,7 @@ export default function DashboardScreen({
 
       {loaded && !hasExpenses && (
         <View style={styles.emptyState}>
-          <Text style={[styles.emptyEmoji, { color: colors.icon }]}>{'○'}</Text>
+          <HIcon name="circle-dashed" size={48} color={colors.icon} />
           <Text style={styles.emptyTitle}>{t('empty.title')}</Text>
           <Text style={styles.emptyHint}>{t('empty.hint')}</Text>
           <Pressable
@@ -199,10 +202,10 @@ function CategoryBar({ category, budget, spent, displayCurrency, styles, colors,
   const over = spent > budget;
   return (
     <View style={styles.categoryRow}>
-      <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+      <HIcon name={category.emoji} size={18} color={category.color} />
       <View style={styles.categoryBarArea}>
         <View style={styles.categoryLabels}>
-          <Text style={styles.categoryName}>{t('cat.' + category.id)}</Text>
+          <Text style={styles.categoryName}>{getCategoryLabel(category, t)}</Text>
           <Text style={styles.categoryAmount}>
             {t('budget.spentOf', {
               spent: formatMoneyShort(spent, displayCurrency),
@@ -340,10 +343,6 @@ const createStyles = (colors) =>
       alignItems: 'center',
       marginTop: spacing.sm + 4,
     },
-    categoryEmoji: {
-      fontSize: 22,
-      width: 34,
-    },
     categoryBarArea: {
       flex: 1,
     },
@@ -402,9 +401,6 @@ const createStyles = (colors) =>
       justifyContent: 'center',
       paddingHorizontal: spacing.xl,
       paddingBottom: spacing.xl,
-    },
-    emptyEmoji: {
-      fontSize: 56,
     },
     emptyTitle: {
       color: colors.textPrimary,

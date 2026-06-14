@@ -51,7 +51,7 @@ import {
 import { supabase, isSupabaseConfigured } from './src/supabase';
 import { buildDemoExpenses } from './src/demoData';
 import { convert, getCurrency } from './src/currency';
-import { getCategory } from './src/categories';
+import { getCategory, setCustomCategories, getAllCategories, getRegularAll, getExternalAll } from './src/categories';
 import { dateKey, dayLabel, monthKeyLabel } from './src/format';
 import { ThemeProvider, getTheme } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
@@ -95,6 +95,7 @@ function ExpenseTracker() {
   const [overlay, setOverlay] = useState(null); // null | 'budget'
   // The add-expense popup sits over whichever tab is active.
   const [addOpen, setAddOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
   // Increments on every successful add; RewardCheck animates on each change.
   const [rewardNonce, setRewardNonce] = useState(0);
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
@@ -217,6 +218,17 @@ function ExpenseTracker() {
       AccessibilityInfo.announceForAccessibility(translate(language, 'add.added'));
     },
     [userId, language]
+  );
+
+  const updateExpense = useCallback(
+    ({ id, amount, currency, note, category, createdAt }) => {
+      const updated = { id, amount, currency, note, category, createdAt };
+      setExpenses((prev) => prev.map((e) => (e.id === id ? updated : e)));
+      enqueueExpenseUpsert(userId, updated);
+      setEditingExpense(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    },
+    [userId]
   );
 
   const deleteExpense = useCallback(
@@ -355,6 +367,45 @@ function ExpenseTracker() {
 
   const displayCurrency = settings.displayCurrency;
 
+  // Synchronous — must run before useMemo reads the merged lists, so NOT in useEffect
+  setCustomCategories(settings.customCategories);
+
+  const allCategories = useMemo(() => getAllCategories(), [settings.customCategories]);
+  const regularCategories = useMemo(() => getRegularAll(), [settings.customCategories]);
+  const externalCategories = useMemo(() => getExternalAll(), [settings.customCategories]);
+
+  const addCustomCategory = useCallback(
+    (category) => {
+      setSettings((prev) => ({
+        ...prev,
+        customCategories: [...(prev.customCategories || []), category],
+      }));
+    },
+    []
+  );
+
+  const deleteCustomCategory = useCallback(
+    (id) => {
+      setSettings((prev) => ({
+        ...prev,
+        customCategories: (prev.customCategories || []).filter((c) => c.id !== id),
+      }));
+    },
+    []
+  );
+
+  const updateCustomCategory = useCallback(
+    (updated) => {
+      setSettings((prev) => ({
+        ...prev,
+        customCategories: (prev.customCategories || []).map((c) =>
+          c.id === updated.id ? updated : c
+        ),
+      }));
+    },
+    []
+  );
+
   const { sections, months, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount, dailyTotals } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language),
@@ -365,54 +416,119 @@ function ExpenseTracker() {
   const hasExpenses = expenses.length > 0;
   const currentMonthKey = dayStamp.slice(0, 7);
 
-  // Signed out (or session still restoring): the auth screen is the app.
+  let content = null;
   if (isSupabaseConfigured && !session) {
-    return (
-      <ThemeProvider themeName={settings.theme}>
-        <I18nProvider language={language}>
-          <SafeAreaView
-            style={[styles.safeArea, { backgroundColor: theme.background }]}
-            edges={['top', 'left', 'right']}
-          >
-            <StatusBar style={theme.statusBarStyle} />
-            {sessionLoaded && <AuthScreen />}
-          </SafeAreaView>
-        </I18nProvider>
-      </ThemeProvider>
+    content = sessionLoaded ? <AuthScreen /> : null;
+  } else if (isSupabaseConfigured && session && !loaded) {
+    content = null;
+  } else if (isSupabaseConfigured && loaded && !settings.onboardingDone) {
+    content = (
+      <OnboardingScreen
+        settings={settings}
+        onUpdateSettings={updateSettings}
+      />
     );
-  }
-
-  if (isSupabaseConfigured && session && !loaded) {
-    return (
-      <ThemeProvider themeName={settings.theme}>
-        <I18nProvider language={language}>
-          <SafeAreaView
-            style={[styles.safeArea, { backgroundColor: theme.background }]}
-            edges={['top', 'left', 'right']}
-          >
-            <StatusBar style={theme.statusBarStyle} />
-          </SafeAreaView>
-        </I18nProvider>
-      </ThemeProvider>
-    );
-  }
-
-  if (isSupabaseConfigured && loaded && !settings.onboardingDone) {
-    return (
-      <ThemeProvider themeName={settings.theme}>
-        <I18nProvider language={language}>
-          <SafeAreaView
-            style={[styles.safeArea, { backgroundColor: theme.background }]}
-            edges={['top', 'left', 'right']}
-          >
-            <StatusBar style={theme.statusBarStyle} />
-            <OnboardingScreen
+  } else {
+    content = (
+      <>
+        <View style={styles.content}>
+          <Animated.View style={[styles.screen, screenStyle('dashboard')]} pointerEvents={tab === 'dashboard' ? 'auto' : 'none'}>
+            <DashboardScreen
+              loaded={loaded}
+              hasExpenses={hasExpenses}
+              monthTotal={monthTotal}
+              todayTotal={todayTotal}
+              monthCount={monthCount}
+              avgPerDay={avgPerDay}
+              dailyTotals={dailyTotals}
+              totalsByCategory={totalsByCategory}
+              displayCurrency={displayCurrency}
+              monthlyBudget={settings.monthlyBudget}
+              categoryBudgets={settings.categoryBudgets}
+              regularCategories={regularCategories}
+              externalCategories={externalCategories}
+              onEditBudgets={() => setOverlay('budget')}
+              onAddPress={() => setAddOpen(true)}
+              onLoadDemo={loadDemo}
+            />
+          </Animated.View>
+          <Animated.View style={[styles.screen, screenStyle('list')]} pointerEvents={tab === 'list' ? 'auto' : 'none'}>
+            <ExpenseListScreen
+              sections={sections}
+              loaded={loaded}
+              hasExpenses={hasExpenses}
+              displayCurrency={displayCurrency}
+              categories={allCategories}
+              onDelete={deleteExpense}
+              onAddPress={() => setAddOpen(true)}
+              onLoadDemo={loadDemo}
+              onEditPress={setEditingExpense}
+            />
+          </Animated.View>
+          <Animated.View style={[styles.screen, screenStyle('categories')]} pointerEvents={tab === 'categories' ? 'auto' : 'none'}>
+            <CategoriesScreen
+              months={months}
+              currentMonthKey={currentMonthKey}
+              loaded={loaded}
+              hasExpenses={hasExpenses}
+              displayCurrency={displayCurrency}
+              allCategories={allCategories}
+              onAddPress={() => setAddOpen(true)}
+              onLoadDemo={loadDemo}
+              onAddCategory={addCustomCategory}
+              onUpdateCategory={updateCustomCategory}
+              onDeleteCategory={deleteCustomCategory}
+            />
+          </Animated.View>
+          <Animated.View style={[styles.screen, screenStyle('account')]} pointerEvents={tab === 'account' ? 'auto' : 'none'}>
+            <AccountScreen
               settings={settings}
               onUpdateSettings={updateSettings}
+              accountEmail={session?.user?.email}
+              onSignOut={signOut}
             />
-          </SafeAreaView>
-        </I18nProvider>
-      </ThemeProvider>
+          </Animated.View>
+        </View>
+
+        <TabBar
+          tab={tab}
+          addActive={addOpen}
+          onChange={changeTab}
+          onAddPress={() => setAddOpen(true)}
+        />
+
+        <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>
+          <AddExpenseScreen
+            displayCurrency={displayCurrency}
+            categories={allCategories}
+            onSubmit={addExpense}
+            onClose={() => setAddOpen(false)}
+          />
+        </AddExpenseModal>
+
+        <AddExpenseModal visible={editingExpense != null} onClose={() => setEditingExpense(null)}>
+          {editingExpense && (
+            <AddExpenseScreen
+              displayCurrency={displayCurrency}
+              categories={allCategories}
+              editExpense={editingExpense}
+              onSubmit={updateExpense}
+              onClose={() => setEditingExpense(null)}
+            />
+          )}
+        </AddExpenseModal>
+
+        <BudgetScreen
+          visible={overlay === 'budget'}
+          settings={settings}
+          regularCategories={regularCategories}
+          externalCategories={externalCategories}
+          onUpdateSettings={updateSettings}
+          onClose={() => setOverlay(null)}
+        />
+
+        <RewardCheck trigger={rewardNonce} />
+      </>
     );
   }
 
@@ -424,82 +540,7 @@ function ExpenseTracker() {
           edges={['top', 'left', 'right']}
         >
           <StatusBar style={theme.statusBarStyle} />
-
-          <View style={styles.content}>
-            <Animated.View style={[styles.screen, screenStyle('dashboard')]} pointerEvents={tab === 'dashboard' ? 'auto' : 'none'}>
-              <DashboardScreen
-                loaded={loaded}
-                hasExpenses={hasExpenses}
-                monthTotal={monthTotal}
-                todayTotal={todayTotal}
-                monthCount={monthCount}
-                avgPerDay={avgPerDay}
-                dailyTotals={dailyTotals}
-                totalsByCategory={totalsByCategory}
-                displayCurrency={displayCurrency}
-                monthlyBudget={settings.monthlyBudget}
-                categoryBudgets={settings.categoryBudgets}
-                onEditBudgets={() => setOverlay('budget')}
-                onAddPress={() => setAddOpen(true)}
-                onLoadDemo={loadDemo}
-              />
-            </Animated.View>
-            <Animated.View style={[styles.screen, screenStyle('list')]} pointerEvents={tab === 'list' ? 'auto' : 'none'}>
-              <ExpenseListScreen
-                sections={sections}
-                loaded={loaded}
-                hasExpenses={hasExpenses}
-                displayCurrency={displayCurrency}
-                onDelete={deleteExpense}
-                onAddPress={() => setAddOpen(true)}
-                onLoadDemo={loadDemo}
-              />
-            </Animated.View>
-            <Animated.View style={[styles.screen, screenStyle('categories')]} pointerEvents={tab === 'categories' ? 'auto' : 'none'}>
-              <CategoriesScreen
-                months={months}
-                currentMonthKey={currentMonthKey}
-                loaded={loaded}
-                hasExpenses={hasExpenses}
-                displayCurrency={displayCurrency}
-                onAddPress={() => setAddOpen(true)}
-                onLoadDemo={loadDemo}
-              />
-            </Animated.View>
-            <Animated.View style={[styles.screen, screenStyle('account')]} pointerEvents={tab === 'account' ? 'auto' : 'none'}>
-              <AccountScreen
-                settings={settings}
-                onUpdateSettings={updateSettings}
-                accountEmail={session?.user?.email}
-                onSignOut={signOut}
-              />
-            </Animated.View>
-          </View>
-
-          <TabBar
-            tab={tab}
-            addActive={addOpen}
-            onChange={changeTab}
-            onAddPress={() => setAddOpen(true)}
-          />
-
-          {/* Rendered after the TabBar so the backdrop covers it too. */}
-          <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>
-            <AddExpenseScreen
-              displayCurrency={displayCurrency}
-              onSubmit={addExpense}
-              onClose={() => setAddOpen(false)}
-            />
-          </AddExpenseModal>
-
-          <BudgetScreen
-            visible={overlay === 'budget'}
-            settings={settings}
-            onUpdateSettings={updateSettings}
-            onClose={() => setOverlay(null)}
-          />
-
-          <RewardCheck trigger={rewardNonce} />
+          {content}
         </SafeAreaView>
       </I18nProvider>
     </ThemeProvider>
@@ -553,12 +594,16 @@ function deriveViewData(expenses, displayCurrency, language) {
         total: 0,
         count: 0,
         byCategory: {},
+        largestExpense: null,
       });
     }
     const month = byMonth.get(mKey);
     month.total += displayAmount;
     month.count += 1;
     month.byCategory[catId] = (month.byCategory[catId] ?? 0) + displayAmount;
+    if (!month.largestExpense || displayAmount > month.largestExpense.displayAmount) {
+      month.largestExpense = { note: expense.note, category: catId, displayAmount };
+    }
   }
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();

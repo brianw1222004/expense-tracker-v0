@@ -14,7 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { CURRENCIES, getCurrency } from '../currency';
-import { REGULAR_CATEGORIES, EXTERNAL_CATEGORIES } from '../categories';
+import { getCategoryLabel } from '../categories';
+import { HIcon } from '../icons';
 
 // Strict shape check before parseFloat (same approach as the amount field):
 // bare parseFloat accepts '1.2.3' as 1.2 and would silently save a different
@@ -69,7 +70,7 @@ function AmountField({ value, decimals, onCommit, style, accessibilityLabel }) {
   );
 }
 
-export default function BudgetScreen({ visible, settings, onUpdateSettings, onClose }) {
+export default function BudgetScreen({ visible, settings, regularCategories, externalCategories, onUpdateSettings, onClose }) {
   const { colors } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -111,7 +112,7 @@ export default function BudgetScreen({ visible, settings, onUpdateSettings, onCl
               accessibilityLabel={t('common.close')}
               style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
             >
-              <Text style={styles.closeButtonText}>{'✕'}</Text>
+              <HIcon name="cancel-01" size={20} color={colors.icon} />
             </Pressable>
           </View>
 
@@ -139,7 +140,7 @@ export default function BudgetScreen({ visible, settings, onUpdateSettings, onCl
                     <Text style={styles.currencySymbol}>{entry.symbol}</Text>
                     <Text style={styles.currencyName}>{entry.name}</Text>
                     <Text style={styles.currencyCode}>{entry.code}</Text>
-                    {selected && <Text style={styles.checkmark}>{'✓'}</Text>}
+                    {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
                   </Pressable>
                 );
               })}
@@ -164,14 +165,14 @@ export default function BudgetScreen({ visible, settings, onUpdateSettings, onCl
 
             <Text style={styles.sectionHeader}>{t('budget.categorySection')}</Text>
             <View style={styles.card}>
-              {REGULAR_CATEGORIES.map((category, index) => (
+              {regularCategories.map((category, index) => (
                 <View
                   key={category.id}
                   style={[styles.categoryRow, index > 0 && styles.rowDivider]}
                 >
-                  <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                  <HIcon name={category.emoji} size={18} color={category.color} />
                   <Text style={styles.categoryLabel} numberOfLines={1}>
-                    {t('cat.' + category.id)}
+                    {getCategoryLabel(category, t)}
                   </Text>
                   <Text style={styles.categorySymbol}>{currency.symbol}</Text>
                   <AmountField
@@ -180,7 +181,7 @@ export default function BudgetScreen({ visible, settings, onUpdateSettings, onCl
                     decimals={currency.decimals}
                     onCommit={(committed) => commitCategory(category.id, committed)}
                     style={styles.categoryInput}
-                    accessibilityLabel={t('cat.' + category.id)}
+                    accessibilityLabel={getCategoryLabel(category, t)}
                   />
                 </View>
               ))}
@@ -189,14 +190,14 @@ export default function BudgetScreen({ visible, settings, onUpdateSettings, onCl
 
             <Text style={styles.sectionHeader}>{t('budget.externalSection')}</Text>
             <View style={styles.card}>
-              {EXTERNAL_CATEGORIES.map((category, index) => (
+              {externalCategories.map((category, index) => (
                 <View
                   key={category.id}
                   style={[styles.categoryRow, index > 0 && styles.rowDivider]}
                 >
-                  <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                  <HIcon name={category.emoji} size={18} color={category.color} />
                   <Text style={styles.categoryLabel} numberOfLines={1}>
-                    {t('cat.' + category.id)}
+                    {getCategoryLabel(category, t)}
                   </Text>
                   <Text style={styles.categorySymbol}>{currency.symbol}</Text>
                   <AmountField
@@ -205,7 +206,7 @@ export default function BudgetScreen({ visible, settings, onUpdateSettings, onCl
                     decimals={currency.decimals}
                     onCommit={(committed) => commitCategory(category.id, committed)}
                     style={styles.categoryInput}
-                    accessibilityLabel={t('cat.' + category.id)}
+                    accessibilityLabel={getCategoryLabel(category, t)}
                   />
                 </View>
               ))}
@@ -256,11 +257,6 @@ const createStyles = (colors) =>
     },
     closeButtonPressed: {
       backgroundColor: colors.cardPressed,
-    },
-    closeButtonText: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 14,
     },
     sectionHeader: {
       color: colors.textSecondary,
@@ -315,11 +311,6 @@ const createStyles = (colors) =>
       fontSize: 14,
       marginRight: spacing.sm,
     },
-    checkmark: {
-      color: colors.accent,
-      fontFamily: fonts.bold,
-      fontSize: 17,
-    },
     budgetRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -344,10 +335,6 @@ const createStyles = (colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.md,
-    },
-    categoryEmoji: {
-      fontSize: 16,
-      width: 34,
     },
     categoryLabel: {
       color: colors.textPrimary,

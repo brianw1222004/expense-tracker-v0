@@ -5,8 +5,9 @@ import { fonts, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { formatMoney } from '../format';
 import { getCurrency } from '../currency';
+import { HIcon } from '../icons';
 
-const SIZE = 180;
+const SIZE = 200;
 const STROKE = 14;
 const R = (SIZE - STROKE) / 2;
 const CX = SIZE / 2;
@@ -35,7 +36,7 @@ export default function BudgetGauge({ spent, budget, displayCurrency, empty }) {
             />
           </Svg>
           <View style={[StyleSheet.absoluteFill, styles.center]}>
-            <Text style={[styles.emptyIcon, { color: colors.icon }]}>{'○'}</Text>
+            <HIcon name="circle-dashed" size={32} color={colors.icon} />
             <Text style={[styles.emptyLabel, { color: colors.textMuted }]}>
               {t('budget.noBudget')}
             </Text>
@@ -120,16 +121,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 24,
     fontVariant: ['tabular-nums'],
-    maxWidth: '60%',
+    maxWidth: '75%',
   },
   centerLabel: {
     fontFamily: fonts.regular,
     fontSize: 12,
     marginTop: 2,
-  },
-  emptyIcon: {
-    fontSize: 28,
-    marginBottom: 4,
   },
   emptyLabel: {
     fontFamily: fonts.regular,

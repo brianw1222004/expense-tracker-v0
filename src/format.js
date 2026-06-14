@@ -30,11 +30,6 @@ export function dateKey(timestamp) {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-// YYYY-MM, the canonical month identity used for monthly totals and comparisons.
-export function monthKey(timestamp) {
-  return dateKey(timestamp).slice(0, 7);
-}
-
 // Date labels take the app language; names and ordering templates live in
 // i18n.js so all language data is in one place.
 function fill(template, vars) {

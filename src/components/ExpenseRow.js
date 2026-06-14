@@ -2,10 +2,11 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
-import { getCategory } from '../categories';
+import { getCategory, getCategoryLabel } from '../categories';
 import { formatMoney } from '../format';
+import { HIcon } from '../icons';
 
-export default function ExpenseRow({ expense, displayCurrency, onRequestDelete }) {
+export default function ExpenseRow({ expense, displayCurrency, onRequestDelete, onEdit }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -14,20 +15,24 @@ export default function ExpenseRow({ expense, displayCurrency, onRequestDelete }
 
   return (
     <Pressable
-      onPress={() => onRequestDelete(expense)}
+      onPress={() => onEdit(expense)}
       onLongPress={() => onRequestDelete(expense)}
       delayLongPress={350}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row,
+        { backgroundColor: `${category.color}0A`, borderLeftWidth: 3, borderLeftColor: `${category.color}33` },
+        pressed && styles.rowPressed,
+      ]}
     >
       <View style={[styles.iconCircle, { backgroundColor: `${category.color}26` }]}>
-        <Text style={styles.emoji}>{category.emoji}</Text>
+        <HIcon name={category.emoji} size={20} color={category.color} />
       </View>
       <View style={styles.middle}>
         <Text style={styles.note} numberOfLines={1}>
-          {expense.note || t('cat.' + category.id)}
+          {expense.note || getCategoryLabel(category, t)}
         </Text>
-        <Text style={styles.categoryLabel}>{t('cat.' + category.id)}</Text>
+        <Text style={styles.categoryLabel}>{getCategoryLabel(category, t)}</Text>
       </View>
       <View style={styles.amounts}>
         <Text style={styles.amount}>-{formatMoney(expense.displayAmount, displayCurrency)}</Text>
@@ -61,9 +66,6 @@ const createStyles = (colors) =>
       borderRadius: 21,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    emoji: {
-      fontSize: 20,
     },
     middle: {
       flex: 1,

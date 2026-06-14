@@ -12,6 +12,7 @@ import {
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
 import { getCurrency } from '../currency';
+import { HIcon } from '../icons';
 
 export default function OnboardingScreen({ settings, onUpdateSettings }) {
   const { colors } = useTheme();
@@ -40,7 +41,7 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.wave, { color: colors.icon }]}>{'●'}</Text>
+        <HIcon name="sparkles" size={40} color={colors.icon} />
         <Text style={styles.title}>{t('onboard.welcome')}</Text>
         <Text style={styles.subtitle}>{t('onboard.subtitle')}</Text>
 
@@ -64,7 +65,7 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
 
         <View style={styles.widget}>
           <Text style={styles.widgetTitle}>{t('onboard.language')}</Text>
-          {LANGUAGES.map((entry, index) => {
+          {LANGUAGES.map((entry) => {
             const selected = settings.language === entry.code;
             return (
               <Pressable
@@ -81,7 +82,7 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
                 <Text style={[styles.langLabel, selected && styles.langLabelSelected]}>
                   {entry.label}
                 </Text>
-                {selected && <Text style={styles.checkmark}>{'✓'}</Text>}
+                {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
               </Pressable>
             );
           })}
@@ -115,11 +116,6 @@ const createStyles = (colors) =>
       maxWidth: 440,
       width: '100%',
       alignSelf: 'center',
-    },
-    wave: {
-      fontSize: 44,
-      textAlign: 'center',
-      marginBottom: spacing.sm,
     },
     title: {
       color: colors.textPrimary,
@@ -193,11 +189,6 @@ const createStyles = (colors) =>
       flex: 1,
     },
     langLabelSelected: {
-      fontFamily: fonts.bold,
-    },
-    checkmark: {
-      color: colors.accent,
-      fontSize: 17,
       fontFamily: fonts.bold,
     },
     button: {

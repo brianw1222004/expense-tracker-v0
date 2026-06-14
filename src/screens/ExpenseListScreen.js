@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
-import { CATEGORIES, getCategory } from '../categories';
+import { getCategory, getCategoryLabel } from '../categories';
 import { buildCalendarWeeks, dateKey, dayLabel, formatMoney, monthLabel } from '../format';
 import ExpenseRow from '../components/ExpenseRow';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
+import { HIcon } from '../icons';
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -15,10 +16,12 @@ export default function ExpenseListScreen({
   sections,
   loaded,
   hasExpenses,
+  categories,
   displayCurrency,
   onDelete,
   onAddPress,
   onLoadDemo,
+  onEditPress,
 }) {
   const { colors } = useTheme();
   const t = useT();
@@ -41,7 +44,7 @@ export default function ExpenseListScreen({
       prevTodayRef.current = today;
       setSelectedDate(today);
     }
-  });
+  }, [today]);
 
   const dateNames = getDateNames(language);
   const calMonthText = monthLabel(new Date(calYear, calMonth), language);
@@ -71,8 +74,8 @@ export default function ExpenseListScreen({
     for (const section of sections) {
       for (const item of section.data) present.add(getCategory(item.category).id);
     }
-    return CATEGORIES.filter((c) => present.has(c.id));
-  }, [sections]);
+    return (categories ?? []).filter((c) => present.has(c.id));
+  }, [sections, categories]);
 
   const activeFilter =
     filter !== 'all' && !presentCategories.some((c) => c.id === filter) ? 'all' : filter;
@@ -123,7 +126,7 @@ export default function ExpenseListScreen({
   if (!hasExpenses) {
     return (
       <View style={[styles.container, styles.emptyState]}>
-        <Text style={[styles.emptyEmoji, { color: colors.icon }]}>{'○'}</Text>
+        <HIcon name="circle-dashed" size={48} color={colors.icon} />
         <Text style={styles.emptyTitle}>{t('empty.title')}</Text>
         <Text style={styles.emptyHint}>{t('empty.hint')}</Text>
         <Pressable
@@ -158,7 +161,7 @@ export default function ExpenseListScreen({
               accessibilityRole="button"
               accessibilityLabel={t('add.prevMonth')}
             >
-              <Text style={styles.calArrow}>{'‹'}</Text>
+              <HIcon name="chevron-left" size={18} color={colors.icon} />
             </Pressable>
             <Text style={styles.calMonthLabel}>{calMonthText}</Text>
             <Pressable
@@ -167,7 +170,7 @@ export default function ExpenseListScreen({
               accessibilityRole="button"
               accessibilityLabel={t('add.nextMonth')}
             >
-              <Text style={styles.calArrow}>{'›'}</Text>
+              <HIcon name="chevron-right" size={18} color={colors.icon} />
             </Pressable>
           </View>
 
@@ -248,8 +251,8 @@ export default function ExpenseListScreen({
             {presentCategories.map((category) => (
               <FilterChip
                 key={category.id}
-                emoji={category.emoji}
-                label={t('cat.' + category.id)}
+                icon={category.emoji}
+                label={getCategoryLabel(category, t)}
                 color={category.color}
                 selected={activeFilter === category.id}
                 onPress={() => setFilter(category.id)}
@@ -263,7 +266,7 @@ export default function ExpenseListScreen({
           <View style={styles.noMatch}>
             <Text style={styles.noMatchText}>
               {activeFilter !== 'all'
-                ? t('list.noMatch', { category: t('cat.' + activeFilter) })
+                ? t('list.noMatch', { category: getCategoryLabel(getCategory(activeFilter), t) })
                 : t('list.noneOnDay')}
             </Text>
           </View>
@@ -274,6 +277,7 @@ export default function ExpenseListScreen({
               expense={expense}
               displayCurrency={displayCurrency}
               onRequestDelete={setPendingDelete}
+              onEdit={onEditPress}
             />
           ))
         )}
@@ -295,13 +299,13 @@ export default function ExpenseListScreen({
             {pendingDelete && (
               <View style={styles.modalExpense}>
                 <View style={[styles.modalIcon, { backgroundColor: `${deleteCategory.color}26` }]}>
-                  <Text style={styles.modalEmoji}>{deleteCategory.emoji}</Text>
+                  <HIcon name={deleteCategory.emoji} size={20} color={deleteCategory.color} />
                 </View>
                 <View style={styles.modalInfo}>
                   <Text style={styles.modalNote} numberOfLines={1}>
-                    {pendingDelete.note || t('cat.' + deleteCategory.id)}
+                    {pendingDelete.note || getCategoryLabel(deleteCategory, t)}
                   </Text>
-                  <Text style={styles.modalCategory}>{t('cat.' + deleteCategory.id)}</Text>
+                  <Text style={styles.modalCategory}>{getCategoryLabel(deleteCategory, t)}</Text>
                 </View>
                 <Text style={styles.modalAmount}>
                   {formatMoney(pendingDelete.displayAmount, displayCurrency)}
@@ -339,7 +343,7 @@ export default function ExpenseListScreen({
   );
 }
 
-function FilterChip({ emoji, label, color, selected, onPress, styles }) {
+function FilterChip({ icon, label, color, selected, onPress, styles }) {
   const { colors } = useTheme();
   const chipColor = color ?? colors.accent;
   return (
@@ -353,7 +357,7 @@ function FilterChip({ emoji, label, color, selected, onPress, styles }) {
         pressed && !selected && styles.chipPressed,
       ]}
     >
-      {emoji ? <Text style={styles.chipEmoji}>{emoji}</Text> : null}
+      {icon ? <HIcon name={icon} size={16} color={chipColor} /> : null}
       <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{label}</Text>
     </Pressable>
   );
@@ -373,6 +377,7 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
+      textAlign: 'center',
     },
 
     calendarCard: {
@@ -390,12 +395,6 @@ const createStyles = (colors) =>
       justifyContent: 'space-between',
       paddingHorizontal: spacing.sm,
       marginBottom: spacing.sm,
-    },
-    calArrow: {
-      color: colors.accent,
-      fontSize: 28,
-      fontFamily: fonts.bold,
-      paddingHorizontal: spacing.sm,
     },
     calMonthLabel: {
       color: colors.textPrimary,
@@ -487,13 +486,10 @@ const createStyles = (colors) =>
       borderColor: 'transparent',
       paddingHorizontal: spacing.sm + 4,
       paddingVertical: spacing.sm,
+      gap: 6,
     },
     chipPressed: {
       backgroundColor: colors.cardPressed,
-    },
-    chipEmoji: {
-      fontSize: 16,
-      marginRight: 5,
     },
     chipLabel: {
       color: colors.textSecondary,
@@ -553,9 +549,6 @@ const createStyles = (colors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    modalEmoji: {
-      fontSize: 18,
-    },
     modalInfo: {
       flex: 1,
       marginHorizontal: spacing.sm + 2,
@@ -614,10 +607,6 @@ const createStyles = (colors) =>
       justifyContent: 'center',
       paddingHorizontal: spacing.xl,
       paddingBottom: TAB_BAR_HEIGHT,
-    },
-    emptyEmoji: {
-      fontSize: 56,
-      marginBottom: spacing.md,
     },
     emptyTitle: {
       color: colors.textPrimary,

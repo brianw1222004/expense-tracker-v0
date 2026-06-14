@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS = {
   displayCurrency: DEFAULT_CURRENCY,
   monthlyBudget: 0,
   categoryBudgets: {},
+  customCategories: [],
   theme: 'slate',
   language: 'en',
   onboardingDone: false,
@@ -60,6 +61,9 @@ function withDefaults(parsed) {
   };
   if (!merged.categoryBudgets || typeof merged.categoryBudgets !== 'object') {
     merged.categoryBudgets = {};
+  }
+  if (!Array.isArray(merged.customCategories)) {
+    merged.customCategories = [];
   }
   if (parsed && typeof parsed === 'object' && parsed.onboardingDone === undefined) {
     merged.onboardingDone = true;

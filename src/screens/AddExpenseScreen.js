@@ -9,11 +9,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
-import { CATEGORIES, getCategory } from '../categories';
+import { getCategory, getCategoryLabel } from '../categories';
+import { HIcon } from '../icons';
 import { CURRENCIES, getCurrency } from '../currency';
-import { buildCalendarWeeks, dayLabel, monthLabel } from '../format';
+import { buildCalendarWeeks, dateKey, dayLabel, monthLabel } from '../format';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const COLOR_MS = 350;
@@ -38,31 +40,41 @@ function offsetForDay(year, month, day) {
 
 // Rendered inside AddExpenseModal as the popup card. The card's border and
 // background tint follow the selected category's color (animated).
-export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose }) {
+export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, editExpense, categories }) {
   const { colors } = useTheme();
   const t = useT();
   const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const [amountText, setAmountText] = useState('');
-  const [note, setNote] = useState('');
-  const [categoryId, setCategoryId] = useState(CATEGORIES[0].id);
-  // null = follow displayCurrency; set once the user picks a chip themselves.
-  const [manualCurrency, setManualCurrency] = useState(null);
-  // Days back from today; 0 = today, never positive (no future expenses).
-  const [dayOffset, setDayOffset] = useState(0);
+  const isEdit = editExpense != null;
+
+  const [amountText, setAmountText] = useState(() =>
+    isEdit ? String(editExpense.amount) : ''
+  );
+  const [note, setNote] = useState(isEdit ? (editExpense.note || '') : '');
+  const [categoryId, setCategoryId] = useState(
+    isEdit ? editExpense.category : categories[0].id
+  );
+  const [manualCurrency, setManualCurrency] = useState(
+    isEdit ? editExpense.currency : null
+  );
+  const [dayOffset, setDayOffset] = useState(() => {
+    if (!isEdit) return 0;
+    const d = new Date(editExpense.createdAt);
+    return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
+  });
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  // Month shown in the calendar dropdown.
   const [calMonth, setCalMonth] = useState(() => {
-    const d = new Date();
+    const d = isEdit ? new Date(editExpense.createdAt) : new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
 
   // Color transitions interpolate from the previously shown category color to
   // the newly picked one; colors can't animate on the native driver.
+  const initColor = isEdit ? getCategory(editExpense.category).color : categories[0].color;
   const colorAnim = useRef(new Animated.Value(1)).current;
-  const colorFrom = useRef(CATEGORIES[0].color);
-  const colorTo = useRef(CATEGORIES[0].color);
+  const colorFrom = useRef(initColor);
+  const colorTo = useRef(initColor);
 
   const currencyCode = manualCurrency ?? displayCurrency;
   const currency = getCurrency(currencyCode);
@@ -80,26 +92,36 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
   const reset = () => {
     setAmountText('');
     setNote('');
-    setCategoryId(CATEGORIES[0].id);
+    setCategoryId(categories[0].id);
     setManualCurrency(null);
     setDayOffset(0);
     setDatePickerOpen(false);
-    colorFrom.current = CATEGORIES[0].color;
-    colorTo.current = CATEGORIES[0].color;
+    colorFrom.current = categories[0].color;
+    colorTo.current = categories[0].color;
     colorAnim.setValue(1);
   };
 
   const handleSubmit = () => {
     if (!isValid) return;
     const factor = 10 ** currency.decimals;
-    onSubmit({
+    let createdAt;
+    if (isEdit) {
+      const newDay = dateKey(dateForOffset(dayOffset).getTime());
+      const originalDay = dateKey(editExpense.createdAt);
+      createdAt = newDay === originalDay ? editExpense.createdAt : dateForOffset(dayOffset).getTime();
+    } else {
+      createdAt = dayOffset === 0 ? Date.now() : dateForOffset(dayOffset).getTime();
+    }
+    const data = {
       amount: Math.round(amount * factor) / factor,
       currency: currencyCode,
       note: note.trim(),
       category: categoryId,
-      createdAt: dayOffset === 0 ? Date.now() : dateForOffset(dayOffset).getTime(),
-    });
-    reset();
+      createdAt,
+    };
+    if (isEdit) data.id = editExpense.id;
+    onSubmit(data);
+    if (!isEdit) reset();
     Keyboard.dismiss();
   };
 
@@ -168,7 +190,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.title}>{t('add.title')}</Text>
+          <Text style={styles.title}>{t(isEdit ? 'edit.title' : 'add.title')}</Text>
           <Pressable
             onPress={onClose}
             hitSlop={8}
@@ -176,7 +198,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
             accessibilityLabel={t('common.close')}
             style={({ pressed }) => [styles.closeButton, pressed && styles.chipPressed]}
           >
-            <Text style={styles.closeGlyph}>{'✕'}</Text>
+            <HIcon name="cancel-01" size={20} color={colors.icon} />
           </Pressable>
         </View>
 
@@ -190,7 +212,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
               accessibilityState={{ expanded: datePickerOpen }}
               style={({ pressed }) => [styles.dateArrow, pressed && styles.chipPressed]}
             >
-              <Text style={[styles.calendarIcon, { color: colors.icon }]}>{'■'}</Text>
+              <CalendarIcon color={colors.textSecondary} />
             </Pressable>
             <Pressable
               onPress={() => setDayOffset((offset) => offset - 1)}
@@ -198,7 +220,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
               accessibilityLabel={t('add.prevDay')}
               style={({ pressed }) => [styles.dateArrow, pressed && styles.chipPressed]}
             >
-              <Text style={styles.dateArrowText}>{'◀'}</Text>
+              <HIcon name="chevron-left" size={16} color={colors.icon} />
             </Pressable>
             <Text style={styles.dateLabel}>
               {dayLabel(dateForOffset(dayOffset).getTime(), language)}
@@ -214,7 +236,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
                 pressed && dayOffset !== 0 && styles.chipPressed,
               ]}
             >
-              <Text style={styles.dateArrowText}>{'▶'}</Text>
+              <HIcon name="chevron-right" size={16} color={colors.icon} />
             </Pressable>
           </View>
 
@@ -227,7 +249,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
                   accessibilityLabel={t('add.prevMonth')}
                   style={({ pressed }) => [styles.dateArrow, pressed && styles.chipPressed]}
                 >
-                  <Text style={styles.dateArrowText}>{'◀'}</Text>
+                  <HIcon name="chevron-left" size={16} color={colors.icon} />
                 </Pressable>
                 <Text style={styles.calendarMonthLabel}>
                   {monthLabel(new Date(calMonth.year, calMonth.month, 1), language)}
@@ -243,7 +265,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
                     pressed && !viewingCurrentMonth && styles.chipPressed,
                   ]}
                 >
-                  <Text style={styles.dateArrowText}>{'▶'}</Text>
+                  <HIcon name="chevron-right" size={16} color={colors.icon} />
                 </Pressable>
               </View>
               <View style={styles.calendarWeekRow}>
@@ -352,7 +374,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
         />
 
         <View style={styles.categoryGrid}>
-          {CATEGORIES.map((category) => {
+          {categories.map((category) => {
             const selected = category.id === categoryId;
             return (
               <Pressable
@@ -366,9 +388,9 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
                   pressed && !selected && styles.chipPressed,
                 ]}
               >
-                <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                <HIcon name={category.emoji} size={22} color={category.color} />
                 <Text style={[styles.categoryLabel, selected && { color: colors.textPrimary }]}>
-                  {t('cat.' + category.id)}
+                  {getCategoryLabel(category, t)}
                 </Text>
               </Pressable>
             );
@@ -384,18 +406,32 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose })
             pressed && isValid && styles.saveButtonPressed,
           ]}
         >
-          <Text style={styles.saveButtonText}>{t('add.save')}</Text>
+          <Text style={styles.saveButtonText}>{t(isEdit ? 'edit.save' : 'add.save')}</Text>
         </Pressable>
       </ScrollView>
     </Animated.View>
   );
 }
 
+function CalendarIcon({ color, size = 18 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 512 512" fill="none">
+      <Rect x="48" y="80" width="370" height="380" rx="56" stroke={color} strokeWidth="48" fill="none" />
+      <Rect x="128" y="16" width="48" height="112" rx="24" fill={color} />
+      <Rect x="288" y="16" width="48" height="112" rx="24" fill={color} />
+      <Circle cx="144" cy="240" r="24" fill={color} />
+      <Circle cx="240" cy="240" r="24" fill={color} />
+      <Circle cx="336" cy="240" r="24" fill={color} />
+      <Circle cx="144" cy="336" r="24" fill={color} />
+      <Circle cx="240" cy="336" r="24" fill={color} />
+      <Circle cx="400" cy="400" r="96" fill="none" stroke={color} strokeWidth="44" />
+      <Path d="M400 352 L400 400 L432 420" stroke={color} strokeWidth="36" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Svg>
+  );
+}
+
 const createStyles = (colors) =>
   StyleSheet.create({
-    // flexShrink (not a % maxHeight, which doesn't resolve against an
-    // auto-height parent) lets the modal's maxHeight bound squeeze the card so
-    // the ScrollView scrolls instead of overflowing.
     card: {
       backgroundColor: colors.background,
       borderRadius: radius.lg,
@@ -428,11 +464,6 @@ const createStyles = (colors) =>
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.card,
-    },
-    closeGlyph: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 15,
     },
     amountRow: {
       flexDirection: 'row',
@@ -513,10 +544,6 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.sm + 4,
       paddingVertical: spacing.sm,
     },
-    categoryEmoji: {
-      fontSize: 16,
-      marginRight: 5,
-    },
     categoryLabel: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
@@ -533,9 +560,6 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.sm,
     },
-    calendarIcon: {
-      fontSize: 16,
-    },
     dateArrow: {
       width: 36,
       height: 36,
@@ -545,11 +569,6 @@ const createStyles = (colors) =>
     },
     dateArrowDisabled: {
       opacity: 0.3,
-    },
-    dateArrowText: {
-      color: colors.textSecondary,
-      fontFamily: fonts.regular,
-      fontSize: 14,
     },
     dateLabel: {
       flex: 1,

@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { fonts, radius, spacing, useTheme } from '../theme';
+import { fonts, radius, spacing, THEMES, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
+import { HIcon } from '../icons';
 
 export default function AccountScreen({ settings, onUpdateSettings, accountEmail, onSignOut }) {
   const { colors } = useTheme();
@@ -21,7 +22,7 @@ export default function AccountScreen({ settings, onUpdateSettings, accountEmail
         <>
           <View style={styles.card}>
             <View style={styles.row}>
-              <Text style={[styles.rowEmoji, { color: colors.icon }]}>{'●'}</Text>
+              <HIcon name="user-circle" size={20} color={colors.icon} />
               <Text style={styles.rowLabel} numberOfLines={1}>
                 {accountEmail}
               </Text>
@@ -41,7 +42,7 @@ export default function AccountScreen({ settings, onUpdateSettings, accountEmail
         <>
           <View style={styles.card}>
             <View style={styles.row}>
-              <Text style={[styles.rowEmoji, { color: colors.icon }]}>{'●'}</Text>
+              <HIcon name="user-circle" size={20} color={colors.icon} />
               <Text style={styles.rowLabel}>{t('acct.localTitle')}</Text>
             </View>
           </View>
@@ -69,7 +70,31 @@ export default function AccountScreen({ settings, onUpdateSettings, accountEmail
               ]}
             >
               <Text style={styles.rowLabel}>{entry.label}</Text>
-              {selected && <Text style={styles.checkmark}>{'✓'}</Text>}
+              {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={styles.sectionHeader}>{t('acct.theme')}</Text>
+      <View style={styles.card}>
+        {Object.values(THEMES).map((theme, index) => {
+          const selected = settings.theme === theme.name;
+          return (
+            <Pressable
+              key={theme.name}
+              onPress={() => onUpdateSettings({ theme: theme.name })}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              style={({ pressed }) => [
+                styles.row,
+                index > 0 && styles.rowDivider,
+                pressed && styles.rowPressed,
+              ]}
+            >
+              <View style={[styles.themeDot, { backgroundColor: theme.accent }]} />
+              <Text style={styles.rowLabel}>{t('theme.' + theme.name)}</Text>
+              {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
             </Pressable>
           );
         })}
@@ -78,7 +103,7 @@ export default function AccountScreen({ settings, onUpdateSettings, accountEmail
       <Text style={styles.sectionHeader}>{t('acct.comingSoon')}</Text>
       <View style={styles.card}>
         <View style={styles.row}>
-          <Text style={[styles.comingSoonEmoji, { color: colors.icon }]}>{'●'}</Text>
+          <HIcon name="user-circle" size={20} color={colors.icon} />
           <Text style={styles.comingSoonLabel}>{t('acct.exportCsv')}</Text>
           <Text style={styles.comingSoonTag}>{t('acct.soon')}</Text>
         </View>
@@ -101,6 +126,7 @@ const createStyles = (colors) =>
       fontSize: 28,
       fontFamily: fonts.bold,
       paddingTop: spacing.md,
+      textAlign: 'center',
     },
     sectionHeader: {
       color: colors.textSecondary,
@@ -136,10 +162,6 @@ const createStyles = (colors) =>
     rowPressed: {
       backgroundColor: colors.cardPressed,
     },
-    rowEmoji: {
-      fontSize: 16,
-      width: 48,
-    },
     rowLabel: {
       color: colors.textPrimary,
       fontSize: 16,
@@ -151,16 +173,11 @@ const createStyles = (colors) =>
       fontSize: 16,
       fontFamily: fonts.bold,
     },
-    checkmark: {
-      color: colors.accent,
-      fontSize: 17,
-      fontFamily: fonts.bold,
-      marginLeft: spacing.sm,
-    },
-    comingSoonEmoji: {
-      fontSize: 16,
-      width: 48,
-      opacity: 0.5,
+    themeDot: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      marginRight: spacing.sm + 4,
     },
     comingSoonLabel: {
       color: colors.textMuted,
