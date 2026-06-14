@@ -2,15 +2,15 @@ import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
-import { useT, useLanguage } from '../i18n';
+import { useT, useLanguage, getDateNames } from '../i18n';
 import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
 import { getCategory, getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
 import { getCurrency } from '../currency';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 
-const DONUT_SIZE = 130;
-const DONUT_STROKE = 14;
+const DONUT_SIZE = 160;
+const DONUT_STROKE = 16;
 const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2;
 const DONUT_CX = DONUT_SIZE / 2;
 const DONUT_CY = DONUT_SIZE / 2;
@@ -174,32 +174,31 @@ export default function CategoriesScreen({
             styles={styles}
           />
 
-          <View style={styles.statColumn}>
-            <View style={styles.statWidget}>
-              {categoryRows.length > 0 ? (
-                <Text style={styles.statWidgetLine} numberOfLines={2}>
-                  <Text style={styles.statWidgetTitle}>{t('cats.topCategory')} </Text>
-                  <Text style={styles.statWidgetValue}>{getCategoryLabel(categoryRows[0].category, t)}</Text>
-                </Text>
-              ) : (
-                <Text style={styles.statWidgetPlaceholder}>{t('cats.topCategoryEmpty')}</Text>
-              )}
-            </View>
-            <View style={styles.statWidget}>
-              {viewMonth.largestExpense ? (
+          <View style={styles.bigExpenseColumn}>
+            {viewMonth.largestExpense ? (() => {
+              const ts = viewMonth.largestExpense.createdAt;
+              const d = ts ? new Date(ts) : null;
+              const dayNum = d ? d.getDate() : '';
+              const monthAbbr = d ? getDateNames(language).monthsShort[d.getMonth()] : '';
+              return (
                 <>
-                  <Text style={styles.statWidgetSub} numberOfLines={1}>
-                    {viewMonth.largestExpense.note || getCategoryLabel(getCategory(viewMonth.largestExpense.category), t)}
+                  <Text style={styles.topCategoryTitle} numberOfLines={1}>
+                    {t('cats.topExpense')} {getCategoryLabel(getCategory(viewMonth.largestExpense.category), t)}
                   </Text>
-                  <Text style={styles.statWidgetLine} numberOfLines={2}>
-                    <Text style={styles.statWidgetTitle}>{t('cats.topExpense')} </Text>
-                    <Text style={styles.statWidgetValue}>{formatMoneyShort(viewMonth.largestExpense.displayAmount, displayCurrency)}</Text>
-                  </Text>
+                  <View style={styles.bigExpenseCard}>
+                    {d && <Text style={styles.bigExpenseDate}>{monthAbbr} {dayNum}</Text>}
+                    <Text style={styles.bigExpenseName} numberOfLines={1}>
+                      {viewMonth.largestExpense.note || getCategoryLabel(getCategory(viewMonth.largestExpense.category), t)}
+                    </Text>
+                    <Text style={styles.bigExpenseAmount}>
+                      {formatMoneyShort(viewMonth.largestExpense.displayAmount, displayCurrency)}
+                    </Text>
+                  </View>
                 </>
-              ) : (
-                <Text style={styles.statWidgetPlaceholder}>{t('cats.topExpenseEmpty')}</Text>
-              )}
-            </View>
+              );
+            })() : (
+              <Text style={styles.topCategoryEmpty}>{t('cats.topExpenseEmpty')}</Text>
+            )}
           </View>
         </View>
       </View>
@@ -565,46 +564,49 @@ const createStyles = (colors) =>
     donutRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      gap: spacing.lg,
     },
-    statColumn: {
+    bigExpenseColumn: {
       flex: 1,
       gap: spacing.sm,
+      alignItems: 'center',
     },
-    statWidget: {
+    topCategoryTitle: {
+      fontFamily: fonts.bold,
+      fontSize: 15,
+      color: colors.textPrimary,
+    },
+    topCategoryEmpty: {
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    bigExpenseCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'stretch',
       backgroundColor: colors.background,
       borderRadius: radius.sm,
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.sm,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 3,
+      gap: spacing.sm,
     },
-    statWidgetLine: {
-      textAlign: 'center',
-    },
-    statWidgetTitle: {
-      color: colors.textMuted,
+    bigExpenseDate: {
       fontFamily: fonts.regular,
-      fontSize: 11,
+      fontSize: 13,
+      color: colors.textMuted,
     },
-    statWidgetValue: {
+    bigExpenseName: {
+      flex: 1,
+      fontFamily: fonts.regular,
+      fontSize: 14,
       color: colors.textPrimary,
+    },
+    bigExpenseAmount: {
       fontFamily: fonts.bold,
-      fontSize: 16,
-      textAlign: 'center',
-    },
-    statWidgetSub: {
-      color: colors.textSecondary,
-      fontFamily: fonts.regular,
-      fontSize: 12,
-      textAlign: 'center',
-    },
-    statWidgetPlaceholder: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 12,
-      textAlign: 'center',
+      fontSize: 15,
+      color: colors.textPrimary,
+      fontVariant: ['tabular-nums'],
     },
     donut: { width: DONUT_SIZE, height: DONUT_SIZE },
     donutCenter: {

@@ -18,6 +18,7 @@ import { CURRENCIES, getCurrency } from '../currency';
 import { buildCalendarWeeks, dateKey, dayLabel, monthLabel } from '../format';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const NOTE_MAX_LENGTH = 20;
 const COLOR_MS = 350;
 
 // The chosen day at 12:00 local — keeps the entry safely inside the day even
@@ -361,17 +362,20 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
           })}
         </ScrollView>
 
-        <TextInput
-          style={styles.noteInput}
-          value={note}
-          onChangeText={setNote}
-          placeholder={t('add.notePlaceholder')}
-          placeholderTextColor={colors.textMuted}
-          maxLength={60}
-          keyboardAppearance={colors.keyboardAppearance}
-          returnKeyType="done"
-          onSubmitEditing={handleSubmit}
-        />
+        <View style={styles.noteRow}>
+          <TextInput
+            style={styles.noteInput}
+            value={note}
+            onChangeText={setNote}
+            placeholder={t('add.notePlaceholder')}
+            placeholderTextColor={colors.textMuted}
+            maxLength={NOTE_MAX_LENGTH}
+            keyboardAppearance={colors.keyboardAppearance}
+            returnKeyType="done"
+            onSubmitEditing={handleSubmit}
+          />
+          <Text style={styles.noteCounter}>{note.length}/{NOTE_MAX_LENGTH}</Text>
+        </View>
 
         <View style={styles.categoryGrid}>
           {categories.map((category) => {
@@ -518,15 +522,26 @@ const createStyles = (colors) =>
     currencyChipInlineTextSelected: {
       color: colors.textPrimary,
     },
-    noteInput: {
+    noteRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
       backgroundColor: colors.card,
-      color: colors.textPrimary,
       borderRadius: radius.sm,
       paddingHorizontal: spacing.md,
+      marginBottom: spacing.md,
+    },
+    noteInput: {
+      flex: 1,
+      color: colors.textPrimary,
       paddingVertical: spacing.sm + 4,
       fontFamily: fonts.regular,
       fontSize: 16,
-      marginBottom: spacing.md,
+    },
+    noteCounter: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      marginLeft: spacing.sm,
     },
     categoryGrid: {
       flexDirection: 'row',

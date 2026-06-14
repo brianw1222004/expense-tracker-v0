@@ -92,8 +92,6 @@ const STRINGS = {
     'cats.save': 'Save',
     'cats.deleteConfirm': 'Delete {name}?',
     'cats.deleteHint': 'Expenses in this category will show as Other.',
-    'cats.topCategory': 'Most spent on',
-    'cats.topCategoryEmpty': 'No spending yet',
     'cats.topExpense': 'Biggest expense',
     'cats.topExpenseEmpty': 'No expenses yet',
 
@@ -230,8 +228,6 @@ const STRINGS = {
     'cats.save': '儲存',
     'cats.deleteConfirm': '刪除「{name}」？',
     'cats.deleteHint': '此分類的支出將顯示為「其他」。',
-    'cats.topCategory': '最多消費',
-    'cats.topCategoryEmpty': '尚無消費',
     'cats.topExpense': '最大支出',
     'cats.topExpenseEmpty': '尚無支出',
 
@@ -368,8 +364,6 @@ const STRINGS = {
     'cats.save': 'Guardar',
     'cats.deleteConfirm': '¿Eliminar {name}?',
     'cats.deleteHint': 'Los gastos de esta categoría se mostrarán como Otros.',
-    'cats.topCategory': 'Más gastado en',
-    'cats.topCategoryEmpty': 'Sin gastos aún',
     'cats.topExpense': 'Mayor gasto',
     'cats.topExpenseEmpty': 'Sin gastos aún',
 

@@ -602,7 +602,7 @@ function deriveViewData(expenses, displayCurrency, language) {
     month.count += 1;
     month.byCategory[catId] = (month.byCategory[catId] ?? 0) + displayAmount;
     if (!month.largestExpense || displayAmount > month.largestExpense.displayAmount) {
-      month.largestExpense = { note: expense.note, category: catId, displayAmount };
+      month.largestExpense = { note: expense.note, category: catId, displayAmount, createdAt: expense.createdAt };
     }
   }
 

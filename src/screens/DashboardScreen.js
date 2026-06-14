@@ -93,6 +93,28 @@ export default function DashboardScreen({
       {!hasExpenses && <View style={styles.chartPlaceholder} />}
 
       {hasExpenses && (
+        <View style={styles.statsRow}>
+          <StatCell
+            label={t('dash.today')}
+            value={formatMoneyShort(todayTotal, displayCurrency)}
+            styles={styles}
+          />
+          <View style={styles.statDivider} />
+          <StatCell
+            label={t('dash.expenses')}
+            value={String(monthCount)}
+            styles={styles}
+          />
+          <View style={styles.statDivider} />
+          <StatCell
+            label={t('dash.avgPerDay')}
+            value={formatMoneyShort(avgPerDay, displayCurrency)}
+            styles={styles}
+          />
+        </View>
+      )}
+
+      {hasExpenses && (
         <Pressable
           onPress={onEditBudgets}
           accessibilityRole="button"
@@ -153,28 +175,6 @@ export default function DashboardScreen({
             </>
           )}
         </Pressable>
-      )}
-
-      {hasExpenses && (
-        <View style={styles.statsRow}>
-          <StatCell
-            label={t('dash.today')}
-            value={formatMoneyShort(todayTotal, displayCurrency)}
-            styles={styles}
-          />
-          <View style={styles.statDivider} />
-          <StatCell
-            label={t('dash.expenses')}
-            value={String(monthCount)}
-            styles={styles}
-          />
-          <View style={styles.statDivider} />
-          <StatCell
-            label={t('dash.avgPerDay')}
-            value={formatMoneyShort(avgPerDay, displayCurrency)}
-            styles={styles}
-          />
-        </View>
       )}
 
       {loaded && !hasExpenses && (
@@ -342,6 +342,7 @@ const createStyles = (colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       marginTop: spacing.sm + 4,
+      gap: spacing.sm,
     },
     categoryBarArea: {
       flex: 1,
