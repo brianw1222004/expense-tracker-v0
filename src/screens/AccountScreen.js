@@ -154,6 +154,7 @@ const createStyles = (colors) =>
       alignItems: 'center',
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 4,
+      gap: spacing.sm,
     },
     rowDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
@@ -177,7 +178,7 @@ const createStyles = (colors) =>
       width: 20,
       height: 20,
       borderRadius: 10,
-      marginRight: spacing.sm + 4,
+      marginRight: spacing.xs,
     },
     comingSoonLabel: {
       color: colors.textMuted,
