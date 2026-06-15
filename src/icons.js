@@ -1,5 +1,4 @@
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import { Text } from 'react-native';
 
 import {
   Hamburger01Icon, ShoppingCart01Icon, TaxiIcon, ShoppingBag01Icon,
@@ -60,7 +59,15 @@ const REGISTRY = {
 export function HIcon({ name, size = 24, color = '#000', strokeWidth = 1.5, style }) {
   const icon = REGISTRY[name];
   if (!icon) {
-    return <Text style={[{ fontSize: size }, style]}>{name}</Text>;
+    return (
+      <HugeiconsIcon
+        icon={GridViewIcon}
+        size={size}
+        color={color}
+        strokeWidth={strokeWidth}
+        style={style}
+      />
+    );
   }
   return (
     <HugeiconsIcon

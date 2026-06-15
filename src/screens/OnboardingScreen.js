@@ -20,13 +20,17 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [budgetText, setBudgetText] = useState('');
 
-  const currencySymbol = getCurrency(settings.displayCurrency).symbol;
+  const { symbol: currencySymbol, decimals } = getCurrency(settings.displayCurrency);
 
   const handleComplete = () => {
-    const amount = parseFloat(budgetText);
+    const normalized = budgetText.trim().replace(/,(\d{3})\b/g, '$1').replace(',', '.');
+    const isValid = decimals === 0
+      ? /^\d+$/.test(normalized)
+      : new RegExp(`^(\\d+(\\.\\d{0,${decimals}})?|\\.\\d{1,${decimals}})$`).test(normalized);
+    const parsed = parseFloat(normalized);
     const patch = { onboardingDone: true };
-    if (!isNaN(amount) && amount > 0) {
-      patch.monthlyBudget = amount;
+    if (isValid && parsed > 0) {
+      patch.monthlyBudget = Number(parsed.toFixed(decimals));
     }
     onUpdateSettings(patch);
   };

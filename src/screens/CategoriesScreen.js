@@ -391,29 +391,30 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
   const customHexColor = useMemo(() => hslToHex(hue, 80, 50), [hue]);
 
   // Reset form when modal opens/closes or editing target changes
-  if (visible && !initialized) {
-    if (isEdit) {
-      setName(editingCategory.label);
-      setEmoji(editingCategory.emoji);
-      setColor(editingCategory.color);
-      setExternal(editingCategory.external);
-      // If editing color is not in presets, activate custom color mode
-      const isPreset = COLOR_OPTIONS.includes(editingCategory.color);
-      setCustomColorActive(!isPreset);
-    } else {
-      setName('');
-      setEmoji(EMOJI_OPTIONS[0]);
-      setColor(COLOR_OPTIONS[0]);
-      setExternal(false);
-      setCustomColorActive(false);
+  useEffect(() => {
+    if (visible && !initialized) {
+      if (isEdit) {
+        setName(editingCategory.label);
+        setEmoji(editingCategory.emoji);
+        setColor(editingCategory.color);
+        setExternal(editingCategory.external);
+        const isPreset = COLOR_OPTIONS.includes(editingCategory.color);
+        setCustomColorActive(!isPreset);
+      } else {
+        setName('');
+        setEmoji(EMOJI_OPTIONS[0]);
+        setColor(COLOR_OPTIONS[0]);
+        setExternal(false);
+        setCustomColorActive(false);
+      }
+      setHue(0);
+      setIconPage(0);
+      setInitialized(true);
     }
-    setHue(0);
-    setIconPage(0);
-    setInitialized(true);
-  }
-  if (!visible && initialized) {
-    setInitialized(false);
-  }
+    if (!visible && initialized) {
+      setInitialized(false);
+    }
+  }, [visible, editingCategory]);
 
   const ICONS_PER_PAGE = 14;
   const iconPages = useMemo(() => {

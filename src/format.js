@@ -15,12 +15,14 @@ export function formatMoney(amount, currencyCode = DEFAULT_CURRENCY) {
 // Compact form for stat tiles: $1.2k, $45, $7.50
 export function formatMoneyShort(amount, currencyCode = DEFAULT_CURRENCY) {
   const { symbol, decimals } = getCurrency(currencyCode);
-  if (amount >= 10000) return `${symbol}${group(String(Math.round(amount / 1000)))}k`;
-  if (amount >= 1000) return `${symbol}${(amount / 1000).toFixed(1)}k`;
-  if (amount >= 100 || decimals === 0 || Number.isInteger(amount)) {
-    return `${symbol}${group(String(Math.round(amount)))}`;
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (abs >= 10000) return `${sign}${symbol}${group(String(Math.round(abs / 1000)))}k`;
+  if (abs >= 1000) return `${sign}${symbol}${(abs / 1000).toFixed(1)}k`;
+  if (abs >= 100 || decimals === 0 || Number.isInteger(abs)) {
+    return `${sign}${symbol}${group(String(Math.round(abs)))}`;
   }
-  return `${symbol}${amount.toFixed(2)}`;
+  return `${sign}${symbol}${abs.toFixed(2)}`;
 }
 
 export function dateKey(timestamp) {

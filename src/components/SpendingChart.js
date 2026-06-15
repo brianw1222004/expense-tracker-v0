@@ -10,7 +10,7 @@ const PADDING_RIGHT = 12;
 const PADDING_TOP = 24;
 const PADDING_BOTTOM = 28;
 
-const X_TICKS = [1, 5, 10, 15, 20, 25, 30];
+const X_TICKS = [1, 5, 10, 15, 20, 25, 30, 31];
 
 export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
   const { colors } = useTheme();
@@ -31,7 +31,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
   const drawHeight = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
   const getX = (dayIndex) =>
-    PADDING_LEFT + (dayIndex / (daysInMonth - 1)) * drawWidth;
+    daysInMonth <= 1 ? PADDING_LEFT + drawWidth / 2 : PADDING_LEFT + (dayIndex / (daysInMonth - 1)) * drawWidth;
   const getY = (value) =>
     PADDING_TOP + drawHeight - (value / maxVal) * drawHeight;
 

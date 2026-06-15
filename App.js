@@ -348,7 +348,9 @@ function ExpenseTracker() {
           duration: Math.max(100, 200 * (1 - progress)),
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
-        }).start();
+        }).start(() => {
+          setPrevTab(tabRef.current);
+        });
       } else {
         const orig = prevTabRef.current;
         Animated.timing(slideAnim, {
@@ -377,13 +379,13 @@ function ExpenseTracker() {
 
   const screenStyle = (screenTab) => {
     if (prevTab === tab) {
-      return screenTab === tab ? { opacity: 1 } : { opacity: 0 };
+      return screenTab === tab ? { opacity: 1 } : { opacity: 0, zIndex: 0 };
     }
     const dir = slideDirRef.current;
     if (screenTab === tab) {
       return {
         zIndex: 2,
-        opacity: slideAnim.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0.3, 1, 1] }),
+        opacity: slideAnim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0.5, 1, 1] }),
         transform: [
           {
             translateX: slideAnim.interpolate({
@@ -397,18 +399,18 @@ function ExpenseTracker() {
     if (screenTab === prevTab) {
       return {
         zIndex: 1,
-        opacity: slideAnim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [1, 0, 0] }),
+        opacity: slideAnim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [1, 0, 0] }),
         transform: [
           {
             translateX: slideAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [0, -dir * screenWidth * 0.5],
+              outputRange: [0, -dir * screenWidth],
             }),
           },
         ],
       };
     }
-    return { opacity: 0 };
+    return { opacity: 0, zIndex: 0 };
   };
 
   const signOut = useCallback(async () => {
@@ -562,6 +564,7 @@ function ExpenseTracker() {
           addActive={addOpen}
           onChange={changeTab}
           onAddPress={() => setAddOpen(true)}
+          panHandlers={swipePanResponder.panHandlers}
         />
 
         <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>

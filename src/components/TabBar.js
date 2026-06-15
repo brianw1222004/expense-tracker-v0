@@ -16,7 +16,7 @@ const TABS_RIGHT = [
   { id: 'account', icon: 'user-circle' },
 ];
 
-export default function TabBar({ tab, onChange, onAddPress, addActive }) {
+export default function TabBar({ tab, onChange, onAddPress, addActive, panHandlers }) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const t = useT();
@@ -24,7 +24,7 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
 
   return (
     <View style={[styles.outer, { paddingBottom: insets.bottom }]}>
-      <View style={styles.capsule}>
+      <View style={styles.capsule} {...panHandlers}>
         {TABS_LEFT.map((item) => (
           <TabItem
             key={item.id}
@@ -74,16 +74,17 @@ function TabItem({ styles, colors, icon, selected, onPress }) {
       accessibilityState={{ selected }}
       style={({ pressed }) => [
         styles.item,
-        selected && styles.itemSelected,
         pressed && !selected && styles.itemPressed,
       ]}
     >
-      <HIcon
-        name={icon}
-        size={22}
-        color={selected ? colors.accent : colors.textMuted}
-        strokeWidth={selected ? 2 : 1.5}
-      />
+      <View style={[styles.iconPill, selected && styles.iconPillSelected]}>
+        <HIcon
+          name={icon}
+          size={22}
+          color={selected ? colors.accent : colors.textMuted}
+          strokeWidth={selected ? 2 : 1.5}
+        />
+      </View>
     </Pressable>
   );
 }
@@ -109,14 +110,18 @@ const createStyles = (colors) =>
     },
     item: {
       flex: 1,
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       height: 44,
-      borderRadius: 22,
-      gap: spacing.xs,
     },
-    itemSelected: {
+    iconPill: {
+      width: 40,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconPillSelected: {
       backgroundColor: `${colors.accent}15`,
     },
     itemPressed: {
