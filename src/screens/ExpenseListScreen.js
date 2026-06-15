@@ -79,9 +79,6 @@ export default function ExpenseListScreen({
 
   const activeFilter =
     filter !== 'all' && !presentCategories.some((c) => c.id === filter) ? 'all' : filter;
-  useEffect(() => {
-    if (activeFilter !== filter) setFilter('all');
-  }, [activeFilter, filter]);
 
   const filteredExpenses = useMemo(() => {
     if (!selectedSection) return [];

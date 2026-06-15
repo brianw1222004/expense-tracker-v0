@@ -16,10 +16,6 @@ export const DEFAULT_LANGUAGE = 'en';
 
 const STRINGS = {
   en: {
-    'tabs.dashboard': 'Dashboard',
-    'tabs.expenses': 'Expenses',
-    'tabs.categories': 'Categories',
-    'tabs.account': 'Account',
     'tabs.add': 'Add expense',
 
     'common.close': 'Close',
@@ -142,10 +138,6 @@ const STRINGS = {
   },
 
   zh: {
-    'tabs.dashboard': '總覽',
-    'tabs.expenses': '支出',
-    'tabs.categories': '分類',
-    'tabs.account': '帳戶',
     'tabs.add': '新增支出',
 
     'common.close': '關閉',
@@ -268,10 +260,6 @@ const STRINGS = {
   },
 
   es: {
-    'tabs.dashboard': 'Resumen',
-    'tabs.expenses': 'Gastos',
-    'tabs.categories': 'Categorías',
-    'tabs.account': 'Cuenta',
     'tabs.add': 'Añadir gasto',
 
     'common.close': 'Cerrar',
@@ -399,33 +387,24 @@ const STRINGS = {
 const DATE_NAMES = {
   en: {
     months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
-    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     weekdays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     weekdayLetters: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
-    // {weekday}, {month} {day} → "Friday, June 12"
     dayLabel: '{weekday}, {month} {day}',
-    // "June 2026"
     monthYear: '{month} {year}',
-    // Chip/axis form: "Jun ’26"
-    monthShortYear: '{month} ’{yy}',
   },
   zh: {
     months: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-    monthsShort: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
     weekdays: ['週日', '週一', '週二', '週三', '週四', '週五', '週六'],
     weekdayLetters: ['日', '一', '二', '三', '四', '五', '六'],
     dayLabel: '{month}{day}日 {weekday}',
     monthYear: '{year}年{month}',
-    monthShortYear: '’{yy} {month}',
   },
   es: {
     months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
-    monthsShort: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
     weekdays: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
     weekdayLetters: ['D', 'L', 'M', 'X', 'J', 'V', 'S'],
     dayLabel: '{weekday}, {day} de {month}',
     monthYear: '{month} de {year}',
-    monthShortYear: '{month} ’{yy}',
   },
 };
 

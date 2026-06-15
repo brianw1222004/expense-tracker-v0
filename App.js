@@ -209,55 +209,43 @@ function ExpenseTracker() {
     if (dataUser && dataUser === userId) saveSettings(dataUser, settings);
   }, [settings, dataUser, userId]);
 
-  const addExpense = useCallback(
-    ({ amount, currency, note, category, createdAt }) => {
-      const expense = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        amount,
-        currency,
-        note,
-        category,
-        createdAt: createdAt ?? Date.now(),
-      };
-      setExpenses((prev) => [expense, ...prev]);
-      enqueueExpenseUpsert(userId, expense);
-      // Close the popup so the success overlay fades back to the main view.
-      setAddOpen(false);
-      setRewardNonce((n) => n + 1);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      // The reward check is purely visual; this is the screen-reader equivalent
-      // (a status announcement, not a toast/modal — the spec ban doesn't apply).
-      AccessibilityInfo.announceForAccessibility(translate(language, 'add.added'));
-    },
-    [userId, language]
-  );
+  const addExpense = ({ amount, currency, note, category, createdAt }) => {
+    const expense = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      amount,
+      currency,
+      note,
+      category,
+      createdAt: createdAt ?? Date.now(),
+    };
+    setExpenses((prev) => [expense, ...prev]);
+    enqueueExpenseUpsert(userId, expense);
+    setAddOpen(false);
+    setRewardNonce((n) => n + 1);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    AccessibilityInfo.announceForAccessibility(translate(language, 'add.added'));
+  };
 
-  const updateExpense = useCallback(
-    ({ id, amount, currency, note, category, createdAt }) => {
-      const updated = { id, amount, currency, note, category, createdAt };
-      setExpenses((prev) => prev.map((e) => (e.id === id ? updated : e)));
-      enqueueExpenseUpsert(userId, updated);
-      setEditingExpense(null);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    },
-    [userId]
-  );
+  const updateExpense = ({ id, amount, currency, note, category, createdAt }) => {
+    const updated = { id, amount, currency, note, category, createdAt };
+    setExpenses((prev) => prev.map((e) => (e.id === id ? updated : e)));
+    enqueueExpenseUpsert(userId, updated);
+    setEditingExpense(null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  };
 
-  const deleteExpense = useCallback(
-    (id) => {
-      setExpenses((prev) => prev.filter((e) => e.id !== id));
-      enqueueExpenseDelete(userId, id);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    },
-    [userId]
-  );
+  const deleteExpense = (id) => {
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    enqueueExpenseDelete(userId, id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  };
 
-  const loadDemo = useCallback(() => {
+  const loadDemo = () => {
     const demo = buildDemoExpenses();
     setExpenses(demo);
     enqueueExpensesReplace(userId, demo);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  }, [userId]);
+  };
 
   const updateSettings = useCallback(
     (patch) => {
@@ -325,7 +313,7 @@ function ExpenseTracker() {
       if (Math.abs(g.dx) > 30 && Math.abs(g.dx) > Math.abs(g.dy) * 2) {
         swipeDirRef.current = g.dx < 0 ? 1 : -1;
         const nextIdx = TAB_INDEX[tabRef.current] + swipeDirRef.current;
-        if (nextIdx < 0 || nextIdx > 3) return false;
+        if (nextIdx < 0 || nextIdx > TAB_NAMES.length - 1) return false;
         return true;
       }
       return false;
@@ -334,7 +322,7 @@ function ExpenseTracker() {
       const cur = tabRef.current;
       const dir = swipeDirRef.current;
       const nextIdx = TAB_INDEX[cur] + dir;
-      if (nextIdx < 0 || nextIdx > 3) return;
+      if (nextIdx < 0 || nextIdx > TAB_NAMES.length - 1) return;
       swipingRef.current = true;
       Keyboard.dismiss();
       slideDirRef.current = dir;
@@ -457,31 +445,32 @@ function ExpenseTracker() {
   // Synchronous — must run before useMemo reads the merged lists, so NOT in useEffect
   setCustomCategories(settings.customCategories);
 
-  const allCategories = useMemo(() => getAllCategories(), [settings.customCategories]);
-  const regularCategories = useMemo(() => getRegularAll(), [settings.customCategories]);
-  const externalCategories = useMemo(() => getExternalAll(), [settings.customCategories]);
+  const allCategories = getAllCategories();
+  const regularCategories = getRegularAll();
+  const externalCategories = getExternalAll();
 
-  const modifyCustomCategories = useCallback((fn) => {
+  const addCustomCategory = (category) => {
     setSettings((prev) => ({
       ...prev,
-      customCategories: fn(prev.customCategories || []),
+      customCategories: [...(prev.customCategories || []), category],
     }));
-  }, []);
+  };
 
-  const addCustomCategory = useCallback(
-    (category) => modifyCustomCategories((cats) => [...cats, category]),
-    [modifyCustomCategories]
-  );
+  const deleteCustomCategory = (id) => {
+    setSettings((prev) => ({
+      ...prev,
+      customCategories: (prev.customCategories || []).filter((c) => c.id !== id),
+    }));
+  };
 
-  const deleteCustomCategory = useCallback(
-    (id) => modifyCustomCategories((cats) => cats.filter((c) => c.id !== id)),
-    [modifyCustomCategories]
-  );
-
-  const updateCustomCategory = useCallback(
-    (updated) => modifyCustomCategories((cats) => cats.map((c) => c.id === updated.id ? updated : c)),
-    [modifyCustomCategories]
-  );
+  const updateCustomCategory = (updated) => {
+    setSettings((prev) => ({
+      ...prev,
+      customCategories: (prev.customCategories || []).map((c) =>
+        c.id === updated.id ? updated : c
+      ),
+    }));
+  };
 
   const { sections, months, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount, dailyTotals } =
     useMemo(

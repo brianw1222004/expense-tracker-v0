@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
@@ -17,9 +17,9 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
 
-  const onLayout = useCallback((e) => {
+  const onLayout = (e) => {
     setChartWidth(e.nativeEvent.layout.width);
-  }, []);
+  };
 
   const today = new Date().getDate();
   const daysInMonth = dailyTotals.length;

@@ -1,19 +1,19 @@
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fonts, spacing, useTheme } from '../theme';
+import { spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { HIcon } from '../icons';
 
 export const TAB_BAR_HEIGHT = 72;
 
 const TABS_LEFT = [
-  { id: 'dashboard', icon: 'home-01', labelKey: 'tabs.dashboard' },
-  { id: 'list', icon: 'receipt-text', labelKey: 'tabs.expenses' },
+  { id: 'dashboard', icon: 'home-01' },
+  { id: 'list', icon: 'receipt-text' },
 ];
 const TABS_RIGHT = [
-  { id: 'categories', icon: 'grid-view', labelKey: 'tabs.categories' },
-  { id: 'account', icon: 'user-circle', labelKey: 'tabs.account' },
+  { id: 'categories', icon: 'grid-view' },
+  { id: 'account', icon: 'user-circle' },
 ];
 
 export default function TabBar({ tab, onChange, onAddPress, addActive }) {

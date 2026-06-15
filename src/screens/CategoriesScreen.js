@@ -6,10 +6,11 @@ import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
 import { getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
+import { LOCAL_USER } from '../storage';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 
-const ORDER_KEY_BASE = 'category_order';
+const ORDER_KEY_BASE = '@expense-tracker/category-order';
 
 const DONUT_SIZE = 160;
 const DONUT_STROKE = 16;
@@ -56,13 +57,13 @@ export default function CategoriesScreen({
     [months, prevMonthKey]
   );
 
-  const shiftMonth = useCallback((dir) => {
+  const shiftMonth = (dir) => {
     setViewMonthKey((key) => {
       const [y, m] = key.split('-').map(Number);
       const d = new Date(y, m - 1 + dir, 1);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     });
-  }, []);
+  };
 
   const canGoNext = effectiveKey < currentMonthKey;
 
@@ -81,7 +82,7 @@ export default function CategoriesScreen({
 
   const monthLabelText = monthKeyLabel(effectiveKey, language);
 
-  const handleSaveCategory = useCallback((cat) => {
+  const handleSaveCategory = (cat) => {
     if (cat._editing) {
       const { _editing, ...cleaned } = cat;
       onUpdateCategory(cleaned);
@@ -89,14 +90,14 @@ export default function CategoriesScreen({
       onAddCategory(cat);
     }
     setModalCategory(null);
-  }, [onAddCategory, onUpdateCategory]);
+  };
 
-  const handleDeleteFromModal = useCallback(() => {
+  const handleDeleteFromModal = () => {
     if (modalCategory && modalCategory !== 'new') {
       onDeleteCategory(modalCategory.id);
       setModalCategory(null);
     }
-  }, [modalCategory, onDeleteCategory]);
+  };
 
   if (!loaded) return <View style={styles.container} />;
 
@@ -215,7 +216,7 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId
   }, [categoryRows, customWithout]);
 
   const [order, setOrder] = useState(null);
-  const orderKey = userId && userId !== 'local' ? `${ORDER_KEY_BASE}:${userId}` : ORDER_KEY_BASE;
+  const orderKey = userId && userId !== LOCAL_USER ? `${ORDER_KEY_BASE}:${userId}` : ORDER_KEY_BASE;
 
   useEffect(() => {
     AsyncStorage.getItem(orderKey).then((raw) => {

@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { fonts, spacing, useTheme } from '../theme';
