@@ -1,4 +1,4 @@
-export const CATEGORIES = [
+const CATEGORIES = [
   { id: 'food', label: 'Food', emoji: 'hamburger-01', color: '#D97706', external: false },
   { id: 'groceries', label: 'Groceries', emoji: 'shopping-cart-01', color: '#34A05F', external: false },
   { id: 'transport', label: 'Transport', emoji: 'taxi', color: '#3193CE', external: false },
@@ -8,6 +8,8 @@ export const CATEGORIES = [
   { id: 'bills', label: 'Bills', emoji: 'invoice-01', color: '#C29213', external: true },
   { id: 'other', label: 'Other', emoji: 'sparkles', color: '#8A7A66', external: false },
 ];
+
+const FALLBACK_CATEGORY = CATEGORIES.find((c) => c.id === 'other');
 
 let _custom = [];
 
@@ -28,7 +30,7 @@ export function getExternalAll() {
 }
 
 export function getCategory(id) {
-  return getAllCategories().find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+  return getAllCategories().find((c) => c.id === id) ?? FALLBACK_CATEGORY;
 }
 
 export function getCategoryLabel(category, t) {

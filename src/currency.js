@@ -24,5 +24,5 @@ export function convert(amount, fromCurrency, toCurrency) {
 
 // Unknown codes (stale stored data) fall back to USD so old entries still render.
 export function getCurrency(code) {
-  return CURRENCIES.find((c) => c.code === code) ?? CURRENCIES[0];
+  return CURRENCIES.find((c) => c.code === code) ?? CURRENCIES.find((c) => c.code === DEFAULT_CURRENCY);
 }

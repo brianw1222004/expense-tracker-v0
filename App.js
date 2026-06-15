@@ -53,7 +53,7 @@ import { supabase, isSupabaseConfigured } from './src/supabase';
 import { buildDemoExpenses } from './src/demoData';
 import { convert, getCurrency } from './src/currency';
 import { getCategory, setCustomCategories, getAllCategories, getRegularAll, getExternalAll } from './src/categories';
-import { dateKey, dayLabel, monthKeyLabel } from './src/format';
+import { dateKey } from './src/format';
 import { ThemeProvider, getTheme } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 
@@ -648,7 +648,7 @@ function deriveViewData(expenses, displayCurrency, language) {
     if (key === todayKey) todayTotal += displayAmount;
 
     if (!byDay.has(key)) {
-      byDay.set(key, { title: dayLabel(expense.createdAt, language), total: 0, data: [] });
+      byDay.set(key, { total: 0, data: [] });
     }
     const day = byDay.get(key);
     day.total += displayAmount;
@@ -657,15 +657,12 @@ function deriveViewData(expenses, displayCurrency, language) {
     if (!byMonth.has(mKey)) {
       byMonth.set(mKey, {
         key: mKey,
-        label: monthKeyLabel(mKey, language),
         total: 0,
-        count: 0,
         byCategory: {},
       });
     }
     const month = byMonth.get(mKey);
     month.total += displayAmount;
-    month.count += 1;
     month.byCategory[catId] = (month.byCategory[catId] ?? 0) + displayAmount;
   }
 
