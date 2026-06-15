@@ -110,12 +110,6 @@ export default function ExpenseListScreen({
     );
   };
 
-  const confirmDelete = () => {
-    if (!pendingDelete) return;
-    onDelete(pendingDelete.id);
-    setPendingDelete(null);
-  };
-
   const [sy, sm, sd] = selectedDate.split('-').map(Number);
   const selectedDayText = dayLabel(new Date(sy, sm - 1, sd).getTime(), language);
   const selectedInMonth = selectedDate.startsWith(`${calYear}-${pad2(calMonth + 1)}`);
@@ -325,7 +319,7 @@ export default function ExpenseListScreen({
                 <Text style={styles.modalBtnCancelText}>{t('common.cancel')}</Text>
               </Pressable>
               <Pressable
-                onPress={confirmDelete}
+                onPress={() => { onDelete(pendingDelete.id); setPendingDelete(null); }}
                 accessibilityRole="button"
                 style={({ pressed }) => [
                   styles.modalBtn,

@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
@@ -46,6 +47,9 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
   const t = useT();
   const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const { width: screenWidth } = useWindowDimensions();
+  const catItemWidth = (screenWidth - spacing.lg * 4) / 4;
 
   const isEdit = editExpense != null;
 
@@ -124,14 +128,6 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
     onSubmit(data);
     if (!isEdit) reset();
     Keyboard.dismiss();
-  };
-
-  const pickCurrency = (code) => {
-    setManualCurrency(code);
-  };
-
-  const handleAmountChange = (text) => {
-    setAmountText(text.replace(/[^0-9.,]/g, ''));
   };
 
   const pickCategory = (id) => {
@@ -319,7 +315,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
           <TextInput
             style={styles.amountInput}
             value={amountText}
-            onChangeText={handleAmountChange}
+            onChangeText={(text) => setAmountText(text.replace(/[^0-9.,]/g, ''))}
             placeholder={currency.decimals === 0 ? '0' : '0.00'}
             placeholderTextColor={colors.textMuted}
             keyboardType={currency.decimals === 0 ? 'number-pad' : 'decimal-pad'}
@@ -340,7 +336,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
             return (
               <Pressable
                 key={option.code}
-                onPress={() => pickCurrency(option.code)}
+                onPress={() => setManualCurrency(option.code)}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 style={({ pressed }) => [
@@ -377,29 +373,54 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
           <Text style={styles.noteCounter}>{note.length}/{NOTE_MAX_LENGTH}</Text>
         </View>
 
-        <View style={styles.categoryGrid}>
-          {categories.map((category) => {
-            const selected = category.id === categoryId;
-            return (
-              <Pressable
-                key={category.id}
-                onPress={() => pickCategory(category.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                style={({ pressed }) => [
-                  styles.categoryChip,
-                  selected && { backgroundColor: `${category.color}33`, borderColor: category.color },
-                  pressed && !selected && styles.chipPressed,
-                ]}
-              >
-                <HIcon name={category.emoji} size={22} color={category.color} />
-                <Text style={[styles.categoryLabel, selected && { color: colors.textPrimary }]}>
-                  {getCategoryLabel(category, t)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoryScroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View>
+            {[categories.slice(0, Math.ceil(categories.length / 2)),
+              categories.slice(Math.ceil(categories.length / 2))].map((row, ri) => (
+              <View key={ri} style={styles.categoryRow}>
+                {row.map((category) => {
+                  const selected = category.id === categoryId;
+                  return (
+                    <Pressable
+                      key={category.id}
+                      onPress={() => pickCategory(category.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      style={[styles.categoryItem, { width: catItemWidth }]}
+                    >
+                      <View
+                        style={[
+                          styles.categoryCircle,
+                          { backgroundColor: `${category.color}1A` },
+                          selected && {
+                            backgroundColor: `${category.color}33`,
+                            borderColor: category.color,
+                          },
+                        ]}
+                      >
+                        <HIcon name={category.emoji} size={22} color={category.color} />
+                      </View>
+                      <Text
+                        style={[
+                          styles.categoryLabel,
+                          selected && styles.categoryLabelSelected,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {getCategoryLabel(category, t)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
 
         <Pressable
           onPress={handleSubmit}
@@ -543,26 +564,35 @@ const createStyles = (colors) =>
       fontSize: 12,
       marginLeft: spacing.sm,
     },
-    categoryGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
+    categoryScroll: {
       marginBottom: spacing.md,
+      flexGrow: 0,
     },
-    categoryChip: {
+    categoryRow: {
       flexDirection: 'row',
+    },
+    categoryItem: {
       alignItems: 'center',
-      backgroundColor: colors.card,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: 'transparent',
-      paddingHorizontal: spacing.sm + 4,
       paddingVertical: spacing.sm,
+    },
+    categoryCircle: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2.5,
+      borderColor: 'transparent',
     },
     categoryLabel: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 12,
+      marginTop: spacing.xs,
+      textAlign: 'center',
+    },
+    categoryLabelSelected: {
+      color: colors.textPrimary,
     },
     dateSection: {
       marginBottom: spacing.md,

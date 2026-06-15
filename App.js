@@ -6,6 +6,7 @@ import {
   AppState,
   Easing,
   Keyboard,
+  PanResponder,
   Platform,
   StyleSheet,
   useWindowDimensions,
@@ -57,6 +58,7 @@ import { ThemeProvider, getTheme } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 
 const TAB_INDEX = { dashboard: 0, list: 1, categories: 2, account: 3 };
+const TAB_NAMES = ['dashboard', 'list', 'categories', 'account'];
 
 export default function App() {
   // Caladea is the open, metric-compatible stand-in for Cambria (the requested
@@ -87,10 +89,14 @@ function ExpenseTracker() {
   // skips auth entirely (sessionLoaded starts true, userId is LOCAL_USER).
   const [session, setSession] = useState(null);
   const [sessionLoaded, setSessionLoaded] = useState(!isSupabaseConfigured);
-  const [tab, setTab] = useState('dashboard'); // 'dashboard' | 'list' | 'categories' | 'account'
+  const [tab, setTab] = useState('dashboard');
   const [prevTab, setPrevTab] = useState('dashboard');
   const slideAnim = useRef(new Animated.Value(1)).current;
   const slideDirRef = useRef(1);
+  const tabRef = useRef('dashboard');
+  const swipingRef = useRef(false);
+  const prevTabRef = useRef('dashboard');
+  const swipeDirRef = useRef(0);
   // The budget editor sheet sits over whichever tab is active.
   const [overlay, setOverlay] = useState(null); // null | 'budget'
   // The add-expense popup sits over whichever tab is active.
@@ -160,7 +166,13 @@ function ExpenseTracker() {
       if (!active || !result) return;
       setExpenses(applyPendingOps(userId, result.expenses));
       if (result.settings && settingsVersionRef.current === versionBeforeSync) {
-        setSettings((prev) => ({ ...prev, ...result.settings }));
+        setSettings((prev) => {
+          const merged = { ...prev, ...result.settings };
+          if (!merged.onboardingDone && result.expenses.length > 0) merged.onboardingDone = true;
+          return merged;
+        });
+      } else if (!result.settings && result.expenses.length > 0) {
+        setSettings((prev) => prev.onboardingDone ? prev : { ...prev, onboardingDone: true });
       }
     })();
     return () => {
@@ -283,22 +295,97 @@ function ExpenseTracker() {
 
   const changeTab = useCallback(
     (next) => {
-      if (next === tab) return;
+      const cur = tabRef.current;
+      if (next === cur) return;
+      swipingRef.current = false;
       Keyboard.dismiss();
       slideAnim.stopAnimation();
-      slideDirRef.current = TAB_INDEX[next] > TAB_INDEX[tab] ? 1 : -1;
-      setPrevTab(tab);
+      slideDirRef.current = TAB_INDEX[next] > TAB_INDEX[cur] ? 1 : -1;
+      setPrevTab(cur);
+      prevTabRef.current = cur;
       setTab(next);
+      tabRef.current = next;
       slideAnim.setValue(0);
       Animated.timing(slideAnim, {
         toValue: 1,
-        duration: 250,
+        duration: 300,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-      }).start();
+      }).start(() => {
+        setPrevTab(next);
+      });
     },
-    [tab, slideAnim]
+    [slideAnim]
   );
+
+  const swipePanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, g) => {
+      if (swipingRef.current) return true;
+      if (Math.abs(g.dx) > 30 && Math.abs(g.dx) > Math.abs(g.dy) * 2) {
+        swipeDirRef.current = g.dx < 0 ? 1 : -1;
+        const nextIdx = TAB_INDEX[tabRef.current] + swipeDirRef.current;
+        if (nextIdx < 0 || nextIdx > 3) return false;
+        return true;
+      }
+      return false;
+    },
+    onPanResponderGrant: () => {
+      const cur = tabRef.current;
+      const dir = swipeDirRef.current;
+      const nextIdx = TAB_INDEX[cur] + dir;
+      if (nextIdx < 0 || nextIdx > 3) return;
+      swipingRef.current = true;
+      Keyboard.dismiss();
+      slideDirRef.current = dir;
+      prevTabRef.current = cur;
+      setPrevTab(cur);
+      setTab(TAB_NAMES[nextIdx]);
+      tabRef.current = TAB_NAMES[nextIdx];
+      slideAnim.setValue(0);
+    },
+    onPanResponderMove: (_, g) => {
+      if (!swipingRef.current) return;
+      const progress = Math.min(1, Math.max(0, Math.abs(g.dx) / screenWidth));
+      slideAnim.setValue(progress);
+    },
+    onPanResponderRelease: (_, g) => {
+      if (!swipingRef.current) return;
+      swipingRef.current = false;
+      const progress = Math.abs(g.dx) / screenWidth;
+      const velocity = Math.abs(g.vx);
+      if (progress > 0.3 || velocity > 0.5) {
+        Animated.timing(slideAnim, {
+          toValue: 1,
+          duration: Math.max(100, 200 * (1 - progress)),
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start();
+      } else {
+        const orig = prevTabRef.current;
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: Math.max(100, 200 * progress),
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start(() => {
+          setTab(orig);
+          tabRef.current = orig;
+          setPrevTab(orig);
+          slideAnim.setValue(1);
+        });
+      }
+    },
+    onPanResponderTerminate: () => {
+      if (!swipingRef.current) return;
+      swipingRef.current = false;
+      const orig = prevTabRef.current;
+      setTab(orig);
+      tabRef.current = orig;
+      setPrevTab(orig);
+      slideAnim.setValue(1);
+    },
+  }), [slideAnim, screenWidth]);
 
   const screenStyle = (screenTab) => {
     if (prevTab === tab) {
@@ -308,7 +395,7 @@ function ExpenseTracker() {
     if (screenTab === tab) {
       return {
         zIndex: 2,
-        opacity: 1,
+        opacity: slideAnim.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0.3, 1, 1] }),
         transform: [
           {
             translateX: slideAnim.interpolate({
@@ -322,12 +409,12 @@ function ExpenseTracker() {
     if (screenTab === prevTab) {
       return {
         zIndex: 1,
-        opacity: 1,
+        opacity: slideAnim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [1, 0, 0] }),
         transform: [
           {
             translateX: slideAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [0, -dir * screenWidth],
+              outputRange: [0, -dir * screenWidth * 0.5],
             }),
           },
         ],
@@ -374,36 +461,26 @@ function ExpenseTracker() {
   const regularCategories = useMemo(() => getRegularAll(), [settings.customCategories]);
   const externalCategories = useMemo(() => getExternalAll(), [settings.customCategories]);
 
+  const modifyCustomCategories = useCallback((fn) => {
+    setSettings((prev) => ({
+      ...prev,
+      customCategories: fn(prev.customCategories || []),
+    }));
+  }, []);
+
   const addCustomCategory = useCallback(
-    (category) => {
-      setSettings((prev) => ({
-        ...prev,
-        customCategories: [...(prev.customCategories || []), category],
-      }));
-    },
-    []
+    (category) => modifyCustomCategories((cats) => [...cats, category]),
+    [modifyCustomCategories]
   );
 
   const deleteCustomCategory = useCallback(
-    (id) => {
-      setSettings((prev) => ({
-        ...prev,
-        customCategories: (prev.customCategories || []).filter((c) => c.id !== id),
-      }));
-    },
-    []
+    (id) => modifyCustomCategories((cats) => cats.filter((c) => c.id !== id)),
+    [modifyCustomCategories]
   );
 
   const updateCustomCategory = useCallback(
-    (updated) => {
-      setSettings((prev) => ({
-        ...prev,
-        customCategories: (prev.customCategories || []).map((c) =>
-          c.id === updated.id ? updated : c
-        ),
-      }));
-    },
-    []
+    (updated) => modifyCustomCategories((cats) => cats.map((c) => c.id === updated.id ? updated : c)),
+    [modifyCustomCategories]
   );
 
   const { sections, months, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount, dailyTotals } =
@@ -431,7 +508,7 @@ function ExpenseTracker() {
   } else {
     content = (
       <>
-        <View style={styles.content}>
+        <View style={styles.content} {...swipePanResponder.panHandlers}>
           <Animated.View style={[styles.screen, screenStyle('dashboard')]} pointerEvents={tab === 'dashboard' ? 'auto' : 'none'}>
             <DashboardScreen
               loaded={loaded}
@@ -473,6 +550,7 @@ function ExpenseTracker() {
               hasExpenses={hasExpenses}
               displayCurrency={displayCurrency}
               allCategories={allCategories}
+              userId={userId}
               onAddPress={() => setAddOpen(true)}
               onLoadDemo={loadDemo}
               onAddCategory={addCustomCategory}
@@ -594,16 +672,12 @@ function deriveViewData(expenses, displayCurrency, language) {
         total: 0,
         count: 0,
         byCategory: {},
-        largestExpense: null,
       });
     }
     const month = byMonth.get(mKey);
     month.total += displayAmount;
     month.count += 1;
     month.byCategory[catId] = (month.byCategory[catId] ?? 0) + displayAmount;
-    if (!month.largestExpense || displayAmount > month.largestExpense.displayAmount) {
-      month.largestExpense = { note: expense.note, category: catId, displayAmount, createdAt: expense.createdAt };
-    }
   }
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();

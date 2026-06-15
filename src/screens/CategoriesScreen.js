@@ -1,13 +1,15 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
-import { useT, useLanguage, getDateNames } from '../i18n';
+import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
-import { getCategory, getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
-import { getCurrency } from '../currency';
+import { getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
+
+const ORDER_KEY_BASE = 'category_order';
 
 const DONUT_SIZE = 160;
 const DONUT_STROKE = 16;
@@ -23,6 +25,7 @@ export default function CategoriesScreen({
   hasExpenses,
   displayCurrency,
   allCategories,
+  userId,
   onAddPress,
   onLoadDemo,
   onAddCategory,
@@ -33,32 +36,24 @@ export default function CategoriesScreen({
   const t = useT();
   const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [modalCategory, setModalCategory] = useState(null); // null = closed, 'new' = add, object = edit
-
-  const sortedMonthKeys = useMemo(
-    () => months.map((m) => m.key).sort(),
-    [months]
-  );
+  const [modalCategory, setModalCategory] = useState(null);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   const [viewMonthKey, setViewMonthKey] = useState(currentMonthKey);
-  const effectiveKey = sortedMonthKeys.includes(viewMonthKey) ? viewMonthKey : currentMonthKey;
-
-  const monthsByKey = useMemo(() => new Map(months.map((m) => [m.key, m])), [months]);
+  const effectiveKey = months.some((m) => m.key === viewMonthKey) ? viewMonthKey : currentMonthKey;
 
   const viewMonth = useMemo(
-    () => monthsByKey.get(effectiveKey) ?? { key: effectiveKey, total: 0, byCategory: {} },
-    [monthsByKey, effectiveKey]
+    () => months.find((m) => m.key === effectiveKey) ?? { key: effectiveKey, total: 0, byCategory: {} },
+    [months, effectiveKey]
   );
 
-  const prevMonthKey = useMemo(() => {
-    const [y, m] = effectiveKey.split('-').map(Number);
-    const d = new Date(y, m - 2, 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }, [effectiveKey]);
+  const [py, pm] = effectiveKey.split('-').map(Number);
+  const prevD = new Date(py, pm - 2, 1);
+  const prevMonthKey = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}`;
 
   const prevMonth = useMemo(
-    () => monthsByKey.get(prevMonthKey) ?? { key: prevMonthKey, total: 0, byCategory: {} },
-    [monthsByKey, prevMonthKey]
+    () => months.find((m) => m.key === prevMonthKey) ?? { key: prevMonthKey, total: 0, byCategory: {} },
+    [months, prevMonthKey]
   );
 
   const shiftMonth = useCallback((dir) => {
@@ -83,12 +78,8 @@ export default function CategoriesScreen({
       .sort((a, b) => b.thisVal - a.thisVal || b.lastVal - a.lastVal);
   }, [allCategories, viewMonth, prevMonth]);
 
-  const eps = 0.5 / 10 ** getCurrency(displayCurrency).decimals;
 
-  const monthLabelText = useMemo(
-    () => monthKeyLabel(effectiveKey, language),
-    [effectiveKey, language]
-  );
+  const monthLabelText = monthKeyLabel(effectiveKey, language);
 
   const handleSaveCategory = useCallback((cat) => {
     if (cat._editing) {
@@ -134,6 +125,7 @@ export default function CategoriesScreen({
       style={styles.container}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.content}
+      scrollEnabled={scrollEnabled}
     >
       <Text style={styles.title}>{t('cats.title')}</Text>
 
@@ -164,120 +156,28 @@ export default function CategoriesScreen({
             <HIcon name="chevron-right" size={20} color={colors.icon} />
           </Pressable>
         </View>
-        <View style={styles.donutRow}>
-          <CategoryDonut
-            byCategory={viewMonth.byCategory}
-            total={viewMonth.total}
-            displayCurrency={displayCurrency}
-            allCategories={allCategories}
-            colors={colors}
-            styles={styles}
-          />
-
-          <View style={styles.bigExpenseColumn}>
-            {viewMonth.largestExpense ? (() => {
-              const ts = viewMonth.largestExpense.createdAt;
-              const d = ts ? new Date(ts) : null;
-              const dayNum = d ? d.getDate() : '';
-              const monthAbbr = d ? getDateNames(language).monthsShort[d.getMonth()] : '';
-              return (
-                <>
-                  <Text style={styles.topCategoryTitle} numberOfLines={1}>
-                    {t('cats.topExpense')} {getCategoryLabel(getCategory(viewMonth.largestExpense.category), t)}
-                  </Text>
-                  <View style={styles.bigExpenseCard}>
-                    {d && <Text style={styles.bigExpenseDate}>{monthAbbr} {dayNum}</Text>}
-                    <Text style={styles.bigExpenseName} numberOfLines={1}>
-                      {viewMonth.largestExpense.note || getCategoryLabel(getCategory(viewMonth.largestExpense.category), t)}
-                    </Text>
-                    <Text style={styles.bigExpenseAmount}>
-                      {formatMoneyShort(viewMonth.largestExpense.displayAmount, displayCurrency)}
-                    </Text>
-                  </View>
-                </>
-              );
-            })() : (
-              <Text style={styles.topCategoryEmpty}>{t('cats.topExpenseEmpty')}</Text>
-            )}
-          </View>
-        </View>
+        <CategoryDonut
+          byCategory={viewMonth.byCategory}
+          total={viewMonth.total}
+          displayCurrency={displayCurrency}
+          allCategories={allCategories}
+          colors={colors}
+          styles={styles}
+        />
       </View>
 
-      {/* Category spending rows — custom ones are tappable */}
-      {categoryRows.map(({ category, thisVal, lastVal }) => {
-        const pct = viewMonth.total > 0 ? (thisVal / viewMonth.total) * 100 : 0;
-        const delta = lastVal > 0 ? ((thisVal - lastVal) / lastVal) * 100 : null;
-        const isCustom = category.custom;
-
-        const row = (
-          <View style={styles.catRowInner}>
-            <View style={[styles.catDot, { backgroundColor: category.color }]} />
-            <View style={styles.catIcon}>
-              <HIcon name={category.emoji} size={18} color={category.color} />
-            </View>
-            <Text style={styles.catName} numberOfLines={1}>
-              {getCategoryLabel(category, t)}
-            </Text>
-            <View style={styles.catRight}>
-              <Text style={styles.catAmount}>
-                {formatMoneyShort(thisVal, displayCurrency)}
-              </Text>
-              {delta !== null && Math.abs(thisVal - lastVal) >= eps ? (
-                <Text style={[styles.catDelta, { color: delta > 0 ? colors.danger : colors.success }]}>
-                  {delta > 0 ? '+' : ''}{Math.round(delta)}%
-                </Text>
-              ) : delta === null && thisVal > 0 ? (
-                <Text style={[styles.catDelta, { color: colors.textMuted }]}>new</Text>
-              ) : (
-                <Text style={[styles.catDelta, { color: colors.textMuted }]}>
-                  {Math.round(pct)}%
-                </Text>
-              )}
-            </View>
-          </View>
-        );
-
-        const tint = { backgroundColor: `${category.color}0A`, borderLeftWidth: 3, borderLeftColor: `${category.color}33` };
-
-        if (isCustom) {
-          return (
-            <Pressable
-              key={category.id}
-              onPress={() => setModalCategory(category)}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.catRow, tint, pressed && styles.catRowPressed]}
-            >
-              {row}
-            </Pressable>
-          );
-        }
-        return <View key={category.id} style={[styles.catRow, tint]}>{row}</View>;
-      })}
-
-      {/* Custom categories without spending still need to be editable */}
-      {(allCategories ?? [])
-        .filter((c) => c.custom && !categoryRows.some((r) => r.category.id === c.id))
-        .map((cat) => (
-          <Pressable
-            key={cat.id}
-            onPress={() => setModalCategory(cat)}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.catRow,
-              { backgroundColor: `${cat.color}0A`, borderLeftWidth: 3, borderLeftColor: `${cat.color}33` },
-              pressed && styles.catRowPressed,
-            ]}
-          >
-            <View style={styles.catRowInner}>
-              <View style={[styles.catDot, { backgroundColor: cat.color }]} />
-              <View style={styles.catIcon}>
-                <HIcon name={cat.emoji} size={18} color={cat.color} />
-              </View>
-              <Text style={styles.catName} numberOfLines={1}>{cat.label}</Text>
-              <Text style={[styles.catDelta, { color: colors.textMuted }]}>—</Text>
-            </View>
-          </Pressable>
-        ))}
+      {/* Category spending grid — draggable */}
+      <DraggableCatGrid
+        categoryRows={categoryRows}
+        allCategories={allCategories}
+        displayCurrency={displayCurrency}
+        userId={userId}
+        colors={colors}
+        styles={styles}
+        t={t}
+        onEditCategory={setModalCategory}
+        onDragStateChange={setScrollEnabled}
+      />
 
       {categoryRows.length === 0 && !(allCategories ?? []).some((c) => c.custom) && (
         <Text style={styles.noCats}>{t('cats.emptyHint')}</Text>
@@ -295,6 +195,165 @@ export default function CategoriesScreen({
       />
 
     </ScrollView>
+  );
+}
+
+function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId, colors, styles, t, onEditCategory, onDragStateChange }) {
+  const customWithout = useMemo(
+    () => (allCategories ?? []).filter((c) => c.custom && !categoryRows.some((r) => r.category.id === c.id)),
+    [allCategories, categoryRows]
+  );
+
+  const defaultItems = useMemo(() => {
+    const spending = categoryRows.map(({ category, thisVal, lastVal }) => ({
+      id: category.id, category, thisVal, lastVal,
+    }));
+    const custom = customWithout.map((cat) => ({
+      id: cat.id, category: cat, thisVal: 0, lastVal: 0,
+    }));
+    return [...spending, ...custom];
+  }, [categoryRows, customWithout]);
+
+  const [order, setOrder] = useState(null);
+  const orderKey = userId && userId !== 'local' ? `${ORDER_KEY_BASE}:${userId}` : ORDER_KEY_BASE;
+
+  useEffect(() => {
+    AsyncStorage.getItem(orderKey).then((raw) => {
+      if (raw) setOrder(JSON.parse(raw));
+    }).catch(() => {});
+  }, [orderKey]);
+
+  const items = useMemo(() => {
+    if (!order) return defaultItems;
+    const byId = new Map(defaultItems.map((it) => [it.id, it]));
+    const ordered = order.filter((id) => byId.has(id)).map((id) => byId.get(id));
+    const remaining = defaultItems.filter((it) => !order.includes(it.id));
+    return [...ordered, ...remaining];
+  }, [defaultItems, order]);
+
+  const saveOrder = useCallback((ids) => {
+    setOrder(ids);
+    AsyncStorage.setItem(orderKey, JSON.stringify(ids)).catch(() => {});
+  }, [orderKey]);
+
+  const [dragIndex, setDragIndex] = useState(-1);
+  const pan = useRef(new Animated.ValueXY()).current;
+  const cellLayouts = useRef({});
+  const dragOrigin = useRef({ x: 0, y: 0 });
+  const dragIndexRef = useRef(-1);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+
+  useEffect(() => { dragIndexRef.current = dragIndex; }, [dragIndex]);
+
+  const endDrag = useCallback(() => {
+    Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start(() => {
+      setDragIndex(-1);
+      dragIndexRef.current = -1;
+      pan.setValue({ x: 0, y: 0 });
+      onDragStateChange(true);
+    });
+  }, [pan, onDragStateChange]);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, g) => dragIndexRef.current >= 0 && (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
+    onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+    onPanResponderRelease: (_, g) => {
+      const di = dragIndexRef.current;
+      if (di < 0) return;
+      const dropX = dragOrigin.current.x + g.dx;
+      const dropY = dragOrigin.current.y + g.dy;
+      let targetIdx = di;
+      let minDist = Infinity;
+      Object.entries(cellLayouts.current).forEach(([idx, layout]) => {
+        const cx = layout.x + layout.width / 2;
+        const cy = layout.y + layout.height / 2;
+        const dist = Math.sqrt((dropX - cx) ** 2 + (dropY - cy) ** 2);
+        if (dist < minDist) { minDist = dist; targetIdx = Number(idx); }
+      });
+      if (targetIdx !== di) {
+        const cur = [...itemsRef.current];
+        const [moved] = cur.splice(di, 1);
+        cur.splice(targetIdx, 0, moved);
+        saveOrder(cur.map((it) => it.id));
+      }
+      endDrag();
+    },
+    onPanResponderTerminate: () => endDrag(),
+  }), [pan, saveOrder, endDrag]);
+
+  const startDrag = useCallback((index) => {
+    const layout = cellLayouts.current[index];
+    if (layout) {
+      dragOrigin.current = { x: layout.x + layout.width / 2, y: layout.y + layout.height / 2 };
+    }
+    pan.setValue({ x: 0, y: 0 });
+    dragIndexRef.current = index;
+    setDragIndex(index);
+    onDragStateChange(false);
+  }, [pan, onDragStateChange]);
+
+  return (
+    <View
+      style={styles.catGrid}
+      {...panResponder.panHandlers}
+    >
+      {items.map((item, i) => {
+        const { category, thisVal, lastVal } = item;
+        const isCustom = category.custom;
+        const delta = lastVal > 0 ? ((thisVal - lastVal) / lastVal) * 100 : null;
+        const isDragging = dragIndex === i;
+        const tint = { backgroundColor: `${category.color}0A`, borderLeftWidth: 3, borderLeftColor: `${category.color}33` };
+
+        const content = (
+          <View style={styles.catRowInner}>
+            <View style={[styles.catIconBox, { backgroundColor: `${category.color}20` }]}>
+              <HIcon name={category.emoji} size={22} color={category.color} />
+            </View>
+            <View style={styles.catContent}>
+              <Text style={styles.catName} numberOfLines={1}>
+                {thisVal > 0 || lastVal > 0 ? getCategoryLabel(category, t) : category.label}
+              </Text>
+              {(thisVal > 0 || lastVal > 0) && (
+                <>
+                  <Text style={styles.catMonthVal}>{formatMoneyShort(thisVal, displayCurrency)}</Text>
+                  {delta !== null ? (
+                    <Text style={[styles.catDelta, { color: delta > 0 ? colors.danger : delta < 0 ? colors.success : colors.textMuted }]}>
+                      {delta > 0 ? '+' : ''}{Math.round(delta)}%
+                    </Text>
+                  ) : thisVal > 0 ? (
+                    <Text style={[styles.catDelta, { color: colors.textMuted }]}>{t('cats.newCat')}</Text>
+                  ) : null}
+                </>
+              )}
+            </View>
+          </View>
+        );
+
+        const animStyle = isDragging
+          ? { transform: pan.getTranslateTransform(), zIndex: 10, elevation: 10, opacity: 0.9 }
+          : undefined;
+
+        return (
+          <Animated.View
+            key={item.id}
+            style={[styles.catRow, tint, animStyle]}
+            onLayout={(e) => { cellLayouts.current[i] = e.nativeEvent.layout; }}
+          >
+            <Pressable
+              onLongPress={() => startDrag(i)}
+              onPress={isCustom ? () => onEditCategory(category) : undefined}
+              delayLongPress={200}
+              accessibilityRole="button"
+              style={({ pressed }) => [pressed && !isDragging && styles.catRowPressed]}
+            >
+              {content}
+            </Pressable>
+          </Animated.View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -561,54 +620,7 @@ const createStyles = (colors) =>
       minWidth: 100,
       textAlign: 'center',
     },
-    donutRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.lg,
-    },
-    bigExpenseColumn: {
-      flex: 1,
-      gap: spacing.sm,
-      alignItems: 'center',
-    },
-    topCategoryTitle: {
-      fontFamily: fonts.bold,
-      fontSize: 15,
-      color: colors.textPrimary,
-    },
-    topCategoryEmpty: {
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      color: colors.textMuted,
-    },
-    bigExpenseCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      alignSelf: 'stretch',
-      backgroundColor: colors.background,
-      borderRadius: radius.sm,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.sm,
-      gap: spacing.sm,
-    },
-    bigExpenseDate: {
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      color: colors.textMuted,
-    },
-    bigExpenseName: {
-      flex: 1,
-      fontFamily: fonts.regular,
-      fontSize: 14,
-      color: colors.textPrimary,
-    },
-    bigExpenseAmount: {
-      fontFamily: fonts.bold,
-      fontSize: 15,
-      color: colors.textPrimary,
-      fontVariant: ['tabular-nums'],
-    },
-    donut: { width: DONUT_SIZE, height: DONUT_SIZE },
+    donut: { width: DONUT_SIZE, height: DONUT_SIZE, alignSelf: 'center' },
     donutCenter: {
       alignItems: 'center',
       justifyContent: 'center',
@@ -620,10 +632,15 @@ const createStyles = (colors) =>
       fontVariant: ['tabular-nums'],
     },
 
+    catGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
     catRow: {
       backgroundColor: colors.card,
       borderRadius: radius.sm,
-      marginBottom: spacing.sm,
+      width: '48.5%',
     },
     catRowPressed: {
       backgroundColor: colors.cardPressed,
@@ -631,35 +648,36 @@ const createStyles = (colors) =>
     catRowInner: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: spacing.sm,
+      padding: spacing.sm,
+      gap: spacing.sm,
     },
-    catDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      marginRight: spacing.sm,
+    catIconBox: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    catIcon: { marginRight: spacing.sm },
-    catName: {
+    catContent: {
       flex: 1,
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 14,
-      marginRight: spacing.sm,
+      alignItems: 'center',
+      gap: spacing.xs,
     },
-    catRight: { alignItems: 'flex-end' },
-    catAmount: {
-      color: colors.textPrimary,
+    catMonthVal: {
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 18,
+      color: colors.textPrimary,
       fontVariant: ['tabular-nums'],
     },
     catDelta: {
-      fontFamily: fonts.regular,
-      fontSize: 11,
+      fontFamily: fonts.bold,
+      fontSize: 12,
       fontVariant: ['tabular-nums'],
-      marginTop: 1,
+    },
+    catName: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
     },
     noCats: {
       color: colors.textMuted,
@@ -668,8 +686,6 @@ const createStyles = (colors) =>
       textAlign: 'center',
       paddingVertical: spacing.lg,
     },
-
-    backdrop: { backgroundColor: colors.backdrop },
 
     emptyState: {
       alignItems: 'center',

@@ -62,17 +62,6 @@ export default function AuthScreen() {
     }
   };
 
-  const switchMode = () => {
-    setMode(signIn ? 'signUp' : 'signIn');
-    setError(null);
-  };
-
-  const backToSignIn = () => {
-    setMode('signIn');
-    setPassword('');
-    setError(null);
-  };
-
   if (mode === 'confirm') {
     return (
       <ScrollView
@@ -86,7 +75,7 @@ export default function AuthScreen() {
         </Text>
 
         <Pressable
-          onPress={backToSignIn}
+          onPress={() => { setMode('signIn'); setPassword(''); setError(null); }}
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.submit,
@@ -109,7 +98,7 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <HIcon name="receipt-text" size={40} color={colors.icon} />
+        <HIcon name="receipt-text" size={40} color={colors.icon} style={{ alignSelf: 'center' }} />
         <Text style={styles.title}>{t('auth.title')}</Text>
         <Text style={styles.subtitle}>
           {signIn ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}
@@ -167,7 +156,7 @@ export default function AuthScreen() {
           )}
         </Pressable>
 
-        <Pressable onPress={switchMode} hitSlop={8} accessibilityRole="button">
+        <Pressable onPress={() => { setMode(signIn ? 'signUp' : 'signIn'); setError(null); }} hitSlop={8} accessibilityRole="button">
           <Text style={styles.switchText}>
             {signIn ? t('auth.switchToSignUpPrefix') : t('auth.switchToSignInPrefix')}
             <Text style={styles.switchAction}>

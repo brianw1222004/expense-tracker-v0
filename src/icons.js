@@ -1,48 +1,17 @@
 import { HugeiconsIcon } from '@hugeicons/react-native';
 import { Text } from 'react-native';
 
-import { Hamburger01Icon } from '@hugeicons/core-free-icons';
-import { ShoppingCart01Icon } from '@hugeicons/core-free-icons';
-import { TaxiIcon } from '@hugeicons/core-free-icons';
-import { ShoppingBag01Icon } from '@hugeicons/core-free-icons';
-import { GameController01Icon } from '@hugeicons/core-free-icons';
-import { Medicine01Icon } from '@hugeicons/core-free-icons';
-import { Invoice01Icon } from '@hugeicons/core-free-icons';
-import { SparklesIcon } from '@hugeicons/core-free-icons';
-
-import { ReceiptTextIcon } from '@hugeicons/core-free-icons';
-import { GridViewIcon } from '@hugeicons/core-free-icons';
-import { UserCircleIcon } from '@hugeicons/core-free-icons';
-
-import { Home01Icon } from '@hugeicons/core-free-icons';
-import { Car01Icon } from '@hugeicons/core-free-icons';
-import { Airplane01Icon } from '@hugeicons/core-free-icons';
-import { BookHeadphonesIcon } from '@hugeicons/core-free-icons';
-import { MusicNote01Icon } from '@hugeicons/core-free-icons';
-import { LaptopIcon } from '@hugeicons/core-free-icons';
-import { SmartPhone01Icon } from '@hugeicons/core-free-icons';
-import { TShirtIcon } from '@hugeicons/core-free-icons';
-import { BlushBrush01Icon } from '@hugeicons/core-free-icons';
-import { GiftIcon } from '@hugeicons/core-free-icons';
-import { FootprintsIcon } from '@hugeicons/core-free-icons';
-import { Coffee01Icon } from '@hugeicons/core-free-icons';
-import { Pizza01Icon } from '@hugeicons/core-free-icons';
-import { BottleWineIcon } from '@hugeicons/core-free-icons';
-import { Dumbbell01Icon } from '@hugeicons/core-free-icons';
-import { GraduationCapIcon } from '@hugeicons/core-free-icons';
-import { Baby01Icon } from '@hugeicons/core-free-icons';
-import { Briefcase01Icon } from '@hugeicons/core-free-icons';
-import { Wrench01Icon } from '@hugeicons/core-free-icons';
-import { Building01Icon } from '@hugeicons/core-free-icons';
-import { Tv01Icon } from '@hugeicons/core-free-icons';
-import { Leaf01Icon } from '@hugeicons/core-free-icons';
-import { StarCircleIcon } from '@hugeicons/core-free-icons';
-
-import { Cancel01Icon } from '@hugeicons/core-free-icons';
-import { Tick01Icon } from '@hugeicons/core-free-icons';
-import { ChevronLeftIcon } from '@hugeicons/core-free-icons';
-import { ChevronRightIcon } from '@hugeicons/core-free-icons';
-import { CircleDashedIcon } from '@hugeicons/core-free-icons';
+import {
+  Hamburger01Icon, ShoppingCart01Icon, TaxiIcon, ShoppingBag01Icon,
+  GameController01Icon, Medicine01Icon, Invoice01Icon, SparklesIcon,
+  ReceiptTextIcon, GridViewIcon, UserCircleIcon,
+  Home01Icon, Car01Icon, Airplane01Icon, BookHeadphonesIcon, MusicNote01Icon,
+  LaptopIcon, SmartPhone01Icon, TShirtIcon, BlushBrush01Icon, GiftIcon,
+  FootprintsIcon, Coffee01Icon, Pizza01Icon, BottleWineIcon, Dumbbell01Icon,
+  GraduationCapIcon, Baby01Icon, Briefcase01Icon, Wrench01Icon, Building01Icon,
+  Tv01Icon, Leaf01Icon, StarCircleIcon,
+  Cancel01Icon, Tick01Icon, ChevronLeftIcon, ChevronRightIcon, CircleDashedIcon,
+} from '@hugeicons/core-free-icons';
 const REGISTRY = {
   'hamburger-01': Hamburger01Icon,
   'shopping-cart-01': ShoppingCart01Icon,
