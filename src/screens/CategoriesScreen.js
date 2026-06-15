@@ -96,7 +96,6 @@ export default function CategoriesScreen({
       .sort((a, b) => b.thisVal - a.thisVal || b.lastVal - a.lastVal);
   }, [allCategories, viewMonth, prevMonth]);
 
-
   const monthLabelText = monthKeyLabel(effectiveKey, language);
 
   const handleSaveCategory = (cat) => {
