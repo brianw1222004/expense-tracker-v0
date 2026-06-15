@@ -68,7 +68,9 @@ export default function AuthScreen() {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <HIcon name="receipt-text" size={40} color={colors.icon} />
+        <View style={{ alignSelf: 'center', marginBottom: spacing.sm }}>
+          <HIcon name="receipt-text" size={40} color={colors.icon} />
+        </View>
         <Text style={styles.title}>{t('auth.confirmTitle')}</Text>
         <Text style={styles.confirmBody}>
           {t('auth.confirmBody', { email: email.trim() })}
@@ -98,7 +100,9 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <HIcon name="receipt-text" size={40} color={colors.icon} style={{ alignSelf: 'center' }} />
+        <View style={{ alignSelf: 'center', marginBottom: spacing.sm }}>
+          <HIcon name="receipt-text" size={40} color={colors.icon} />
+        </View>
         <Text style={styles.title}>{t('auth.title')}</Text>
         <Text style={styles.subtitle}>
           {signIn ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}

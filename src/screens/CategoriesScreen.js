@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
@@ -18,6 +18,23 @@ const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2;
 const DONUT_CX = DONUT_SIZE / 2;
 const DONUT_CY = DONUT_SIZE / 2;
 const DONUT_CIRC = 2 * Math.PI * DONUT_R;
+
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => { const k = (n + h / 30) % 12; return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return '#' + [f(0), f(8), f(4)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+}
+
+const HUE_STOPS = [
+  { offset: '0%', color: '#ff0000' },
+  { offset: '16.67%', color: '#ffff00' },
+  { offset: '33.33%', color: '#00ff00' },
+  { offset: '50%', color: '#00ffff' },
+  { offset: '66.67%', color: '#0000ff' },
+  { offset: '83.33%', color: '#ff00ff' },
+  { offset: '100%', color: '#ff0000' },
+];
 
 export default function CategoriesScreen({
   months,
@@ -366,6 +383,12 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
   const [color, setColor] = useState(COLOR_OPTIONS[0]);
   const [external, setExternal] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [iconPage, setIconPage] = useState(0);
+  const [iconGridWidth, setIconGridWidth] = useState(0);
+  const [customColorActive, setCustomColorActive] = useState(false);
+  const [hue, setHue] = useState(0);
+  const sliderWidth = useRef(0);
+  const customHexColor = useMemo(() => hslToHex(hue, 80, 50), [hue]);
 
   // Reset form when modal opens/closes or editing target changes
   if (visible && !initialized) {
@@ -374,17 +397,65 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
       setEmoji(editingCategory.emoji);
       setColor(editingCategory.color);
       setExternal(editingCategory.external);
+      // If editing color is not in presets, activate custom color mode
+      const isPreset = COLOR_OPTIONS.includes(editingCategory.color);
+      setCustomColorActive(!isPreset);
     } else {
       setName('');
       setEmoji(EMOJI_OPTIONS[0]);
       setColor(COLOR_OPTIONS[0]);
       setExternal(false);
+      setCustomColorActive(false);
     }
+    setHue(0);
+    setIconPage(0);
     setInitialized(true);
   }
   if (!visible && initialized) {
     setInitialized(false);
   }
+
+  const ICONS_PER_PAGE = 14;
+  const iconPages = useMemo(() => {
+    const pages = [];
+    for (let i = 0; i < EMOJI_OPTIONS.length; i += ICONS_PER_PAGE) {
+      pages.push(EMOJI_OPTIONS.slice(i, i + ICONS_PER_PAGE));
+    }
+    return pages;
+  }, []);
+
+  const onIconScroll = useCallback((e) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const w = e.nativeEvent.layoutMeasurement.width;
+    if (w > 0) setIconPage(Math.round(x / w));
+  }, []);
+
+  const onIconGridLayout = useCallback((e) => {
+    setIconGridWidth(e.nativeEvent.layout.width);
+  }, []);
+
+  const huePanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (e) => {
+      const x = e.nativeEvent.locationX;
+      const w = sliderWidth.current;
+      if (w > 0) {
+        const newHue = Math.max(0, Math.min(360, (x / w) * 360));
+        setHue(newHue);
+        setColor(hslToHex(newHue, 80, 50));
+      }
+    },
+    onPanResponderMove: (e) => {
+      const x = e.nativeEvent.locationX;
+      const w = sliderWidth.current;
+      if (w > 0) {
+        const newHue = Math.max(0, Math.min(360, (x / w) * 360));
+        setHue(newHue);
+        setColor(hslToHex(newHue, 80, 50));
+      }
+    },
+  }), []);
 
   const canSave = name.trim().length > 0;
 
@@ -435,30 +506,127 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
             />
 
             <Text style={styles.label}>{t('cats.pickIcon')}</Text>
-            <View style={styles.grid}>
-              {EMOJI_OPTIONS.map((e) => (
-                <Pressable
-                  key={e}
-                  onPress={() => setEmoji(e)}
-                  style={[styles.gridCell, emoji === e && { backgroundColor: `${color}33`, borderColor: color }]}
+            <View onLayout={onIconGridLayout} style={styles.iconGridWrapper}>
+              {iconGridWidth > 0 && (
+                <ScrollView
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onScroll={onIconScroll}
+                  scrollEventThrottle={16}
                 >
-                  <HIcon name={e} size={22} color={emoji === e ? color : colors.icon} />
+                  {iconPages.map((page, pi) => (
+                    <View key={pi} style={[styles.grid, { width: iconGridWidth }]}>
+                      {page.map((e) => (
+                        <Pressable
+                          key={e}
+                          onPress={() => setEmoji(e)}
+                          style={[styles.gridCell, emoji === e && { backgroundColor: `${color}33`, borderColor: color }]}
+                        >
+                          <HIcon name={e} size={22} color={emoji === e ? color : colors.icon} />
+                        </Pressable>
+                      ))}
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+            {iconPages.length > 1 && (
+              <View style={styles.iconPageDots}>
+                {iconPages.map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.iconPageDot,
+                      { backgroundColor: i === iconPage ? colors.accent : colors.border },
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+
+            <Text style={styles.label}>{t('cats.pickColor')}</Text>
+            <View style={styles.grid}>
+              {/* Custom color picker cell */}
+              <Pressable
+                onPress={() => {
+                  setCustomColorActive((prev) => {
+                    if (!prev) {
+                      // Activating: set color to the current custom hex
+                      setColor(customHexColor);
+                    }
+                    return !prev;
+                  });
+                }}
+                style={[
+                  styles.colorCell,
+                  customColorActive
+                    ? { backgroundColor: customHexColor, borderColor: colors.textPrimary }
+                    : styles.customColorCellRainbow,
+                ]}
+              >
+                {customColorActive ? (
+                  <HIcon name="tick-01" size={16} color="#fff" />
+                ) : (
+                  <Svg width={28} height={28} viewBox="0 0 28 28">
+                    <Defs>
+                      <SvgLinearGradient id="rainbowGrad" x1="0" y1="0" x2="1" y2="1">
+                        {HUE_STOPS.map((s, i) => (
+                          <Stop key={i} offset={s.offset} stopColor={s.color} />
+                        ))}
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Circle cx="14" cy="14" r="12" fill="url(#rainbowGrad)" />
+                  </Svg>
+                )}
+              </Pressable>
+
+              {/* Preset color cells */}
+              {COLOR_OPTIONS.map((c) => (
+                <Pressable
+                  key={c}
+                  onPress={() => {
+                    setCustomColorActive(false);
+                    setColor(c);
+                  }}
+                  style={[styles.colorCell, { backgroundColor: c }, !customColorActive && color === c && styles.colorCellSelected]}
+                >
+                  {!customColorActive && color === c && <HIcon name="tick-01" size={16} color="#fff" />}
                 </Pressable>
               ))}
             </View>
 
-            <Text style={styles.label}>{t('cats.pickColor')}</Text>
-            <View style={styles.grid}>
-              {COLOR_OPTIONS.map((c) => (
-                <Pressable
-                  key={c}
-                  onPress={() => setColor(c)}
-                  style={[styles.colorCell, { backgroundColor: c }, color === c && styles.colorCellSelected]}
+            {/* Hue slider (visible when custom color is active) */}
+            {customColorActive && (
+              <View style={styles.hueSliderContainer}>
+                <View
+                  style={styles.hueSliderTrack}
+                  onLayout={(e) => { sliderWidth.current = e.nativeEvent.layout.width; }}
+                  {...huePanResponder.panHandlers}
                 >
-                  {color === c && <HIcon name="tick-01" size={16} color="#fff" />}
-                </Pressable>
-              ))}
-            </View>
+                  <Svg width="100%" height={24} style={styles.hueSliderSvg}>
+                    <Defs>
+                      <SvgLinearGradient id="hueBarGrad" x1="0" y1="0" x2="1" y2="0">
+                        {HUE_STOPS.map((s, i) => (
+                          <Stop key={i} offset={s.offset} stopColor={s.color} />
+                        ))}
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="100%" height="24" rx="12" fill="url(#hueBarGrad)" />
+                  </Svg>
+                  {/* Slider thumb indicator */}
+                  <View
+                    style={[
+                      styles.hueThumb,
+                      {
+                        left: `${(hue / 360) * 100}%`,
+                        backgroundColor: customHexColor,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            )}
 
             <View style={styles.switchRow}>
               <View style={styles.switchLabel}>
@@ -471,14 +639,6 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
                 trackColor={{ false: colors.border, true: colors.accent }}
                 thumbColor={colors.onAccent}
               />
-            </View>
-
-            {/* Preview */}
-            <View style={styles.preview}>
-              <View style={[styles.previewDot, { backgroundColor: color }]} />
-              <HIcon name={emoji} size={24} color={color} />
-              <Text style={styles.previewName}>{name || t('cats.categoryName')}</Text>
-              {external && <Text style={styles.previewBadge}>{t('cats.external')}</Text>}
             </View>
 
             <Pressable
@@ -787,11 +947,25 @@ const createModalStyles = (colors) =>
       fontSize: 16,
       marginBottom: spacing.xs,
     },
+    iconGridWrapper: {
+      marginBottom: spacing.xs,
+    },
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.xs + 2,
       marginBottom: spacing.xs,
+    },
+    iconPageDots: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: spacing.xs + 2,
+      marginBottom: spacing.xs,
+    },
+    iconPageDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
     },
     gridCell: {
       width: 40,
@@ -815,6 +989,40 @@ const createModalStyles = (colors) =>
     colorCellSelected: {
       borderColor: colors.textPrimary,
     },
+    customColorCellRainbow: {
+      backgroundColor: colors.card,
+      borderWidth: 2,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    hueSliderContainer: {
+      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.xs,
+    },
+    hueSliderTrack: {
+      height: 24,
+      borderRadius: 12,
+      overflow: 'visible',
+      position: 'relative',
+    },
+    hueSliderSvg: {
+      borderRadius: 12,
+    },
+    hueThumb: {
+      position: 'absolute',
+      top: -2,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      marginLeft: -14,
+      borderWidth: 3,
+      borderColor: '#ffffff',
+      elevation: 4,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+    },
     switchRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -835,36 +1043,6 @@ const createModalStyles = (colors) =>
       fontFamily: fonts.regular,
       fontSize: 12,
       marginTop: 2,
-    },
-    preview: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.card,
-      borderRadius: radius.sm,
-      padding: spacing.sm + 2,
-      marginBottom: spacing.md,
-    },
-    previewDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      marginRight: spacing.sm,
-    },
-    previewName: {
-      flex: 1,
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 14,
-    },
-    previewBadge: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 11,
-      backgroundColor: colors.background,
-      borderRadius: 6,
-      paddingHorizontal: spacing.xs + 2,
-      paddingVertical: 2,
-      overflow: 'hidden',
     },
     saveBtn: {
       backgroundColor: colors.accent,

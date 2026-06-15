@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Keyboard,
@@ -21,6 +21,7 @@ import { buildCalendarWeeks, dateKey, dayLabel, monthLabel } from '../format';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const NOTE_MAX_LENGTH = 20;
 const COLOR_MS = 350;
+const CATS_PER_PAGE = 8;
 
 // The chosen day at 12:00 local — keeps the entry safely inside the day even
 // across DST shifts, while today keeps the real timestamp (set on submit).
@@ -49,7 +50,22 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const { width: screenWidth } = useWindowDimensions();
-  const catItemWidth = (screenWidth - spacing.lg * 4) / 4;
+  const catPageWidth = screenWidth - spacing.lg * 4;
+  const catItemWidth = catPageWidth / 4;
+
+  const categoryPages = useMemo(() => {
+    const pages = [];
+    for (let i = 0; i < categories.length; i += CATS_PER_PAGE) {
+      pages.push(categories.slice(i, i + CATS_PER_PAGE));
+    }
+    return pages;
+  }, [categories]);
+
+  const [catPage, setCatPage] = useState(0);
+  const onCatScroll = useCallback((e) => {
+    const page = Math.round(e.nativeEvent.contentOffset.x / catPageWidth);
+    setCatPage(page);
+  }, [catPageWidth]);
 
   const isEdit = editExpense != null;
 
@@ -373,54 +389,74 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
           <Text style={styles.noteCounter}>{note.length}/{NOTE_MAX_LENGTH}</Text>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoryScroll}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View>
-            {[categories.slice(0, Math.ceil(categories.length / 2)),
-              categories.slice(Math.ceil(categories.length / 2))].map((row, ri) => (
-              <View key={ri} style={styles.categoryRow}>
-                {row.map((category) => {
-                  const selected = category.id === categoryId;
-                  return (
-                    <Pressable
-                      key={category.id}
-                      onPress={() => pickCategory(category.id)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      style={[styles.categoryItem, { width: catItemWidth }]}
-                    >
-                      <View
-                        style={[
-                          styles.categoryCircle,
-                          { backgroundColor: `${category.color}1A` },
-                          selected && {
-                            backgroundColor: `${category.color}33`,
-                            borderColor: category.color,
-                          },
-                        ]}
-                      >
-                        <HIcon name={category.emoji} size={22} color={category.color} />
-                      </View>
-                      <Text
-                        style={[
-                          styles.categoryLabel,
-                          selected && styles.categoryLabelSelected,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {getCategoryLabel(category, t)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+        <View style={styles.categoryScroll}>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            onScroll={onCatScroll}
+            scrollEventThrottle={16}
+            decelerationRate="fast"
+          >
+            {categoryPages.map((pageCats, pi) => (
+              <View key={pi} style={{ width: catPageWidth }}>
+                {[pageCats.slice(0, Math.ceil(pageCats.length / 2)),
+                  pageCats.slice(Math.ceil(pageCats.length / 2))].map((row, ri) => (
+                  <View key={ri} style={styles.categoryRow}>
+                    {row.map((category) => {
+                      const selected = category.id === categoryId;
+                      return (
+                        <Pressable
+                          key={category.id}
+                          onPress={() => pickCategory(category.id)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          style={[styles.categoryItem, { width: catItemWidth }]}
+                        >
+                          <View
+                            style={[
+                              styles.categoryCircle,
+                              { backgroundColor: `${category.color}1A` },
+                              selected && {
+                                backgroundColor: `${category.color}33`,
+                                borderColor: category.color,
+                              },
+                            ]}
+                          >
+                            <HIcon name={category.emoji} size={22} color={category.color} />
+                          </View>
+                          <Text
+                            style={[
+                              styles.categoryLabel,
+                              selected && styles.categoryLabelSelected,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {getCategoryLabel(category, t)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ))}
               </View>
             ))}
-          </View>
-        </ScrollView>
+          </ScrollView>
+          {categoryPages.length > 1 && (
+            <View style={styles.pageDots}>
+              {categoryPages.map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.pageDot,
+                    i === catPage && { backgroundColor: colors.textPrimary },
+                  ]}
+                />
+              ))}
+            </View>
+          )}
+        </View>
 
         <Pressable
           onPress={handleSubmit}
@@ -566,7 +602,18 @@ const createStyles = (colors) =>
     },
     categoryScroll: {
       marginBottom: spacing.md,
-      flexGrow: 0,
+    },
+    pageDots: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 6,
+      paddingTop: spacing.xs,
+    },
+    pageDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.border,
     },
     categoryRow: {
       flexDirection: 'row',
