@@ -17,7 +17,7 @@ const TABS_RIGHT = [
   { id: 'account', icon: 'user-circle' },
 ];
 
-export default function TabBar({ tab, onChange, onAddPress, addActive, panHandlers }) {
+export default function TabBar({ tab, onChange, onAddPress, addActive }) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const t = useT();

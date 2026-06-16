@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
 import { getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
-import { LOCAL_USER } from '../storage';
+import { loadCategoryOrder, saveCategoryOrder } from '../storage';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 
-const ORDER_KEY_BASE = '@expense-tracker/category-order';
 
 const DONUT_SIZE = 160;
 const DONUT_STROKE = 16;
@@ -233,13 +231,12 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId
   }, [categoryRows, customWithout]);
 
   const [order, setOrder] = useState(null);
-  const orderKey = userId && userId !== LOCAL_USER ? `${ORDER_KEY_BASE}:${userId}` : ORDER_KEY_BASE;
 
   useEffect(() => {
-    AsyncStorage.getItem(orderKey).then((raw) => {
-      if (raw) setOrder(JSON.parse(raw));
-    }).catch(() => {});
-  }, [orderKey]);
+    loadCategoryOrder(userId).then((loaded) => {
+      if (loaded) setOrder(loaded);
+    });
+  }, [userId]);
 
   const items = useMemo(() => {
     if (!order) return defaultItems;
@@ -251,8 +248,8 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId
 
   const saveOrder = useCallback((ids) => {
     setOrder(ids);
-    AsyncStorage.setItem(orderKey, JSON.stringify(ids)).catch(() => {});
-  }, [orderKey]);
+    saveCategoryOrder(userId, ids);
+  }, [userId]);
 
   const [dragIndex, setDragIndex] = useState(-1);
   const pan = useRef(new Animated.ValueXY()).current;

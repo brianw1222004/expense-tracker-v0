@@ -1,5 +1,5 @@
 import { DEFAULT_CURRENCY, getCurrency } from './currency';
-import { DEFAULT_LANGUAGE, getDateNames, translate } from './i18n';
+import { DEFAULT_LANGUAGE, getDateNames, interpolate, translate } from './i18n';
 
 function group(whole) {
   return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -32,13 +32,6 @@ export function dateKey(timestamp) {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-// Date labels take the app language; names and ordering templates live in
-// i18n.js so all language data is in one place.
-function fill(template, vars) {
-  return template.replace(/\{(\w+)\}/g, (match, name) =>
-    vars[name] !== undefined ? String(vars[name]) : match
-  );
-}
 
 export function dayLabel(timestamp, language = DEFAULT_LANGUAGE) {
   const now = new Date();
@@ -50,7 +43,7 @@ export function dayLabel(timestamp, language = DEFAULT_LANGUAGE) {
   }
   const d = new Date(timestamp);
   const names = getDateNames(language);
-  return fill(names.dayLabel, {
+  return interpolate(names.dayLabel, {
     weekday: names.weekdays[d.getDay()],
     month: names.months[d.getMonth()],
     day: d.getDate(),
@@ -59,7 +52,7 @@ export function dayLabel(timestamp, language = DEFAULT_LANGUAGE) {
 
 export function monthLabel(date = new Date(), language = DEFAULT_LANGUAGE) {
   const names = getDateNames(language);
-  return fill(names.monthYear, {
+  return interpolate(names.monthYear, {
     month: names.months[date.getMonth()],
     year: date.getFullYear(),
   });
@@ -81,5 +74,5 @@ export function buildCalendarWeeks(year, month) {
 export function monthKeyLabel(key, language = DEFAULT_LANGUAGE) {
   const [year, month] = key.split('-');
   const names = getDateNames(language);
-  return fill(names.monthYear, { month: names.months[Number(month) - 1], year });
+  return interpolate(names.monthYear, { month: names.months[Number(month) - 1], year });
 }

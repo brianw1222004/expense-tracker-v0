@@ -19,7 +19,7 @@ import { CURRENCIES, getCurrency } from '../currency';
 import { buildCalendarWeeks, dateKey, dayLabel, monthLabel } from '../format';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const NOTE_MAX_LENGTH = 20;
+const NOTE_MAX_LENGTH = 50;
 const COLOR_MS = 350;
 const CATS_PER_PAGE = 8;
 

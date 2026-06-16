@@ -88,3 +88,22 @@ export async function saveSettings(userId, settings) {
     // Best-effort, same as expenses.
   }
 }
+
+const CATEGORY_ORDER_KEY = '@expense-tracker/category-order';
+
+export async function loadCategoryOrder(userId) {
+  try {
+    const raw = await AsyncStorage.getItem(scopedKey(CATEGORY_ORDER_KEY, userId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveCategoryOrder(userId, order) {
+  try {
+    await AsyncStorage.setItem(scopedKey(CATEGORY_ORDER_KEY, userId), JSON.stringify(order));
+  } catch {
+    // Best-effort.
+  }
+}

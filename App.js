@@ -247,36 +247,42 @@ function ExpenseTracker() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
   const updateSettings = useCallback(
     (patch) => {
       settingsVersionRef.current += 1;
-      let pushNext = null;
-      setSettings((prev) => {
-        const next = { ...prev, ...patch };
-        if (patch.displayCurrency && patch.displayCurrency !== prev.displayCurrency) {
+      const prev = settingsRef.current;
+      setSettings((cur) => {
+        const next = { ...cur, ...patch };
+        if (patch.displayCurrency && patch.displayCurrency !== cur.displayCurrency) {
           const decimals = getCurrency(patch.displayCurrency).decimals;
           const redenominate = (value) =>
-            Number(convert(value, prev.displayCurrency, patch.displayCurrency).toFixed(decimals));
-          if (prev.monthlyBudget > 0 && patch.monthlyBudget === undefined) {
-            next.monthlyBudget = redenominate(prev.monthlyBudget);
+            Number(convert(value, cur.displayCurrency, patch.displayCurrency).toFixed(decimals));
+          if (cur.monthlyBudget > 0 && patch.monthlyBudget === undefined) {
+            next.monthlyBudget = redenominate(cur.monthlyBudget);
           }
           if (patch.categoryBudgets === undefined) {
             const converted = {};
-            for (const [id, value] of Object.entries(prev.categoryBudgets ?? {})) {
+            for (const [id, value] of Object.entries(cur.categoryBudgets ?? {})) {
               if (value > 0) converted[id] = redenominate(value);
             }
             next.categoryBudgets = converted;
           }
         }
-        if (
-          next.displayCurrency !== prev.displayCurrency ||
-          next.monthlyBudget !== prev.monthlyBudget
-        ) {
-          pushNext = { displayCurrency: next.displayCurrency, monthlyBudget: next.monthlyBudget };
-        }
         return next;
       });
-      if (pushNext) enqueueSettingsPush(userId, pushNext);
+      const merged = { ...prev, ...patch };
+      if (
+        merged.displayCurrency !== prev.displayCurrency ||
+        merged.monthlyBudget !== prev.monthlyBudget
+      ) {
+        enqueueSettingsPush(userId, {
+          displayCurrency: merged.displayCurrency,
+          monthlyBudget: merged.monthlyBudget,
+        });
+      }
     },
     [userId]
   );
@@ -444,12 +450,14 @@ function ExpenseTracker() {
 
   const displayCurrency = settings.displayCurrency;
 
-  // Synchronous — must run before useMemo reads the merged lists, so NOT in useEffect
-  setCustomCategories(settings.customCategories);
-
-  const allCategories = getAllCategories();
-  const regularCategories = getRegularAll();
-  const externalCategories = getExternalAll();
+  const { allCategories, regularCategories, externalCategories } = useMemo(() => {
+    setCustomCategories(settings.customCategories);
+    return {
+      allCategories: getAllCategories(),
+      regularCategories: getRegularAll(),
+      externalCategories: getExternalAll(),
+    };
+  }, [settings.customCategories]);
 
   const addCustomCategory = (category) => {
     setSettings((prev) => ({
@@ -565,7 +573,6 @@ function ExpenseTracker() {
           addActive={addOpen}
           onChange={changeTab}
           onAddPress={() => setAddOpen(true)}
-          panHandlers={swipePanResponder.panHandlers}
         />
 
         <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>

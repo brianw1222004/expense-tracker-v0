@@ -34,8 +34,6 @@ const STRINGS = {
     'dash.monthlySpending': 'Monthly Spending',
     'dash.vsLastMonth': 'vs last month',
     'dash.daysLeft': 'Days left',
-    'dash.budgetUsed': 'Budget',
-
     'budget.title': 'Budget',
     'budget.spentOf': '{spent} of {budget}',
     'budget.remaining': 'Remaining',
@@ -161,8 +159,6 @@ const STRINGS = {
     'dash.monthlySpending': '每月支出',
     'dash.vsLastMonth': '較上月',
     'dash.daysLeft': '剩餘天數',
-    'dash.budgetUsed': '預算',
-
     'budget.title': '預算',
     'budget.spentOf': '已花 {spent}／{budget}',
     'budget.remaining': '剩餘',
@@ -288,8 +284,6 @@ const STRINGS = {
     'dash.monthlySpending': 'Gasto mensual',
     'dash.vsLastMonth': 'vs mes anterior',
     'dash.daysLeft': 'Días restantes',
-    'dash.budgetUsed': 'Presupuesto',
-
     'budget.title': 'Presupuesto',
     'budget.spentOf': '{spent} de {budget}',
     'budget.remaining': 'Restante',
@@ -427,7 +421,7 @@ export function getDateNames(language) {
   return DATE_NAMES[language] ?? DATE_NAMES.en;
 }
 
-function interpolate(template, vars) {
+export function interpolate(template, vars) {
   if (!vars) return template;
   return template.replace(/\{(\w+)\}/g, (match, name) =>
     vars[name] !== undefined ? String(vars[name]) : match
