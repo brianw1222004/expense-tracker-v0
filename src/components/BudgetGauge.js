@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   },
   centerValue: {
     fontFamily: fonts.bold,
-    fontSize: 24,
+    fontSize: 22,
     fontVariant: ['tabular-nums'],
     maxWidth: '75%',
   },
@@ -130,10 +130,11 @@ const styles = StyleSheet.create({
   emptyLabel: {
     fontFamily: fonts.regular,
     fontSize: 12,
+    marginTop: 4,
   },
   spentLine: {
     fontFamily: fonts.regular,
-    fontSize: 14,
+    fontSize: 13,
     marginTop: spacing.sm,
     fontVariant: ['tabular-nums'],
   },

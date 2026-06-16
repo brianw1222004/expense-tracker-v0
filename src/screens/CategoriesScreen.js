@@ -727,13 +727,13 @@ const createStyles = (colors) =>
     container: { flex: 1 },
     content: {
       paddingHorizontal: spacing.md,
-      paddingBottom: spacing.xl,
+      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
       gap: spacing.xs,
     },
     title: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 28,
+      fontSize: 26,
       paddingTop: spacing.md,
       textAlign: 'center',
     },
@@ -753,13 +753,13 @@ const createStyles = (colors) =>
     addCatPlus: {
       color: colors.accent,
       fontFamily: fonts.bold,
-      fontSize: 20,
+      fontSize: 18,
       marginRight: spacing.sm,
     },
     addCatText: {
       color: colors.accent,
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 13,
     },
 
     donutCard: {
@@ -778,7 +778,7 @@ const createStyles = (colors) =>
     monthLabel: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 16,
+      fontSize: 15,
       minWidth: 100,
       textAlign: 'center',
     },
@@ -790,7 +790,7 @@ const createStyles = (colors) =>
     },
     donutTotal: {
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 14,
       fontVariant: ['tabular-nums'],
     },
 
@@ -827,7 +827,7 @@ const createStyles = (colors) =>
     },
     catMonthVal: {
       fontFamily: fonts.bold,
-      fontSize: 18,
+      fontSize: 16,
       color: colors.textPrimary,
       fontVariant: ['tabular-nums'],
     },
@@ -839,12 +839,12 @@ const createStyles = (colors) =>
     catName: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 13,
     },
     noCats: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 13,
       textAlign: 'center',
       paddingVertical: spacing.lg,
     },
@@ -858,12 +858,13 @@ const createStyles = (colors) =>
     emptyTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 20,
+      fontSize: 18,
+      marginTop: 12,
     },
     emptyHint: {
       color: colors.textSecondary,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: 14,
       textAlign: 'center',
       marginTop: spacing.sm,
       lineHeight: 21,
@@ -882,12 +883,12 @@ const createStyles = (colors) =>
     addFirstButtonText: {
       color: colors.onAccent,
       fontFamily: fonts.bold,
-      fontSize: 16,
+      fontSize: 15,
     },
     demoLink: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 13,
       marginTop: spacing.md,
     },
   });
@@ -918,7 +919,7 @@ const createModalStyles = (colors) =>
     headerTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 20,
+      fontSize: 18,
     },
     closeBtn: {
       width: 30,
@@ -945,7 +946,7 @@ const createModalStyles = (colors) =>
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 4,
       fontFamily: fonts.regular,
-      fontSize: 16,
+      fontSize: 15,
       marginBottom: spacing.xs,
     },
     iconGridWrapper: {
@@ -1037,7 +1038,7 @@ const createModalStyles = (colors) =>
     switchText: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 14,
     },
     switchHint: {
       color: colors.textMuted,
@@ -1056,7 +1057,7 @@ const createModalStyles = (colors) =>
     saveBtnText: {
       color: colors.onAccent,
       fontFamily: fonts.bold,
-      fontSize: 17,
+      fontSize: 16,
     },
     deleteBtn: {
       alignItems: 'center',
@@ -1067,6 +1068,6 @@ const createModalStyles = (colors) =>
     deleteBtnText: {
       color: colors.danger,
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 14,
     },
   });

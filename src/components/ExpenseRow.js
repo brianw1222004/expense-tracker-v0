@@ -73,7 +73,7 @@ const createStyles = (colors) =>
     },
     note: {
       color: colors.textPrimary,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.bold,
     },
     categoryLabel: {
@@ -87,7 +87,7 @@ const createStyles = (colors) =>
     },
     amount: {
       color: colors.textPrimary,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.bold,
       fontVariant: ['tabular-nums'],
     },

@@ -190,13 +190,13 @@ const createStyles = (colors) =>
     title: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 26,
+      fontSize: 24,
       textAlign: 'center',
     },
     subtitle: {
       color: colors.textSecondary,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: 14,
       lineHeight: 21,
       textAlign: 'center',
       marginTop: spacing.sm,
@@ -205,7 +205,7 @@ const createStyles = (colors) =>
     confirmBody: {
       color: colors.textSecondary,
       fontFamily: fonts.regular,
-      fontSize: 16,
+      fontSize: 15,
       lineHeight: 24,
       textAlign: 'center',
       marginTop: spacing.md,
@@ -219,7 +219,7 @@ const createStyles = (colors) =>
     input: {
       color: colors.textPrimary,
       fontFamily: fonts.regular,
-      fontSize: 16,
+      fontSize: 15,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 6,
     },
@@ -230,7 +230,7 @@ const createStyles = (colors) =>
     error: {
       color: colors.danger,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 13,
       lineHeight: 19,
       marginTop: spacing.md,
       textAlign: 'center',
@@ -253,12 +253,12 @@ const createStyles = (colors) =>
     submitText: {
       color: colors.onAccent,
       fontFamily: fonts.bold,
-      fontSize: 17,
+      fontSize: 16,
     },
     switchText: {
       color: colors.textSecondary,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 13,
       textAlign: 'center',
       marginTop: spacing.lg,
       paddingVertical: spacing.xs,

@@ -1,6 +1,32 @@
 import { createContext, useContext } from 'react';
 
 export const THEMES = {
+  vivid: {
+    name: 'vivid',
+    statusBarStyle: 'dark',
+    keyboardAppearance: 'light',
+    background: '#f0f7ff',
+    card: '#ffffff',
+    cardPressed: '#e8f4fd',
+    border: '#d6e6f2',
+    textPrimary: '#1a2a3a',
+    textSecondary: '#456680',
+    textMuted: '#94b3c8',
+    accent: '#38bdf8',
+    accentDark: '#0ea5e9',
+    onAccent: '#ffffff',
+    success: '#10b981',
+    successAlt: '#6ee7b7',
+    successOverlay: '#ecfdf5',
+    warning: '#f59e0b',
+    danger: '#ef4444',
+    backdrop: 'rgba(26, 42, 58, 0.5)',
+    gradientStart: '#0284c7',
+    gradientEnd: '#38bdf8',
+    headerText: '#ffffff',
+    headerTextSecondary: 'rgba(255, 255, 255, 0.75)',
+    icon: '#38bdf8',
+  },
   slate: {
     name: 'slate',
     statusBarStyle: 'dark',
@@ -108,12 +134,13 @@ export const THEMES = {
 };
 
 export function getTheme(name) {
-  return THEMES[name] ?? THEMES.slate;
+  return THEMES[name] ?? THEMES.vivid;
 }
 
 export const fonts = {
-  regular: 'Caladea_400Regular',
-  bold: 'Caladea_700Bold',
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  bold: 'Inter_700Bold',
 };
 
 export const spacing = {
@@ -130,7 +157,7 @@ export const radius = {
   lg: 24,
 };
 
-const ThemeContext = createContext({ themeName: 'slate', colors: THEMES.slate });
+const ThemeContext = createContext({ themeName: 'vivid', colors: THEMES.vivid });
 
 export function ThemeProvider({ themeName, children }) {
   const colors = getTheme(themeName);

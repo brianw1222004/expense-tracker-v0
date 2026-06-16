@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import BudgetGauge from '../components/BudgetGauge';
 import SpendingChart from '../components/SpendingChart';
+import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthLabel } from '../format';
@@ -14,6 +15,7 @@ export default function DashboardScreen({
   loaded,
   hasExpenses,
   monthTotal,
+  lastMonthTotal,
   todayTotal,
   monthCount,
   avgPerDay,
@@ -64,6 +66,19 @@ export default function DashboardScreen({
 
   const factor = 10 ** getCurrency(displayCurrency).decimals;
 
+  const delta = monthTotal - (lastMonthTotal ?? 0);
+  const hasLastMonth = (lastMonthTotal ?? 0) > 0;
+  const spentLess = delta < 0;
+
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysLeft = daysInMonth - now.getDate();
+
+  const budgetUsedPercent =
+    monthlyBudget > 0
+      ? Math.min(999, Math.round((regularSpent / monthlyBudget) * 100))
+      : null;
+
   return (
     <ScrollView
       style={styles.container}
@@ -74,12 +89,36 @@ export default function DashboardScreen({
         colors={[colors.gradientStart, colors.gradientEnd]}
         style={styles.gradient}
       >
-        <Text style={styles.monthLabel}>
-          {monthLabel(new Date(), language)}
-        </Text>
+        <View style={styles.wash1} />
+        <View style={styles.wash2} />
+        <View style={styles.wash3} />
+        <View style={styles.wash4} />
+
+        <View style={styles.monthPill}>
+          <Text style={styles.monthPillText}>
+            {monthLabel(new Date(), language)}
+          </Text>
+        </View>
+
+        <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
         <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
           {formatMoney(monthTotal, displayCurrency)}
         </Text>
+
+        {hasExpenses && hasLastMonth && (
+          <View
+            style={[
+              styles.compareBadge,
+              spentLess ? styles.compareBadgeGood : styles.compareBadgeUp,
+            ]}
+          >
+              <Text style={[styles.compareDelta, spentLess && styles.compareDeltaGood]}>
+              {spentLess ? '↓' : '↑'} {formatMoneyShort(Math.abs(delta), displayCurrency)}
+            </Text>
+            <Text style={styles.compareLabel}>{t('dash.vsLastMonth')}</Text>
+          </View>
+        )}
+
       </LinearGradient>
 
       {hasExpenses && dailyTotals && (
@@ -87,32 +126,15 @@ export default function DashboardScreen({
           dailyTotals={dailyTotals}
           displayCurrency={displayCurrency}
           title={t('dash.trend')}
+          quickStats={[
+            { value: formatMoneyShort(todayTotal, displayCurrency), label: t('dash.today') },
+            { value: String(monthCount), label: t('dash.expenses') },
+            { value: formatMoneyShort(avgPerDay, displayCurrency), label: t('dash.avgPerDay') },
+          ]}
         />
       )}
 
       {!hasExpenses && <View style={styles.chartPlaceholder} />}
-
-      {hasExpenses && (
-        <View style={styles.statsRow}>
-          <StatCell
-            label={t('dash.today')}
-            value={formatMoneyShort(todayTotal, displayCurrency)}
-            styles={styles}
-          />
-          <View style={styles.statDivider} />
-          <StatCell
-            label={t('dash.expenses')}
-            value={String(monthCount)}
-            styles={styles}
-          />
-          <View style={styles.statDivider} />
-          <StatCell
-            label={t('dash.avgPerDay')}
-            value={formatMoneyShort(avgPerDay, displayCurrency)}
-            styles={styles}
-          />
-        </View>
-      )}
 
       {hasExpenses && (
         <Pressable
@@ -121,7 +143,19 @@ export default function DashboardScreen({
           style={({ pressed }) => [styles.section, pressed && styles.sectionPressed]}
         >
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t('budget.title')}</Text>
+            <View>
+              <Text style={styles.sectionTitle}>{t('budget.title')}</Text>
+              <View style={styles.budgetMeta}>
+                {budgetUsedPercent != null && (
+                  <>
+                    <Text style={styles.budgetMetaVal}>{budgetUsedPercent}%</Text>
+                    <Text style={styles.budgetMetaDot}>·</Text>
+                  </>
+                )}
+                <Text style={styles.budgetMetaVal}>{daysLeft}</Text>
+                <Text style={styles.budgetMetaLabel}>{t('dash.daysLeft')}</Text>
+              </View>
+            </View>
             <Text style={styles.editLabel}>{t('budget.edit')}</Text>
           </View>
 
@@ -229,15 +263,6 @@ function CategoryBar({ category, budget, spent, displayCurrency, styles, colors,
   );
 }
 
-function StatCell({ label, value, styles }) {
-  return (
-    <View style={styles.statCell}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
-}
-
 const createStyles = (colors) =>
   StyleSheet.create({
     container: {
@@ -246,63 +271,116 @@ const createStyles = (colors) =>
     },
     content: {
       flexGrow: 1,
-      paddingBottom: spacing.xl,
+      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
     },
 
     gradient: {
       paddingTop: spacing.lg,
-      paddingBottom: spacing.xl + spacing.lg,
+      paddingBottom: spacing.xl + spacing.sm,
       alignItems: 'center',
       borderBottomLeftRadius: radius.lg,
       borderBottomRightRadius: radius.lg,
+      overflow: 'hidden',
     },
-    monthLabel: {
+    wash1: {
+      position: 'absolute',
+      top: -30,
+      right: -35,
+      width: 180,
+      height: 130,
+      borderRadius: 65,
+      backgroundColor: 'rgba(255, 160, 180, 0.09)',
+      transform: [{ rotate: '-15deg' }],
+    },
+    wash2: {
+      position: 'absolute',
+      top: 15,
+      left: -40,
+      width: 140,
+      height: 170,
+      borderRadius: 70,
+      backgroundColor: 'rgba(120, 220, 255, 0.07)',
+      transform: [{ rotate: '10deg' }],
+    },
+    wash3: {
+      position: 'absolute',
+      bottom: 5,
+      right: 30,
+      width: 120,
+      height: 90,
+      borderRadius: 45,
+      backgroundColor: 'rgba(255, 210, 120, 0.07)',
+      transform: [{ rotate: '20deg' }],
+    },
+    wash4: {
+      position: 'absolute',
+      bottom: -20,
+      left: 30,
+      width: 130,
+      height: 100,
+      borderRadius: 50,
+      backgroundColor: 'rgba(180, 140, 255, 0.06)',
+      transform: [{ rotate: '-8deg' }],
+    },
+    monthPill: {
+      backgroundColor: 'rgba(255, 255, 255, 0.15)',
+      borderRadius: 20,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+      marginBottom: spacing.md,
+    },
+    monthPillText: {
+      color: colors.headerText,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      letterSpacing: 0.3,
+    },
+    balanceLabel: {
       color: colors.headerTextSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 14,
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      letterSpacing: 0.8,
       textTransform: 'uppercase',
-      letterSpacing: 1.2,
+      marginBottom: spacing.xs,
     },
     heroTotal: {
       color: colors.headerText,
       fontFamily: fonts.bold,
-      fontSize: 44,
-      marginTop: spacing.xs,
+      fontSize: 36,
       fontVariant: ['tabular-nums'],
+      letterSpacing: -0.5,
     },
-
-    statsRow: {
+    compareBadge: {
       flexDirection: 'row',
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      marginHorizontal: spacing.md,
-      marginTop: spacing.md,
-      paddingVertical: spacing.md,
-      overflow: 'hidden',
-    },
-    statCell: {
-      flex: 1,
       alignItems: 'center',
+      borderRadius: 14,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      marginTop: spacing.md,
+      gap: spacing.sm,
     },
-    statLabel: {
-      color: colors.textSecondary,
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      marginBottom: 4,
+    compareBadgeUp: {
+      backgroundColor: 'rgba(255, 255, 255, 0.18)',
     },
-    statValue: {
-      color: colors.textPrimary,
+    compareBadgeGood: {
+      backgroundColor: 'rgba(16, 185, 129, 0.28)',
+    },
+    compareDelta: {
+      color: colors.headerText,
       fontFamily: fonts.bold,
-      fontSize: 16,
+      fontSize: 14,
       fontVariant: ['tabular-nums'],
     },
-    statDivider: {
-      width: StyleSheet.hairlineWidth,
-      backgroundColor: colors.border,
-      alignSelf: 'stretch',
+    compareDeltaGood: {
+      color: '#a7f3d0',
+    },
+    compareLabel: {
+      color: colors.headerTextSecondary,
+      fontFamily: fonts.medium,
+      fontSize: 12,
     },
     chartPlaceholder: {
-      marginTop: -(spacing.xl),
+      marginTop: -(spacing.md),
     },
 
     section: {
@@ -310,7 +388,7 @@ const createStyles = (colors) =>
       borderRadius: radius.md,
       padding: spacing.md,
       marginHorizontal: spacing.md,
-      marginTop: spacing.md,
+      marginTop: spacing.sm + 4,
     },
     sectionPressed: {
       backgroundColor: colors.cardPressed,
@@ -324,14 +402,36 @@ const createStyles = (colors) =>
     sectionTitle: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
-      fontSize: 13,
+      fontSize: 12,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
     editLabel: {
       color: colors.accent,
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 13,
+    },
+    budgetMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 3,
+      gap: spacing.xs + 2,
+    },
+    budgetMetaVal: {
+      color: colors.textMuted,
+      fontFamily: fonts.bold,
+      fontSize: 11,
+      fontVariant: ['tabular-nums'],
+    },
+    budgetMetaLabel: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 11,
+    },
+    budgetMetaDot: {
+      color: colors.textMuted,
+      fontSize: 8,
+      opacity: 0.5,
     },
     divider: {
       height: StyleSheet.hairlineWidth,
@@ -356,25 +456,25 @@ const createStyles = (colors) =>
     categoryName: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 13,
       flexShrink: 1,
       marginRight: spacing.sm,
     },
     categoryAmount: {
       color: colors.textSecondary,
       fontFamily: fonts.regular,
-      fontSize: 13,
+      fontSize: 12,
       fontVariant: ['tabular-nums'],
     },
     categoryTrack: {
-      height: 8,
-      borderRadius: 4,
+      height: 6,
+      borderRadius: 3,
       backgroundColor: colors.background,
       overflow: 'hidden',
     },
     categoryFill: {
       height: '100%',
-      borderRadius: 4,
+      borderRadius: 3,
     },
     externalRow: {
       flexDirection: 'row',
@@ -385,14 +485,14 @@ const createStyles = (colors) =>
     externalLabel: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
-      fontSize: 13,
+      fontSize: 12,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
     externalAmount: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 13,
       fontVariant: ['tabular-nums'],
     },
 
@@ -406,13 +506,13 @@ const createStyles = (colors) =>
     emptyTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 20,
+      fontSize: 18,
       marginTop: spacing.md,
     },
     emptyHint: {
       color: colors.textSecondary,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: 14,
       lineHeight: 22,
       textAlign: 'center',
       marginTop: spacing.sm,
@@ -433,12 +533,12 @@ const createStyles = (colors) =>
     addFirstButtonText: {
       color: colors.onAccent,
       fontFamily: fonts.bold,
-      fontSize: 16,
+      fontSize: 15,
     },
     demoLink: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 13,
       marginTop: spacing.md,
     },
   });

@@ -17,9 +17,10 @@ import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
 import {
   useFonts,
-  Caladea_400Regular,
-  Caladea_700Bold,
-} from '@expo-google-fonts/caladea';
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
 
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddExpenseScreen from './src/screens/AddExpenseScreen';
@@ -61,13 +62,12 @@ const TAB_INDEX = { dashboard: 0, list: 1, categories: 2, account: 3 };
 const TAB_NAMES = ['dashboard', 'list', 'categories', 'account'];
 
 export default function App() {
-  // Caladea is the open, metric-compatible stand-in for Cambria (the requested
-  // font is commercial and can't be bundled). Block first paint until loaded so
-  // no screen ever renders with the fallback face; on a load error render
-  // anyway rather than hanging on a blank screen.
+  // Block first paint until loaded so no screen ever renders with the fallback
+  // face; on a load error render anyway rather than hanging on a blank screen.
   const [fontsLoaded, fontsError] = useFonts({
-    Caladea_400Regular,
-    Caladea_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_700Bold,
   });
   if (!fontsLoaded && !fontsError) return null;
 
@@ -474,7 +474,7 @@ function ExpenseTracker() {
     }));
   };
 
-  const { sections, months, monthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount, dailyTotals } =
+  const { sections, months, monthTotal, lastMonthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount, dailyTotals } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language),
       [expenses, displayCurrency, language, dayStamp]
@@ -505,6 +505,7 @@ function ExpenseTracker() {
               loaded={loaded}
               hasExpenses={hasExpenses}
               monthTotal={monthTotal}
+              lastMonthTotal={lastMonthTotal}
               todayTotal={todayTotal}
               monthCount={monthCount}
               avgPerDay={avgPerDay}
@@ -676,10 +677,15 @@ function deriveViewData(expenses, displayCurrency, language) {
     dailyTotals.push(byDay.has(dk) ? byDay.get(dk).total : 0);
   }
 
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthKey = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+  const lastMonthTotal = byMonth.has(prevMonthKey) ? byMonth.get(prevMonthKey).total : 0;
+
   return {
     sections: [...byDay.values()],
     months: [...byMonth.values()].sort((a, b) => (a.key < b.key ? 1 : -1)),
     monthTotal,
+    lastMonthTotal,
     todayTotal,
     avgPerDay: monthTotal / now.getDate(),
     totalsByCategory,

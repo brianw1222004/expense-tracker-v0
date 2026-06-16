@@ -124,13 +124,14 @@ const createStyles = (colors) =>
     title: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 26,
+      fontSize: 24,
       textAlign: 'center',
+      marginTop: 8,
     },
     subtitle: {
       color: colors.textSecondary,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: 14,
       lineHeight: 21,
       textAlign: 'center',
       marginTop: spacing.sm,
@@ -145,7 +146,7 @@ const createStyles = (colors) =>
     widgetTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 16,
+      fontSize: 15,
       marginBottom: spacing.sm,
     },
     widgetHint: {
@@ -165,14 +166,14 @@ const createStyles = (colors) =>
     currencySymbol: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
-      fontSize: 20,
+      fontSize: 18,
       marginRight: spacing.sm,
     },
     budgetInput: {
       flex: 1,
       color: colors.textPrimary,
       fontFamily: fonts.regular,
-      fontSize: 20,
+      fontSize: 18,
       paddingVertical: spacing.sm + 4,
     },
     langRow: {
@@ -189,7 +190,7 @@ const createStyles = (colors) =>
     langLabel: {
       color: colors.textPrimary,
       fontFamily: fonts.regular,
-      fontSize: 16,
+      fontSize: 15,
       flex: 1,
     },
     langLabelSelected: {
@@ -210,6 +211,6 @@ const createStyles = (colors) =>
     buttonText: {
       color: colors.onAccent,
       fontFamily: fonts.bold,
-      fontSize: 17,
+      fontSize: 16,
     },
   });

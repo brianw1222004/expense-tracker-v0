@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
@@ -24,7 +25,9 @@ export default function TabBar({ tab, onChange, onAddPress, addActive, panHandle
 
   return (
     <View style={[styles.outer, { paddingBottom: insets.bottom }]}>
-      <View style={styles.capsule} {...panHandlers}>
+      <View style={styles.capsule}>
+        <BlurView intensity={50} tint="light" style={styles.blurLayer} />
+
         {TABS_LEFT.map((item) => (
           <TabItem
             key={item.id}
@@ -92,21 +95,34 @@ function TabItem({ styles, colors, icon, selected, onPress }) {
 const createStyles = (colors) =>
   StyleSheet.create({
     outer: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
       paddingHorizontal: spacing.md,
       paddingTop: spacing.xs,
     },
     capsule: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.card,
       borderRadius: 32,
       height: 58,
-      paddingHorizontal: spacing.xs,
+      paddingHorizontal: spacing.sm,
       shadowColor: '#000',
-      shadowOpacity: 0.1,
-      shadowRadius: 12,
+      shadowOpacity: 0.08,
+      shadowRadius: 16,
       shadowOffset: { width: 0, height: 4 },
       elevation: 8,
+    },
+    blurLayer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: 32,
+      overflow: 'hidden',
+      backgroundColor: 'rgba(255, 255, 255, 0.72)',
     },
     item: {
       flex: 1,
@@ -115,9 +131,9 @@ const createStyles = (colors) =>
       height: 44,
     },
     iconPill: {
-      width: 40,
-      height: 36,
-      borderRadius: 18,
+      width: 52,
+      height: 34,
+      borderRadius: 17,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -130,7 +146,7 @@ const createStyles = (colors) =>
     addSlot: {
       alignItems: 'center',
       justifyContent: 'center',
-      marginHorizontal: spacing.xs,
+      marginHorizontal: spacing.sm,
     },
     addButton: {
       width: 46,

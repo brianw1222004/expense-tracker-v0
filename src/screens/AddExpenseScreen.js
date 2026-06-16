@@ -516,7 +516,7 @@ const createStyles = (colors) =>
     title: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 20,
+      fontSize: 18,
     },
     closeButton: {
       width: 32,
@@ -535,13 +535,13 @@ const createStyles = (colors) =>
     currencySymbol: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
-      fontSize: 34,
+      fontSize: 30,
       marginRight: spacing.xs,
     },
     amountInput: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 44,
+      fontSize: 40,
       minWidth: 130,
       textAlign: 'center',
       fontVariant: ['tabular-nums'],
@@ -592,7 +592,7 @@ const createStyles = (colors) =>
       color: colors.textPrimary,
       paddingVertical: spacing.sm + 4,
       fontFamily: fonts.regular,
-      fontSize: 16,
+      fontSize: 15,
     },
     noteCounter: {
       color: colors.textMuted,
@@ -666,7 +666,7 @@ const createStyles = (colors) =>
       flex: 1,
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 16,
+      fontSize: 15,
       textAlign: 'center',
     },
     calendar: {
@@ -687,7 +687,7 @@ const createStyles = (colors) =>
       textAlign: 'center',
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 14,
     },
     calendarWeekRow: {
       flexDirection: 'row',
@@ -713,7 +713,7 @@ const createStyles = (colors) =>
     calendarCellText: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 13,
       fontVariant: ['tabular-nums'],
     },
     calendarCellTextDisabled: {
@@ -738,6 +738,6 @@ const createStyles = (colors) =>
     saveButtonText: {
       color: colors.onAccent,
       fontFamily: fonts.bold,
-      fontSize: 17,
+      fontSize: 16,
     },
   });

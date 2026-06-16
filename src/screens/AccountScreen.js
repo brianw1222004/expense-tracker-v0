@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, THEMES, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
+import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 
 export default function AccountScreen({ settings, onUpdateSettings, accountEmail, onSignOut }) {
@@ -119,11 +120,11 @@ const createStyles = (colors) =>
     },
     content: {
       paddingHorizontal: spacing.md,
-      paddingBottom: spacing.xl,
+      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
     },
     title: {
       color: colors.textPrimary,
-      fontSize: 28,
+      fontSize: 26,
       fontFamily: fonts.bold,
       paddingTop: spacing.md,
       textAlign: 'center',
@@ -154,6 +155,7 @@ const createStyles = (colors) =>
       alignItems: 'center',
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 4,
+      gap: 8,
     },
     rowDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
@@ -164,13 +166,13 @@ const createStyles = (colors) =>
     },
     rowLabel: {
       color: colors.textPrimary,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.regular,
       flex: 1,
     },
     signOutText: {
       color: colors.danger,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.bold,
     },
     themeDot: {
@@ -181,7 +183,7 @@ const createStyles = (colors) =>
     },
     comingSoonLabel: {
       color: colors.textMuted,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.regular,
       flex: 1,
     },

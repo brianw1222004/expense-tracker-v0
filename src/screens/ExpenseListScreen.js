@@ -360,11 +360,11 @@ const createStyles = (colors) =>
       flex: 1,
     },
     scrollContent: {
-      paddingBottom: spacing.xl,
+      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
     },
     title: {
       color: colors.textPrimary,
-      fontSize: 28,
+      fontSize: 26,
       fontFamily: fonts.bold,
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
@@ -389,7 +389,7 @@ const createStyles = (colors) =>
     },
     calMonthLabel: {
       color: colors.textPrimary,
-      fontSize: 17,
+      fontSize: 16,
       fontFamily: fonts.bold,
     },
     calWeekRow: {
@@ -425,7 +425,7 @@ const createStyles = (colors) =>
     },
     calDayText: {
       color: colors.textPrimary,
-      fontSize: 14,
+      fontSize: 13,
       fontFamily: fonts.regular,
     },
     calDot: {
@@ -484,7 +484,7 @@ const createStyles = (colors) =>
     },
     chipLabel: {
       color: colors.textSecondary,
-      fontSize: 14,
+      fontSize: 13,
       fontFamily: fonts.bold,
     },
     chipLabelSelected: {
@@ -498,7 +498,7 @@ const createStyles = (colors) =>
     },
     noMatchText: {
       color: colors.textMuted,
-      fontSize: 15,
+      fontSize: 14,
       fontFamily: fonts.regular,
       textAlign: 'center',
     },
@@ -522,7 +522,7 @@ const createStyles = (colors) =>
     modalTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 18,
+      fontSize: 16,
       marginBottom: spacing.md,
     },
     modalExpense: {
@@ -547,7 +547,7 @@ const createStyles = (colors) =>
     modalNote: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 14,
     },
     modalCategory: {
       color: colors.textMuted,
@@ -558,7 +558,7 @@ const createStyles = (colors) =>
     modalAmount: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 14,
       fontVariant: ['tabular-nums'],
     },
     modalButtons: {
@@ -580,7 +580,7 @@ const createStyles = (colors) =>
     modalBtnCancelText: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 14,
     },
     modalBtnDelete: {
       backgroundColor: colors.danger,
@@ -591,7 +591,7 @@ const createStyles = (colors) =>
     modalBtnDeleteText: {
       color: colors.onAccent,
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 14,
     },
     emptyState: {
       alignItems: 'center',
@@ -601,12 +601,13 @@ const createStyles = (colors) =>
     },
     emptyTitle: {
       color: colors.textPrimary,
-      fontSize: 20,
+      fontSize: 18,
       fontFamily: fonts.bold,
+      marginTop: 12,
     },
     emptyHint: {
       color: colors.textSecondary,
-      fontSize: 15,
+      fontSize: 14,
       fontFamily: fonts.regular,
       textAlign: 'center',
       marginTop: spacing.sm,
@@ -627,12 +628,12 @@ const createStyles = (colors) =>
     },
     addFirstButtonText: {
       color: colors.onAccent,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.bold,
     },
     demoLink: {
       color: colors.textMuted,
-      fontSize: 14,
+      fontSize: 13,
       fontFamily: fonts.regular,
       marginTop: spacing.md,
     },

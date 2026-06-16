@@ -1,18 +1,30 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Circle, G, Line, Text as SvgText } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { formatMoneyShort } from '../format';
 
-const CHART_HEIGHT = 140;
-const PADDING_LEFT = 12;
+const CHART_HEIGHT = 150;
+const PADDING_LEFT = 40;
 const PADDING_RIGHT = 12;
 const PADDING_TOP = 24;
 const PADDING_BOTTOM = 28;
 
 const X_TICKS = [1, 5, 10, 15, 20, 25, 30, 31];
 
-export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
+function gridSteps(maxVal) {
+  if (maxVal <= 0) return [];
+  const rough = maxVal / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const step = [1, 2, 5, 10].find(n => n * mag >= rough) * mag;
+  const lines = [];
+  for (let v = step; v < maxVal * 0.95; v += step) {
+    lines.push(v);
+  }
+  return lines;
+}
+
+export default function SpendingChart({ dailyTotals, displayCurrency, title, quickStats }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
@@ -68,12 +80,48 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
   const peakPoint = points.length > 0 ? points[peakIndex] : null;
   const peakVal = totalsUpToToday[peakIndex] ?? 0;
 
+  const yGridLines = gridSteps(maxVal);
+
   return (
     <View style={styles.card}>
       <Text style={styles.title}>{title}</Text>
+      {quickStats && (
+        <Text style={styles.statsLine}>
+          <Text style={styles.statsLineBold}>{quickStats[0].value}</Text>
+          {' '}{quickStats[0].label}{'  · '}
+          <Text style={styles.statsLineBold}>{quickStats[1].value}</Text>
+          {' '}{quickStats[1].label}{'  · '}
+          <Text style={styles.statsLineBold}>{quickStats[2].value}</Text>
+          {' '}{quickStats[2].label}
+        </Text>
+      )}
       <View style={styles.chartWrap} onLayout={onLayout}>
         {chartWidth > 0 && (
           <Svg width={chartWidth} height={CHART_HEIGHT}>
+            {yGridLines.map((v) => (
+              <G key={v}>
+                <Line
+                  x1={PADDING_LEFT}
+                  y1={getY(v)}
+                  x2={PADDING_LEFT + drawWidth}
+                  y2={getY(v)}
+                  stroke={colors.border}
+                  strokeWidth={StyleSheet.hairlineWidth}
+                  strokeDasharray="4,4"
+                />
+                <SvgText
+                  x={PADDING_LEFT - 6}
+                  y={getY(v) + 3}
+                  textAnchor="end"
+                  fontSize={9}
+                  fontFamily={fonts.regular}
+                  fill={colors.textMuted}
+                >
+                  {formatMoneyShort(v, displayCurrency)}
+                </SvgText>
+              </G>
+            ))}
+
             <Line
               x1={PADDING_LEFT}
               y1={PADDING_TOP + drawHeight}
@@ -153,7 +201,7 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
-      marginTop: -(spacing.xl),
+      marginTop: spacing.sm + 4,
       padding: spacing.md,
       paddingBottom: spacing.sm,
     },
@@ -163,7 +211,17 @@ const createStyles = (colors) =>
       fontSize: 13,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
+    },
+    statsLine: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      marginTop: 3,
       marginBottom: spacing.xs,
+    },
+    statsLineBold: {
+      fontFamily: fonts.bold,
+      color: colors.textPrimary,
     },
     chartWrap: {
       overflow: 'hidden',
