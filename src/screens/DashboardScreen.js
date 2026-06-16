@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import BudgetGauge from '../components/BudgetGauge';
+import EmptyState from '../components/EmptyState';
 import SpendingChart from '../components/SpendingChart';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme } from '../theme';
@@ -79,58 +80,89 @@ export default function DashboardScreen({
       ? Math.min(999, Math.round((regularSpent / monthlyBudget) * 100))
       : null;
 
+  const summaryData = [
+    { key: 'today', value: formatMoneyShort(todayTotal, displayCurrency), label: t('dash.today'), color: colors.accent },
+    { key: 'expenses', value: String(monthCount), label: t('dash.expenses'), color: colors.success },
+    { key: 'avgPerDay', value: formatMoneyShort(avgPerDay, displayCurrency), label: t('dash.avgPerDay'), color: colors.warning },
+    { key: 'daysLeft', value: String(daysLeft), label: t('dash.daysLeft'), color: colors.textMuted },
+  ];
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <LinearGradient
-        colors={[colors.gradientStart, colors.gradientEnd]}
-        style={styles.gradient}
-      >
-        <View style={styles.wash1} />
-        <View style={styles.wash2} />
-        <View style={styles.wash3} />
-        <View style={styles.wash4} />
-
-        <View style={styles.monthPill}>
-          <Text style={styles.monthPillText}>
-            {monthLabel(new Date(), language)}
-          </Text>
-        </View>
-
-        <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
-        <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
-          {formatMoney(monthTotal, displayCurrency)}
-        </Text>
-
-        {hasExpenses && hasLastMonth && (
-          <View
-            style={[
-              styles.compareBadge,
-              spentLess ? styles.compareBadgeGood : styles.compareBadgeUp,
-            ]}
-          >
-              <Text style={[styles.compareDelta, spentLess && styles.compareDeltaGood]}>
-              {spentLess ? '↓' : '↑'} {formatMoneyShort(Math.abs(delta), displayCurrency)}
+      <View style={styles.headerWrapper}>
+        <LinearGradient
+          colors={[colors.gradientStart, colors.gradientEnd]}
+          style={styles.gradient}
+        >
+          <View style={styles.monthPill}>
+            <Text style={styles.monthPillText}>
+              {monthLabel(new Date(), language)}
             </Text>
-            <Text style={styles.compareLabel}>{t('dash.vsLastMonth')}</Text>
           </View>
-        )}
 
-      </LinearGradient>
+          <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
+          <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
+            {formatMoney(monthTotal, displayCurrency)}
+          </Text>
+
+          {hasExpenses && hasLastMonth && (
+            <View
+              style={[
+                styles.compareBadge,
+                spentLess ? styles.compareBadgeGood : styles.compareBadgeUp,
+              ]}
+            >
+              <Text style={[styles.compareDelta, spentLess && styles.compareDeltaGood]}>
+                {spentLess ? '↓' : '↑'} {formatMoneyShort(Math.abs(delta), displayCurrency)}
+              </Text>
+              <Text style={styles.compareLabel}>{t('dash.vsLastMonth')}</Text>
+            </View>
+          )}
+        </LinearGradient>
+      </View>
+
+      {hasExpenses && (
+        <View style={styles.summaryArea}>
+          <View style={styles.summaryCardShadow}>
+            <View style={styles.summaryCardClip}>
+              <View style={styles.summaryHeader}>
+                <Text style={styles.sectionChevron}>▾</Text>
+                <Text style={styles.summaryTitle}>
+                  {monthLabel(new Date(), language)}
+                </Text>
+              </View>
+              <View style={styles.summaryGrid}>
+                {summaryData.map((item, index) => (
+                  <View
+                    key={item.key}
+                    style={[
+                      styles.summaryCell,
+                      index % 2 === 0 && styles.cellBorderRight,
+                      index < 2 && styles.cellBorderBottom,
+                    ]}
+                  >
+                    <View style={styles.cellHeader}>
+                      <View style={[styles.cellDot, { backgroundColor: item.color }]} />
+                      <Text style={styles.cellLabel}>{item.label}</Text>
+                    </View>
+                    <Text style={styles.cellValue}>{item.value}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
 
       {hasExpenses && dailyTotals && (
         <SpendingChart
           dailyTotals={dailyTotals}
           displayCurrency={displayCurrency}
           title={t('dash.trend')}
-          quickStats={[
-            { value: formatMoneyShort(todayTotal, displayCurrency), label: t('dash.today') },
-            { value: String(monthCount), label: t('dash.expenses') },
-            { value: formatMoneyShort(avgPerDay, displayCurrency), label: t('dash.avgPerDay') },
-          ]}
         />
       )}
 
@@ -140,23 +172,28 @@ export default function DashboardScreen({
         <Pressable
           onPress={onEditBudgets}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.section, pressed && styles.sectionPressed]}
+          style={({ pressed }) => [styles.budgetCard, pressed && styles.budgetCardPressed]}
         >
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>{t('budget.title')}</Text>
-              <View style={styles.budgetMeta}>
-                {budgetUsedPercent != null && (
-                  <>
-                    <Text style={styles.budgetMetaVal}>{budgetUsedPercent}%</Text>
-                    <Text style={styles.budgetMetaDot}>·</Text>
-                  </>
-                )}
-                <Text style={styles.budgetMetaVal}>{daysLeft}</Text>
-                <Text style={styles.budgetMetaLabel}>{t('dash.daysLeft')}</Text>
+          <View style={styles.budgetHeader}>
+            <View style={styles.budgetTitleRow}>
+              <Text style={styles.sectionChevron}>▾</Text>
+              <View>
+                <Text style={styles.sectionTitle}>{t('budget.title')}</Text>
+                <View style={styles.budgetMeta}>
+                  {budgetUsedPercent != null && (
+                    <>
+                      <Text style={styles.budgetMetaVal}>{budgetUsedPercent}%</Text>
+                      <Text style={styles.budgetMetaDot}>·</Text>
+                    </>
+                  )}
+                  <Text style={styles.budgetMetaVal}>{daysLeft}</Text>
+                  <Text style={styles.budgetMetaLabel}>{t('dash.daysLeft')}</Text>
+                </View>
               </View>
             </View>
-            <Text style={styles.editLabel}>{t('budget.edit')}</Text>
+            <View style={styles.editPill}>
+              <Text style={styles.editPillText}>{t('budget.edit')}</Text>
+            </View>
           </View>
 
           <BudgetGauge
@@ -212,21 +249,7 @@ export default function DashboardScreen({
       )}
 
       {loaded && !hasExpenses && (
-        <View style={styles.emptyState}>
-          <HIcon name="circle-dashed" size={48} color={colors.icon} />
-          <Text style={styles.emptyTitle}>{t('empty.title')}</Text>
-          <Text style={styles.emptyHint}>{t('empty.hint')}</Text>
-          <Pressable
-            onPress={onAddPress}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.addFirstButton, pressed && styles.addFirstButtonPressed]}
-          >
-            <Text style={styles.addFirstButtonText}>{t('empty.addFirst')}</Text>
-          </Pressable>
-          <Pressable onPress={onLoadDemo} accessibilityRole="button" hitSlop={8}>
-            <Text style={styles.demoLink}>{t('empty.loadDemo')}</Text>
-          </Pressable>
-        </View>
+        <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />
       )}
     </ScrollView>
   );
@@ -263,6 +286,14 @@ function CategoryBar({ category, budget, spent, displayCurrency, styles, colors,
   );
 }
 
+const CARD_SHADOW = {
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 1,
+};
+
 const createStyles = (colors) =>
   StyleSheet.create({
     container: {
@@ -274,60 +305,31 @@ const createStyles = (colors) =>
       paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
     },
 
+    headerWrapper: {
+      backgroundColor: colors.gradientEnd,
+      borderBottomLeftRadius: radius.lg,
+      borderBottomRightRadius: radius.lg,
+      paddingBottom: 80,
+      shadowColor: colors.gradientEnd,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 20,
+      elevation: 5,
+    },
     gradient: {
-      paddingTop: spacing.lg,
-      paddingBottom: spacing.xl + spacing.sm,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.xl,
       alignItems: 'center',
       borderBottomLeftRadius: radius.lg,
       borderBottomRightRadius: radius.lg,
       overflow: 'hidden',
     },
-    wash1: {
-      position: 'absolute',
-      top: -30,
-      right: -35,
-      width: 180,
-      height: 130,
-      borderRadius: 65,
-      backgroundColor: 'rgba(255, 160, 180, 0.09)',
-      transform: [{ rotate: '-15deg' }],
-    },
-    wash2: {
-      position: 'absolute',
-      top: 15,
-      left: -40,
-      width: 140,
-      height: 170,
-      borderRadius: 70,
-      backgroundColor: 'rgba(120, 220, 255, 0.07)',
-      transform: [{ rotate: '10deg' }],
-    },
-    wash3: {
-      position: 'absolute',
-      bottom: 5,
-      right: 30,
-      width: 120,
-      height: 90,
-      borderRadius: 45,
-      backgroundColor: 'rgba(255, 210, 120, 0.07)',
-      transform: [{ rotate: '20deg' }],
-    },
-    wash4: {
-      position: 'absolute',
-      bottom: -20,
-      left: 30,
-      width: 130,
-      height: 100,
-      borderRadius: 50,
-      backgroundColor: 'rgba(180, 140, 255, 0.06)',
-      transform: [{ rotate: '-8deg' }],
-    },
     monthPill: {
-      backgroundColor: 'rgba(255, 255, 255, 0.15)',
+      backgroundColor: 'rgba(255, 255, 255, 0.18)',
       borderRadius: 20,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs + 2,
-      marginBottom: spacing.md,
+      paddingHorizontal: spacing.md + 2,
+      paddingVertical: spacing.xs + 3,
+      marginBottom: spacing.md + 4,
     },
     monthPillText: {
       color: colors.headerText,
@@ -346,16 +348,16 @@ const createStyles = (colors) =>
     heroTotal: {
       color: colors.headerText,
       fontFamily: fonts.bold,
-      fontSize: 36,
+      fontSize: 40,
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.5,
     },
     compareBadge: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 14,
+      borderRadius: 16,
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.sm + 2,
       marginTop: spacing.md,
       gap: spacing.sm,
     },
@@ -383,21 +385,101 @@ const createStyles = (colors) =>
       marginTop: -(spacing.md),
     },
 
-    section: {
+    summaryArea: {
+      marginTop: -80,
+      zIndex: 1,
+    },
+    summaryCardShadow: {
+      marginHorizontal: spacing.md,
+      borderRadius: radius.md,
+      ...CARD_SHADOW,
+    },
+    summaryCardClip: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      overflow: 'hidden',
+    },
+    summaryHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.sm,
+    },
+    sectionChevron: {
+      color: colors.accent,
+      fontSize: 16,
+      marginRight: spacing.xs + 2,
+      marginTop: -1,
+    },
+    summaryTitle: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 15,
+    },
+    summaryGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    summaryCell: {
+      width: '50%',
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+    },
+    cellBorderRight: {
+      borderRightWidth: StyleSheet.hairlineWidth,
+      borderRightColor: colors.border,
+    },
+    cellBorderBottom: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    cellHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: spacing.xs + 2,
+    },
+    cellDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      marginRight: spacing.sm,
+    },
+    cellLabel: {
+      color: colors.textMuted,
+      fontFamily: fonts.medium,
+      fontSize: 12,
+    },
+    cellValue: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 18,
+      fontVariant: ['tabular-nums'],
+      marginLeft: spacing.sm + 7,
+    },
+
+    budgetCard: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       padding: spacing.md,
       marginHorizontal: spacing.md,
-      marginTop: spacing.sm + 4,
+      marginTop: spacing.md,
+      ...CARD_SHADOW,
     },
-    sectionPressed: {
+    budgetCardPressed: {
       backgroundColor: colors.cardPressed,
     },
-    sectionHeader: {
+    budgetHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: spacing.sm + 4,
+      marginBottom: spacing.md,
+    },
+    budgetTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
     },
     sectionTitle: {
       color: colors.textSecondary,
@@ -406,10 +488,16 @@ const createStyles = (colors) =>
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
-    editLabel: {
+    editPill: {
+      backgroundColor: colors.accent + '18',
+      borderRadius: 12,
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.xs + 1,
+    },
+    editPillText: {
       color: colors.accent,
       fontFamily: fonts.bold,
-      fontSize: 13,
+      fontSize: 12,
     },
     budgetMeta: {
       flexDirection: 'row',
@@ -496,49 +584,4 @@ const createStyles = (colors) =>
       fontVariant: ['tabular-nums'],
     },
 
-    emptyState: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: spacing.xl,
-      paddingBottom: spacing.xl,
-    },
-    emptyTitle: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 18,
-      marginTop: spacing.md,
-    },
-    emptyHint: {
-      color: colors.textSecondary,
-      fontFamily: fonts.regular,
-      fontSize: 14,
-      lineHeight: 22,
-      textAlign: 'center',
-      marginTop: spacing.sm,
-    },
-    addFirstButton: {
-      backgroundColor: colors.accent,
-      borderRadius: radius.md,
-      paddingVertical: spacing.sm + 4,
-      paddingHorizontal: spacing.lg,
-      marginTop: spacing.lg,
-      minHeight: 48,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    addFirstButtonPressed: {
-      backgroundColor: colors.accentDark,
-    },
-    addFirstButtonText: {
-      color: colors.onAccent,
-      fontFamily: fonts.bold,
-      fontSize: 15,
-    },
-    demoLink: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      marginTop: spacing.md,
-    },
   });

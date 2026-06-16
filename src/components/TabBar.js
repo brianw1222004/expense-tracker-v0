@@ -109,10 +109,10 @@ const createStyles = (colors) =>
       height: 58,
       paddingHorizontal: spacing.sm,
       shadowColor: '#000',
-      shadowOpacity: 0.08,
+      shadowOpacity: 0.2,
       shadowRadius: 16,
       shadowOffset: { width: 0, height: 4 },
-      elevation: 8,
+      elevation: 12,
     },
     blurLayer: {
       position: 'absolute',

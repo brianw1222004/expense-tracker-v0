@@ -25,6 +25,14 @@ export function formatMoneyShort(amount, currencyCode = DEFAULT_CURRENCY) {
   return `${sign}${symbol}${abs.toFixed(2)}`;
 }
 
+// Validates that text is a legal numeric entry for a currency with the given
+// decimal precision. Zero-decimal currencies (JPY, TWD) only accept whole
+// numbers. Returns false for empty strings and non-numeric input.
+export function isValidAmountText(text, decimals) {
+  if (decimals === 0) return /^\d+$/.test(text);
+  return new RegExp(`^(\\d+(\\.\\d{0,${decimals}})?|\\.\\d{1,${decimals}})$`).test(text);
+}
+
 export function dateKey(timestamp) {
   const d = new Date(timestamp);
   const m = String(d.getMonth() + 1).padStart(2, '0');

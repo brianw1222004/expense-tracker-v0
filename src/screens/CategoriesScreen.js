@@ -6,6 +6,7 @@ import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
 import { getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
 import { loadCategoryOrder, saveCategoryOrder } from '../storage';
+import EmptyState from '../components/EmptyState';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 
@@ -118,21 +119,13 @@ export default function CategoriesScreen({
 
   if (!hasExpenses) {
     return (
-      <View style={[styles.container, styles.emptyState]}>
-        <HIcon name="circle-dashed" size={48} color={colors.icon} />
-        <Text style={styles.emptyTitle}>{t('empty.title')}</Text>
-        <Text style={styles.emptyHint}>{t('cats.emptyHint')}</Text>
-        <Pressable
-          onPress={onAddPress}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.addFirstButton, pressed && styles.addFirstButtonPressed]}
-        >
-          <Text style={styles.addFirstButtonText}>{t('empty.addFirst')}</Text>
-        </Pressable>
-        <Pressable onPress={onLoadDemo} accessibilityRole="button" hitSlop={8}>
-          <Text style={styles.demoLink}>{t('empty.loadDemo')}</Text>
-        </Pressable>
-      </View>
+      <EmptyState
+        onAdd={onAddPress}
+        onLoadDemo={onLoadDemo}
+        colors={colors}
+        t={t}
+        hintKey="cats.emptyHint"
+      />
     );
   }
 
@@ -846,48 +839,6 @@ const createStyles = (colors) =>
       paddingVertical: spacing.lg,
     },
 
-    emptyState: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: spacing.xl,
-      paddingBottom: TAB_BAR_HEIGHT,
-    },
-    emptyTitle: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 18,
-      marginTop: 12,
-    },
-    emptyHint: {
-      color: colors.textSecondary,
-      fontFamily: fonts.regular,
-      fontSize: 14,
-      textAlign: 'center',
-      marginTop: spacing.sm,
-      lineHeight: 21,
-    },
-    addFirstButton: {
-      backgroundColor: colors.accent,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm + 4,
-      marginTop: spacing.lg,
-      minHeight: 48,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    addFirstButtonPressed: { backgroundColor: colors.accentDark },
-    addFirstButtonText: {
-      color: colors.onAccent,
-      fontFamily: fonts.bold,
-      fontSize: 15,
-    },
-    demoLink: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      marginTop: spacing.md,
-    },
   });
 
 const createModalStyles = (colors) =>

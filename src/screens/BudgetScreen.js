@@ -14,16 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { CURRENCIES, getCurrency } from '../currency';
+import { isValidAmountText } from '../format';
 import { getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
 
-// Strict shape check before parseFloat (same approach as the amount field):
-// bare parseFloat accepts '1.2.3' as 1.2 and would silently save a different
-// budget than the user sees. Zero-decimal currencies only accept whole numbers.
-function isValidBudgetText(text, decimals) {
-  if (decimals === 0) return /^\d+$/.test(text);
-  return new RegExp(`^(\\d+(\\.\\d{0,${decimals}})?|\\.\\d{1,${decimals}})$`).test(text);
-}
 
 function budgetToText(value, decimals) {
   if (!(value > 0)) return '';
@@ -44,7 +38,7 @@ function AmountField({ value, decimals, onCommit, style, accessibilityLabel }) {
   const commit = () => {
     const normalized = text.trim().replace(/,(\d{3})\b/g, '$1').replace(',', '.');
     const parsed = parseFloat(normalized);
-    const isValid = isValidBudgetText(normalized, decimals) && parsed > 0;
+    const isValid = isValidAmountText(normalized, decimals) && parsed > 0;
     const committed = isValid ? Number(parsed.toFixed(decimals)) : 0;
     setText(budgetToText(committed, decimals));
     onCommit(committed);

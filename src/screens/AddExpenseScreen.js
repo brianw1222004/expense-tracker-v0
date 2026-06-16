@@ -16,7 +16,7 @@ import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
 import { CURRENCIES, getCurrency } from '../currency';
-import { buildCalendarWeeks, dateKey, dayLabel, monthLabel } from '../format';
+import { buildCalendarWeeks, dateKey, dayLabel, isValidAmountText, monthLabel } from '../format';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const NOTE_MAX_LENGTH = 50;
@@ -105,10 +105,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
   // 0-decimal currencies (JPY, TWD) only accept whole numbers.
   const normalized = amountText.replace(',', '.');
   const amount = parseFloat(normalized);
-  const pattern = currency.decimals === 0
-    ? /^\d+$/
-    : new RegExp(`^(\\d+(\\.\\d{0,${currency.decimals}})?|\\.\\d{1,${currency.decimals}})$`);
-  const isValid = pattern.test(normalized) && amount > 0;
+  const isValid = isValidAmountText(normalized, currency.decimals) && amount > 0;
 
   const reset = () => {
     setAmountText('');

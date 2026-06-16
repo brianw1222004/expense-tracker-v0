@@ -11,26 +11,20 @@ const CATEGORIES = [
 
 const FALLBACK_CATEGORY = CATEGORIES.find((c) => c.id === 'other');
 
-let _custom = [];
-
-export function setCustomCategories(list) {
-  _custom = Array.isArray(list) ? list : [];
+export function getAllCategories(customCategories = []) {
+  return [...CATEGORIES, ...(Array.isArray(customCategories) ? customCategories : [])];
 }
 
-export function getAllCategories() {
-  return [...CATEGORIES, ..._custom];
+export function getRegularAll(customCategories = []) {
+  return getAllCategories(customCategories).filter((c) => !c.external);
 }
 
-export function getRegularAll() {
-  return getAllCategories().filter((c) => !c.external);
+export function getExternalAll(customCategories = []) {
+  return getAllCategories(customCategories).filter((c) => c.external);
 }
 
-export function getExternalAll() {
-  return getAllCategories().filter((c) => c.external);
-}
-
-export function getCategory(id) {
-  return getAllCategories().find((c) => c.id === id) ?? FALLBACK_CATEGORY;
+export function getCategory(id, customCategories = []) {
+  return getAllCategories(customCategories).find((c) => c.id === id) ?? FALLBACK_CATEGORY;
 }
 
 export function getCategoryLabel(category, t) {

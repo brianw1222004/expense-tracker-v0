@@ -32,6 +32,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import TabBar from './src/components/TabBar';
 import AddExpenseModal from './src/components/AddExpenseModal';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import RewardCheck from './src/components/RewardCheck';
 import {
   loadExpenses,
@@ -53,7 +54,7 @@ import {
 import { supabase, isSupabaseConfigured } from './src/supabase';
 import { buildDemoExpenses } from './src/demoData';
 import { convert, getCurrency } from './src/currency';
-import { getCategory, setCustomCategories, getAllCategories, getRegularAll, getExternalAll } from './src/categories';
+import { getCategory, getAllCategories, getRegularAll, getExternalAll } from './src/categories';
 import { dateKey } from './src/format';
 import { ThemeProvider, getTheme } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
@@ -107,6 +108,7 @@ function ExpenseTracker() {
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
   const [dayStamp, setDayStamp] = useState(() => dateKey(Date.now()));
   const settingsVersionRef = useRef(0);
+  const pushNextRef = useRef(null);
   const { width: screenWidth } = useWindowDimensions();
 
   const userId = isSupabaseConfigured ? session?.user?.id ?? null : LOCAL_USER;
@@ -211,7 +213,7 @@ function ExpenseTracker() {
 
   const addExpense = ({ amount, currency, note, category, createdAt }) => {
     const expense = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: crypto.randomUUID(),
       amount,
       currency,
       note,
@@ -253,7 +255,7 @@ function ExpenseTracker() {
   const updateSettings = useCallback(
     (patch) => {
       settingsVersionRef.current += 1;
-      const prev = settingsRef.current;
+      pushNextRef.current = null;
       setSettings((cur) => {
         const next = { ...cur, ...patch };
         if (patch.displayCurrency && patch.displayCurrency !== cur.displayCurrency) {
@@ -271,18 +273,15 @@ function ExpenseTracker() {
             next.categoryBudgets = converted;
           }
         }
+        if (
+          next.displayCurrency !== cur.displayCurrency ||
+          next.monthlyBudget !== cur.monthlyBudget
+        ) {
+          pushNextRef.current = { displayCurrency: next.displayCurrency, monthlyBudget: next.monthlyBudget };
+        }
         return next;
       });
-      const merged = { ...prev, ...patch };
-      if (
-        merged.displayCurrency !== prev.displayCurrency ||
-        merged.monthlyBudget !== prev.monthlyBudget
-      ) {
-        enqueueSettingsPush(userId, {
-          displayCurrency: merged.displayCurrency,
-          monthlyBudget: merged.monthlyBudget,
-        });
-      }
+      if (pushNextRef.current) enqueueSettingsPush(userId, pushNextRef.current);
     },
     [userId]
   );
@@ -450,14 +449,9 @@ function ExpenseTracker() {
 
   const displayCurrency = settings.displayCurrency;
 
-  const { allCategories, regularCategories, externalCategories } = useMemo(() => {
-    setCustomCategories(settings.customCategories);
-    return {
-      allCategories: getAllCategories(),
-      regularCategories: getRegularAll(),
-      externalCategories: getExternalAll(),
-    };
-  }, [settings.customCategories]);
+  const allCategories = getAllCategories(settings.customCategories);
+  const regularCategories = getRegularAll(settings.customCategories);
+  const externalCategories = getExternalAll(settings.customCategories);
 
   const addCustomCategory = (category) => {
     setSettings((prev) => ({
@@ -484,8 +478,8 @@ function ExpenseTracker() {
 
   const { sections, months, monthTotal, lastMonthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount, dailyTotals } =
     useMemo(
-      () => deriveViewData(expenses, displayCurrency, language),
-      [expenses, displayCurrency, language, dayStamp]
+      () => deriveViewData(expenses, displayCurrency, language, settings.customCategories),
+      [expenses, displayCurrency, language, dayStamp, settings.customCategories]
     );
 
   const loaded = dataUser != null && dataUser === userId;
@@ -618,7 +612,7 @@ function ExpenseTracker() {
           edges={['top', 'left', 'right']}
         >
           <StatusBar style={theme.statusBarStyle} />
-          {content}
+          <ErrorBoundary>{content}</ErrorBoundary>
         </SafeAreaView>
       </I18nProvider>
     </ThemeProvider>
@@ -629,7 +623,7 @@ function ExpenseTracker() {
 // display currency: day sections for the list, current-month stats for the
 // dashboard, and per-month aggregates for the categories screen. Labels are
 // rendered in the app language, so the memo must re-run when it changes.
-function deriveViewData(expenses, displayCurrency, language) {
+function deriveViewData(expenses, displayCurrency, language, customCategories = []) {
   const now = new Date();
   const todayKey = dateKey(now.getTime());
   const monthPrefix = todayKey.slice(0, 7); // YYYY-MM
@@ -647,7 +641,7 @@ function deriveViewData(expenses, displayCurrency, language) {
     const displayAmount = convert(expense.amount, expense.currency, displayCurrency);
     // Normalize stale stored category ids to their fallback ("Other") here so
     // the breakdown/compare aggregates group them the same way the list does.
-    const catId = getCategory(expense.category).id;
+    const catId = getCategory(expense.category, customCategories).id;
     const key = dateKey(expense.createdAt);
     const mKey = key.slice(0, 7);
 

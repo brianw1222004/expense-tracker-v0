@@ -24,10 +24,11 @@ function gridSteps(maxVal) {
   return lines;
 }
 
-export default function SpendingChart({ dailyTotals, displayCurrency, title, quickStats }) {
+export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(null);
 
   const onLayout = (e) => {
     setChartWidth(e.nativeEvent.layout.width);
@@ -48,6 +49,23 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title, qui
     PADDING_TOP + drawHeight - (value / maxVal) * drawHeight;
 
   const points = totalsUpToToday.map((val, i) => ({ x: getX(i), y: getY(val) }));
+
+  const handleInteraction = (e) => {
+    const localX = e.nativeEvent.locationX ?? e.nativeEvent.offsetX;
+    if (localX == null || drawWidth <= 0 || totalsUpToToday.length === 0) {
+      setActiveIndex(null);
+      return;
+    }
+    const ratio = (localX - PADDING_LEFT) / drawWidth;
+    const idx = Math.round(ratio * (daysInMonth - 1));
+    if (idx >= 0 && idx < totalsUpToToday.length) {
+      setActiveIndex(idx);
+    } else {
+      setActiveIndex(null);
+    }
+  };
+
+  const clearActive = () => setActiveIndex(null);
 
   let linePath = '';
   if (points.length > 1) {
@@ -82,20 +100,25 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title, qui
 
   const yGridLines = gridSteps(maxVal);
 
+  const activePoint = activeIndex != null ? points[activeIndex] : null;
+
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>{title}</Text>
-      {quickStats && (
-        <Text style={styles.statsLine}>
-          <Text style={styles.statsLineBold}>{quickStats[0].value}</Text>
-          {' '}{quickStats[0].label}{'  · '}
-          <Text style={styles.statsLineBold}>{quickStats[1].value}</Text>
-          {' '}{quickStats[1].label}{'  · '}
-          <Text style={styles.statsLineBold}>{quickStats[2].value}</Text>
-          {' '}{quickStats[2].label}
-        </Text>
-      )}
-      <View style={styles.chartWrap} onLayout={onLayout}>
+      <View style={styles.titleRow}>
+        <Text style={styles.chevron}>▾</Text>
+        <Text style={styles.title}>{title}</Text>
+      </View>
+      <View
+        style={styles.chartWrap}
+        onLayout={onLayout}
+        onStartShouldSetResponder={() => true}
+        onResponderGrant={handleInteraction}
+        onResponderMove={handleInteraction}
+        onResponderRelease={clearActive}
+        onResponderTerminate={clearActive}
+        onMouseMove={handleInteraction}
+        onMouseLeave={clearActive}
+      >
         {chartWidth > 0 && (
           <Svg width={chartWidth} height={CHART_HEIGHT}>
             {yGridLines.map((v) => (
@@ -145,7 +168,20 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title, qui
               />
             ) : null}
 
-            {peakPoint && peakVal > 0 && (
+            {activePoint && (
+              <Line
+                x1={activePoint.x}
+                y1={PADDING_TOP}
+                x2={activePoint.x}
+                y2={PADDING_TOP + drawHeight}
+                stroke={colors.accent}
+                strokeWidth={1}
+                strokeDasharray="4,3"
+                opacity={0.4}
+              />
+            )}
+
+            {peakPoint && peakVal > 0 && activeIndex !== peakIndex && (
               <>
                 <Circle
                   cx={peakPoint.x}
@@ -166,12 +202,23 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title, qui
               </>
             )}
 
-            {lastPoint && (
+            {lastPoint && activeIndex !== points.length - 1 && (
               <Circle
                 cx={lastPoint.x}
                 cy={lastPoint.y}
                 r={3.5}
                 fill={colors.accent}
+              />
+            )}
+
+            {activePoint && (
+              <Circle
+                cx={activePoint.x}
+                cy={activePoint.y}
+                r={5}
+                fill={colors.accent}
+                stroke={colors.card}
+                strokeWidth={2.5}
               />
             )}
 
@@ -190,6 +237,26 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title, qui
             ))}
           </Svg>
         )}
+
+        {activePoint && (
+          <View
+            style={[
+              styles.tooltip,
+              {
+                left: Math.max(4, Math.min(chartWidth - 76, activePoint.x - 38)),
+                top: activePoint.y > 52
+                  ? activePoint.y - 46
+                  : activePoint.y + 14,
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <Text style={styles.tooltipDay}>{activeIndex + 1}</Text>
+            <Text style={styles.tooltipValue}>
+              {formatMoneyShort(totalsUpToToday[activeIndex], displayCurrency)}
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -201,29 +268,59 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
-      marginTop: spacing.sm + 4,
+      marginTop: spacing.md,
       padding: spacing.md,
       paddingBottom: spacing.sm,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 1,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    chevron: {
+      color: colors.accent,
+      fontSize: 16,
+      marginRight: spacing.xs + 2,
+      marginTop: -1,
     },
     title: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-    },
-    statsLine: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 12,
-      marginTop: 3,
-      marginBottom: spacing.xs,
-    },
-    statsLineBold: {
-      fontFamily: fonts.bold,
       color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 15,
     },
     chartWrap: {
-      overflow: 'hidden',
+      position: 'relative',
+    },
+    tooltip: {
+      position: 'absolute',
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderRadius: 10,
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.xs + 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.14,
+      shadowRadius: 6,
+      elevation: 4,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    tooltipDay: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 10,
+      lineHeight: 13,
+    },
+    tooltipValue: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 13,
+      fontVariant: ['tabular-nums'],
+      lineHeight: 17,
     },
   });

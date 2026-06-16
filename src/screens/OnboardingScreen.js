@@ -12,6 +12,7 @@ import {
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
 import { getCurrency } from '../currency';
+import { isValidAmountText } from '../format';
 import { HIcon } from '../icons';
 
 export default function OnboardingScreen({ settings, onUpdateSettings }) {
@@ -24,9 +25,7 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
 
   const handleComplete = () => {
     const normalized = budgetText.trim().replace(/,(\d{3})\b/g, '$1').replace(',', '.');
-    const isValid = decimals === 0
-      ? /^\d+$/.test(normalized)
-      : new RegExp(`^(\\d+(\\.\\d{0,${decimals}})?|\\.\\d{1,${decimals}})$`).test(normalized);
+    const isValid = isValidAmountText(normalized, decimals);
     const parsed = parseFloat(normalized);
     const patch = { onboardingDone: true };
     if (isValid && parsed > 0) {

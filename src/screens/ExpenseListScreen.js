@@ -4,6 +4,7 @@ import { fonts, radius, spacing, useTheme } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
 import { buildCalendarWeeks, dateKey, dayLabel, formatMoney, monthLabel } from '../format';
+import EmptyState from '../components/EmptyState';
 import ExpenseRow from '../components/ExpenseRow';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
@@ -115,23 +116,7 @@ export default function ExpenseListScreen({
   if (!loaded) return <View style={styles.container} />;
 
   if (!hasExpenses) {
-    return (
-      <View style={[styles.container, styles.emptyState]}>
-        <HIcon name="circle-dashed" size={48} color={colors.icon} />
-        <Text style={styles.emptyTitle}>{t('empty.title')}</Text>
-        <Text style={styles.emptyHint}>{t('empty.hint')}</Text>
-        <Pressable
-          onPress={onAddPress}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.addFirstButton, pressed && styles.addFirstButtonPressed]}
-        >
-          <Text style={styles.addFirstButtonText}>{t('empty.addFirst')}</Text>
-        </Pressable>
-        <Pressable onPress={onLoadDemo} accessibilityRole="button" hitSlop={8}>
-          <Text style={styles.demoLink}>{t('empty.loadDemo')}</Text>
-        </Pressable>
-      </View>
-    );
+    return <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />;
   }
 
   const deleteCategory = pendingDelete ? getCategory(pendingDelete.category) : null;
@@ -592,49 +577,5 @@ const createStyles = (colors) =>
       color: colors.onAccent,
       fontFamily: fonts.bold,
       fontSize: 14,
-    },
-    emptyState: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: spacing.xl,
-      paddingBottom: TAB_BAR_HEIGHT,
-    },
-    emptyTitle: {
-      color: colors.textPrimary,
-      fontSize: 18,
-      fontFamily: fonts.bold,
-      marginTop: 12,
-    },
-    emptyHint: {
-      color: colors.textSecondary,
-      fontSize: 14,
-      fontFamily: fonts.regular,
-      textAlign: 'center',
-      marginTop: spacing.sm,
-      lineHeight: 21,
-    },
-    addFirstButton: {
-      backgroundColor: colors.accent,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm + 4,
-      marginTop: spacing.lg,
-      minHeight: 48,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    addFirstButtonPressed: {
-      backgroundColor: colors.accentDark,
-    },
-    addFirstButtonText: {
-      color: colors.onAccent,
-      fontSize: 15,
-      fontFamily: fonts.bold,
-    },
-    demoLink: {
-      color: colors.textMuted,
-      fontSize: 13,
-      fontFamily: fonts.regular,
-      marginTop: spacing.md,
     },
   });

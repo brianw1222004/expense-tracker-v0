@@ -124,12 +124,12 @@ function fromRow(row) {
   };
 }
 
-async function runOp(op) {
+async function runOp(op, userId) {
   if (op.type === 'upsert') {
     const { error } = await supabase.from('expenses').upsert(toRow(op.expense));
     if (error) throw error;
   } else if (op.type === 'delete') {
-    const { error } = await supabase.from('expenses').delete().eq('id', op.id);
+    const { error } = await supabase.from('expenses').delete().eq('id', op.id).eq('user_id', userId);
     if (error) throw error;
   } else if (op.type === 'replace') {
     // RLS scopes the delete to this user's rows; the filter is just PostgREST's
@@ -160,7 +160,7 @@ export function flush(userId) {
     while (queue.length > 0) {
       const op = queue[0];
       try {
-        await runOp(op);
+        await runOp(op, userId);
       } catch {
         return false;
       }
