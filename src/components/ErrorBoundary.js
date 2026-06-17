@@ -1,10 +1,32 @@
 import { Component } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { fonts, spacing, radius } from '../theme';
+import { fonts, spacing, radius, useTheme } from '../theme';
+import { useT } from '../i18n';
 
-// Error boundaries must be class components (React requirement).
-// Catches render errors anywhere in the subtree and shows a retry UI
-// instead of a white screen.
+function ThemedErrorFallback({ error, onReset }) {
+  const { colors } = useTheme();
+  const t = useT();
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.textPrimary }]}>{t('error.title')}</Text>
+      <Text style={[styles.message, { color: colors.textSecondary }]} numberOfLines={6}>
+        {error?.message ?? 'An unexpected error occurred.'}
+      </Text>
+      <Pressable
+        onPress={onReset}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.button,
+          { backgroundColor: colors.accent },
+          pressed && { backgroundColor: colors.accentDark },
+        ]}
+      >
+        <Text style={[styles.buttonText, { color: colors.onAccent }]}>{t('error.tryAgain')}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -26,21 +48,7 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (this.state.hasError) {
-      return (
-        <View style={styles.container}>
-          <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.message} numberOfLines={6}>
-            {this.state.error?.message ?? 'An unexpected error occurred.'}
-          </Text>
-          <Pressable
-            onPress={this.reset}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          >
-            <Text style={styles.buttonText}>Try Again</Text>
-          </Pressable>
-        </View>
-      );
+      return <ThemedErrorFallback error={this.state.error} onReset={this.reset} />;
     }
 
     return this.props.children;
@@ -53,24 +61,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
-    backgroundColor: '#fff',
   },
   title: {
     fontFamily: fonts.bold,
     fontSize: 18,
-    color: '#1a1a1a',
     marginBottom: spacing.sm,
   },
   message: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: '#555',
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: spacing.lg,
   },
   button: {
-    backgroundColor: '#007aff',
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 4,
     paddingHorizontal: spacing.lg,
@@ -78,12 +82,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonPressed: {
-    backgroundColor: '#0062cc',
-  },
   buttonText: {
     fontFamily: fonts.bold,
     fontSize: 15,
-    color: '#fff',
   },
 });

@@ -17,6 +17,10 @@ export const DEFAULT_LANGUAGE = 'en';
 const STRINGS = {
   en: {
     'tabs.add': 'Add expense',
+    'tabs.dashboard': 'Dashboard',
+    'tabs.list': 'Expenses',
+    'tabs.categories': 'Categories',
+    'tabs.account': 'Account',
 
     'common.close': 'Close',
     'common.cancel': 'Cancel',
@@ -26,6 +30,10 @@ const STRINGS = {
     'empty.hint': 'Start tracking your spending by recording your first expense.',
     'empty.addFirst': 'Add your first expense',
     'empty.loadDemo': 'or try with sample data',
+    'empty.confirmDemo': 'This will replace your current expenses with sample data. Continue?',
+
+    'error.title': 'Something went wrong',
+    'error.tryAgain': 'Try Again',
 
     'dash.today': 'Today',
     'dash.expenses': 'Expenses',
@@ -57,8 +65,10 @@ const STRINGS = {
     'list.noMatch': 'No {category} expenses yet.',
     'list.noneOnDay': 'No expenses on this day.',
     'list.deleteTitle': 'Delete expense?',
+    'list.longPressToDelete': 'Long press to delete',
 
     'add.title': 'Add expense',
+    'add.amountLabel': 'Amount',
     'add.notePlaceholder': 'What was it for?',
     'add.save': 'Add expense',
     'add.chooseDate': 'Choose date',
@@ -97,6 +107,7 @@ const STRINGS = {
     'theme.sand': 'Sand',
     'theme.neutral': 'Neutral',
     'theme.plum': 'Plum',
+    'theme.mono': 'Mono',
     'acct.comingSoon': 'Coming soon',
     'acct.exportCsv': 'Export CSV',
     'acct.soon': 'Soon',
@@ -142,6 +153,10 @@ const STRINGS = {
 
   zh: {
     'tabs.add': '新增支出',
+    'tabs.dashboard': '首頁',
+    'tabs.list': '支出',
+    'tabs.categories': '分類',
+    'tabs.account': '帳戶',
 
     'common.close': '關閉',
     'common.cancel': '取消',
@@ -151,6 +166,10 @@ const STRINGS = {
     'empty.hint': '記下你的第一筆支出，開始追蹤花費。',
     'empty.addFirst': '新增第一筆支出',
     'empty.loadDemo': '或使用範例資料體驗',
+    'empty.confirmDemo': '這將會以範例資料取代目前的支出，確定繼續嗎？',
+
+    'error.title': '發生了錯誤',
+    'error.tryAgain': '再試一次',
 
     'dash.today': '今天',
     'dash.expenses': '筆數',
@@ -182,8 +201,10 @@ const STRINGS = {
     'list.noMatch': '還沒有「{category}」的支出。',
     'list.noneOnDay': '這天沒有支出。',
     'list.deleteTitle': '刪除這筆支出？',
+    'list.longPressToDelete': '長按以刪除',
 
     'add.title': '新增支出',
+    'add.amountLabel': '金額',
     'add.notePlaceholder': '這筆花在哪裡？',
     'add.save': '新增支出',
     'add.chooseDate': '選擇日期',
@@ -222,6 +243,7 @@ const STRINGS = {
     'theme.sand': '沙岩',
     'theme.neutral': '中性',
     'theme.plum': '梅紫',
+    'theme.mono': '黑白',
     'acct.comingSoon': '即將推出',
     'acct.exportCsv': '匯出 CSV',
     'acct.soon': '即將推出',
@@ -267,6 +289,10 @@ const STRINGS = {
 
   es: {
     'tabs.add': 'Añadir gasto',
+    'tabs.dashboard': 'Inicio',
+    'tabs.list': 'Gastos',
+    'tabs.categories': 'Categorías',
+    'tabs.account': 'Cuenta',
 
     'common.close': 'Cerrar',
     'common.cancel': 'Cancelar',
@@ -276,6 +302,10 @@ const STRINGS = {
     'empty.hint': 'Empieza a controlar tus gastos registrando el primero.',
     'empty.addFirst': 'Añadir tu primer gasto',
     'empty.loadDemo': 'o prueba con datos de ejemplo',
+    'empty.confirmDemo': 'Esto reemplazará tus gastos actuales con datos de ejemplo. ¿Continuar?',
+
+    'error.title': 'Algo salió mal',
+    'error.tryAgain': 'Intentar de nuevo',
 
     'dash.today': 'Hoy',
     'dash.expenses': 'Gastos',
@@ -307,8 +337,10 @@ const STRINGS = {
     'list.noMatch': 'Aún no hay gastos de {category}.',
     'list.noneOnDay': 'Sin gastos en este día.',
     'list.deleteTitle': '¿Eliminar gasto?',
+    'list.longPressToDelete': 'Mantén presionado para eliminar',
 
     'add.title': 'Añadir gasto',
+    'add.amountLabel': 'Monto',
     'add.notePlaceholder': '¿En qué fue?',
     'add.save': 'Añadir gasto',
     'add.chooseDate': 'Elegir fecha',
@@ -347,6 +379,7 @@ const STRINGS = {
     'theme.sand': 'Arena',
     'theme.neutral': 'Neutro',
     'theme.plum': 'Ciruela',
+    'theme.mono': 'Mono',
     'acct.comingSoon': 'Próximamente',
     'acct.exportCsv': 'Exportar CSV',
     'acct.soon': 'Pronto',

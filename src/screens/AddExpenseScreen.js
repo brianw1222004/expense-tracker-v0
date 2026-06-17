@@ -84,7 +84,13 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
     const d = new Date(editExpense.createdAt);
     return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
   });
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitBy, setSplitBy] = useState(2);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const calAnim = useRef(new Animated.Value(0)).current;
+  const splitAnim = useRef(new Animated.Value(0)).current;
+  const calContentH = useRef(350);
+  const splitContentH = useRef(60);
   const [calMonth, setCalMonth] = useState(() => {
     const d = isEdit ? new Date(editExpense.createdAt) : new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -107,6 +113,20 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
   const amount = parseFloat(normalized);
   const isValid = isValidAmountText(normalized, currency.decimals) && amount > 0;
 
+  const splitRaw = amount > 0 && splitBy > 1
+    ? Math.round((amount / splitBy) * (10 ** currency.decimals)) / (10 ** currency.decimals)
+    : 0;
+  const splitResult = splitRaw > 0 ? splitRaw : null;
+
+  const applySplit = () => {
+    if (splitResult != null) {
+      setAmountText(String(splitResult));
+      setSplitOpen(false);
+      setSplitBy(2);
+      Animated.timing(splitAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+    }
+  };
+
   const reset = () => {
     setAmountText('');
     setNote('');
@@ -114,9 +134,13 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
     setManualCurrency(null);
     setDayOffset(0);
     setDatePickerOpen(false);
+    setSplitOpen(false);
+    setSplitBy(2);
     colorFrom.current = categories[0].color;
     colorTo.current = categories[0].color;
     colorAnim.setValue(1);
+    calAnim.setValue(0);
+    splitAnim.setValue(0);
   };
 
   const handleSubmit = () => {
@@ -157,11 +181,19 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
   };
 
   const toggleDatePicker = () => {
-    if (!datePickerOpen) {
+    const next = !datePickerOpen;
+    if (next) {
       const selected = dateForOffset(dayOffset);
       setCalMonth({ year: selected.getFullYear(), month: selected.getMonth() });
     }
-    setDatePickerOpen((open) => !open);
+    setDatePickerOpen(next);
+    Animated.timing(calAnim, { toValue: next ? 1 : 0, duration: 250, useNativeDriver: false }).start();
+  };
+
+  const toggleSplit = () => {
+    const next = !splitOpen;
+    setSplitOpen(next);
+    Animated.timing(splitAnim, { toValue: next ? 1 : 0, duration: 250, useNativeDriver: false }).start();
   };
 
   const shiftCalMonth = (delta) =>
@@ -173,6 +205,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
   const pickDay = (day) => {
     setDayOffset(offsetForDay(calMonth.year, calMonth.month, day));
     setDatePickerOpen(false);
+    Animated.timing(calAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start();
   };
 
   const today = new Date();
@@ -250,8 +283,8 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
             </Pressable>
           </View>
 
-          {datePickerOpen && (
-            <View style={styles.calendar}>
+          <Animated.View style={{ maxHeight: calAnim.interpolate({ inputRange: [0, 1], outputRange: [0, calContentH.current] }), opacity: calAnim, overflow: 'hidden' }}>
+            <View style={styles.calendar} onLayout={(e) => { calContentH.current = e.nativeEvent.layout.height; }}>
               <View style={styles.calendarHeader}>
                 <Pressable
                   onPress={() => shiftCalMonth(-1)}
@@ -320,21 +353,71 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
                 </View>
               ))}
             </View>
-          )}
+          </Animated.View>
         </View>
 
-        <View style={styles.amountRow}>
-          <Text style={styles.currencySymbol}>{currency.symbol}</Text>
-          <TextInput
-            style={styles.amountInput}
-            value={amountText}
-            onChangeText={(text) => setAmountText(text.replace(/[^0-9.,]/g, ''))}
-            placeholder={currency.decimals === 0 ? '0' : '0.00'}
-            placeholderTextColor={colors.textMuted}
-            keyboardType={currency.decimals === 0 ? 'number-pad' : 'decimal-pad'}
-            keyboardAppearance={colors.keyboardAppearance}
-            maxLength={9}
-          />
+        <View style={styles.amountArea}>
+          <View style={styles.amountRow}>
+            <View style={styles.amountCenter}>
+              <Text style={styles.currencySymbol}>{currency.symbol}</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={amountText}
+                onChangeText={(text) => setAmountText(text.replace(/[^0-9.,]/g, ''))}
+                placeholder={currency.decimals === 0 ? '0' : '0.00'}
+                placeholderTextColor={colors.textMuted}
+                keyboardType={currency.decimals === 0 ? 'number-pad' : 'decimal-pad'}
+                keyboardAppearance={colors.keyboardAppearance}
+                maxLength={9}
+                accessibilityLabel={t('add.amountLabel')}
+              />
+            </View>
+            <Pressable
+              onPress={toggleSplit}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.splitToggle,
+                splitOpen && styles.splitToggleActive,
+                pressed && styles.chipPressed,
+              ]}
+            >
+              <Text style={[styles.splitToggleText, splitOpen && styles.splitToggleTextActive]}>÷</Text>
+            </Pressable>
+          </View>
+
+          <Animated.View style={{ maxHeight: splitAnim.interpolate({ inputRange: [0, 1], outputRange: [0, splitContentH.current] }), opacity: splitAnim, overflow: 'hidden' }}>
+            <View style={styles.splitRow} onLayout={(e) => { splitContentH.current = e.nativeEvent.layout.height; }}>
+              <Pressable
+                onPress={() => setSplitBy((v) => Math.max(2, v - 1))}
+                hitSlop={4}
+                style={({ pressed }) => [styles.splitBtn, pressed && styles.chipPressed]}
+              >
+                <Text style={styles.splitBtnText}>−</Text>
+              </Pressable>
+              <Text style={styles.splitByText}>{splitBy}</Text>
+              <Pressable
+                onPress={() => setSplitBy((v) => Math.min(99, v + 1))}
+                hitSlop={4}
+                style={({ pressed }) => [styles.splitBtn, pressed && styles.chipPressed]}
+              >
+                <Text style={styles.splitBtnText}>+</Text>
+              </Pressable>
+              {splitResult != null && (
+                <>
+                  <Text style={styles.splitEquals}>=</Text>
+                  <Text style={styles.splitResultText}>
+                    {currency.symbol}{splitResult}
+                  </Text>
+                  <Pressable
+                    onPress={applySplit}
+                    style={({ pressed }) => [styles.splitApply, pressed && { opacity: 0.7 }]}
+                  >
+                    <Text style={styles.splitApplyText}>✓</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          </Animated.View>
         </View>
 
         <ScrollView
@@ -523,23 +606,32 @@ const createStyles = (colors) =>
       justifyContent: 'center',
       backgroundColor: colors.card,
     },
+    amountArea: {
+      marginBottom: spacing.sm,
+    },
     amountRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: spacing.sm,
+    },
+    amountCenter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
     },
     currencySymbol: {
       color: colors.textSecondary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 30,
+      width: 56,
+      textAlign: 'right',
       marginRight: spacing.xs,
     },
     amountInput: {
+      flex: 1,
       color: colors.textPrimary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 40,
-      minWidth: 130,
       textAlign: 'center',
       fontVariant: ['tabular-nums'],
     },
@@ -672,6 +764,7 @@ const createStyles = (colors) =>
       borderWidth: 1,
       borderColor: colors.border,
       padding: spacing.sm,
+      paddingBottom: spacing.sm + 4,
       marginTop: spacing.sm,
     },
     calendarHeader: {
@@ -736,5 +829,80 @@ const createStyles = (colors) =>
       color: colors.onAccent,
       fontFamily: fonts.bold,
       fontSize: 16,
+    },
+    splitToggle: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+    },
+    splitToggleActive: {
+      backgroundColor: colors.accent,
+    },
+    splitToggleText: {
+      color: colors.textMuted,
+      fontFamily: fonts.numBold,
+      fontSize: 16,
+    },
+    splitToggleTextActive: {
+      color: colors.onAccent,
+    },
+    splitRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+      backgroundColor: colors.card,
+      borderRadius: radius.sm,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+    },
+    splitBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background,
+    },
+    splitBtnText: {
+      color: colors.textPrimary,
+      fontFamily: fonts.numBold,
+      fontSize: 16,
+      lineHeight: 18,
+    },
+    splitByText: {
+      color: colors.textPrimary,
+      fontFamily: fonts.numBold,
+      fontSize: 18,
+      minWidth: 24,
+      textAlign: 'center',
+      fontVariant: ['tabular-nums'],
+    },
+    splitEquals: {
+      color: colors.textMuted,
+      fontFamily: fonts.numRegular,
+      fontSize: 16,
+    },
+    splitResultText: {
+      color: colors.accent,
+      fontFamily: fonts.numBold,
+      fontSize: 16,
+      fontVariant: ['tabular-nums'],
+    },
+    splitApply: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
+    },
+    splitApplyText: {
+      color: colors.onAccent,
+      fontSize: 14,
     },
   });

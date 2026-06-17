@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
@@ -319,7 +319,7 @@ export default function ExpenseListScreen({
   );
 }
 
-function FilterChip({ icon, label, color, selected, onPress, styles }) {
+const FilterChip = React.memo(function FilterChip({ icon, label, color, selected, onPress, styles }) {
   const { colors } = useTheme();
   const chipColor = color ?? colors.accent;
   return (
@@ -337,7 +337,7 @@ function FilterChip({ icon, label, color, selected, onPress, styles }) {
       <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{label}</Text>
     </Pressable>
   );
-}
+});
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -364,6 +364,13 @@ const createStyles = (colors) =>
       paddingTop: spacing.sm,
       paddingBottom: spacing.xs,
       paddingHorizontal: spacing.xs,
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 3,
     },
     calHeader: {
       flexDirection: 'row',
@@ -442,12 +449,13 @@ const createStyles = (colors) =>
     dayHeaderTotal: {
       color: colors.textMuted,
       fontSize: 13,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontVariant: ['tabular-nums'],
     },
 
     chipsArea: {
-      paddingVertical: spacing.xs + 2,
+      paddingTop: spacing.xs + 2,
+      paddingBottom: spacing.md,
     },
     chipRow: {
       paddingHorizontal: spacing.md,
@@ -503,6 +511,13 @@ const createStyles = (colors) =>
       padding: spacing.lg,
       width: '100%',
       maxWidth: 340,
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 3,
     },
     modalTitle: {
       color: colors.textPrimary,
@@ -542,7 +557,7 @@ const createStyles = (colors) =>
     },
     modalAmount: {
       color: colors.textPrimary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 14,
       fontVariant: ['tabular-nums'],
     },

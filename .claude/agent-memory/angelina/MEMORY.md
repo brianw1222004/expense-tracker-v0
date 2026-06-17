@@ -1,0 +1,2 @@
+- [Audit: expense-tracker codebase 2026-06-16](audit-expense-tracker-2026-06-16.md) — Full codebase audit findings, severity map, and architecture assessment
+- [Audit: perf+UX batch 2026-06-17](audit-perf-ux-batch-2026-06-17.md) — Post-fix review of b509bd6 batch: LayoutAnimation, categories refactor, ErrorBoundary, i18n, a11y

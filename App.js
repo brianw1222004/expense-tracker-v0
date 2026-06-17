@@ -14,13 +14,18 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import * as Haptics from 'expo-haptics';
+import * as HapticsModule from 'expo-haptics';
 import {
   useFonts,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
+  Lora_400Regular,
+  Lora_500Medium,
+  Lora_700Bold,
+} from '@expo-google-fonts/lora';
+import {
+  Outfit_400Regular,
+  Outfit_500Medium,
+  Outfit_700Bold,
+} from '@expo-google-fonts/outfit';
 
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddExpenseScreen from './src/screens/AddExpenseScreen';
@@ -59,6 +64,10 @@ import { dateKey } from './src/format';
 import { ThemeProvider, getTheme } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 
+const Haptics = Platform.OS === 'web'
+  ? { notificationAsync: () => Promise.resolve(), impactAsync: () => Promise.resolve(), NotificationFeedbackType: HapticsModule.NotificationFeedbackType, ImpactFeedbackStyle: HapticsModule.ImpactFeedbackStyle }
+  : HapticsModule;
+
 const TAB_INDEX = { dashboard: 0, list: 1, categories: 2, account: 3 };
 const TAB_NAMES = ['dashboard', 'list', 'categories', 'account'];
 
@@ -66,9 +75,12 @@ export default function App() {
   // Block first paint until loaded so no screen ever renders with the fallback
   // face; on a load error render anyway rather than hanging on a blank screen.
   const [fontsLoaded, fontsError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_700Bold,
+    Lora_400Regular,
+    Lora_500Medium,
+    Lora_700Bold,
+    Outfit_400Regular,
+    Outfit_500Medium,
+    Outfit_700Bold,
   });
   if (!fontsLoaded && !fontsError) return null;
 
@@ -108,7 +120,6 @@ function ExpenseTracker() {
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
   const [dayStamp, setDayStamp] = useState(() => dateKey(Date.now()));
   const settingsVersionRef = useRef(0);
-  const pushNextRef = useRef(null);
   const { width: screenWidth } = useWindowDimensions();
 
   const userId = isSupabaseConfigured ? session?.user?.id ?? null : LOCAL_USER;
@@ -243,6 +254,9 @@ function ExpenseTracker() {
   };
 
   const loadDemo = () => {
+    if (Platform.OS === 'web') {
+      if (!window.confirm(translate(language, 'empty.confirmDemo'))) return;
+    }
     const demo = buildDemoExpenses();
     setExpenses(demo);
     enqueueExpensesReplace(userId, demo);
@@ -255,7 +269,6 @@ function ExpenseTracker() {
   const updateSettings = useCallback(
     (patch) => {
       settingsVersionRef.current += 1;
-      pushNextRef.current = null;
       setSettings((cur) => {
         const next = { ...cur, ...patch };
         if (patch.displayCurrency && patch.displayCurrency !== cur.displayCurrency) {
@@ -277,11 +290,10 @@ function ExpenseTracker() {
           next.displayCurrency !== cur.displayCurrency ||
           next.monthlyBudget !== cur.monthlyBudget
         ) {
-          pushNextRef.current = { displayCurrency: next.displayCurrency, monthlyBudget: next.monthlyBudget };
+          enqueueSettingsPush(userId, { displayCurrency: next.displayCurrency, monthlyBudget: next.monthlyBudget });
         }
         return next;
       });
-      if (pushNextRef.current) enqueueSettingsPush(userId, pushNextRef.current);
     },
     [userId]
   );

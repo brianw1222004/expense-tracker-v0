@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
@@ -6,22 +6,35 @@ import { getCategory, getCategoryLabel } from '../categories';
 import { formatMoney } from '../format';
 import { HIcon } from '../icons';
 
-export default function ExpenseRow({ expense, displayCurrency, onRequestDelete, onEdit }) {
+export default React.memo(function ExpenseRow({ expense, displayCurrency, onRequestDelete, onEdit }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const category = getCategory(expense.category);
   const converted = expense.currency !== displayCurrency;
 
+  const tintStyle = useMemo(() => ({
+    backgroundColor: `${category.color}0A`,
+    borderLeftWidth: 3,
+    borderLeftColor: `${category.color}33`,
+  }), [category.color]);
+
+  const handleEdit = useCallback(() => onEdit(expense), [onEdit, expense]);
+  const handleDelete = useCallback(() => onRequestDelete(expense), [onRequestDelete, expense]);
+
+  const label = expense.note || getCategoryLabel(category, t);
+
   return (
     <Pressable
-      onPress={() => onEdit(expense)}
-      onLongPress={() => onRequestDelete(expense)}
+      onPress={handleEdit}
+      onLongPress={handleDelete}
       delayLongPress={350}
       accessibilityRole="button"
+      accessibilityLabel={`${label}, ${formatMoney(expense.displayAmount, displayCurrency)}`}
+      accessibilityHint={t('list.longPressToDelete')}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: `${category.color}0A`, borderLeftWidth: 3, borderLeftColor: `${category.color}33` },
+        tintStyle,
         pressed && styles.rowPressed,
       ]}
     >
@@ -44,7 +57,7 @@ export default function ExpenseRow({ expense, displayCurrency, onRequestDelete, 
       </View>
     </Pressable>
   );
-}
+});
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -56,6 +69,13 @@ const createStyles = (colors) =>
       padding: spacing.sm + 4,
       marginHorizontal: spacing.md,
       marginBottom: spacing.sm,
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 3,
     },
     rowPressed: {
       backgroundColor: colors.cardPressed,
@@ -88,13 +108,13 @@ const createStyles = (colors) =>
     amount: {
       color: colors.textPrimary,
       fontSize: 15,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontVariant: ['tabular-nums'],
     },
     originalAmount: {
       color: colors.textMuted,
       fontSize: 12,
-      fontFamily: fonts.regular,
+      fontFamily: fonts.numRegular,
       marginTop: 1,
       fontVariant: ['tabular-nums'],
     },

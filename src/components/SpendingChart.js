@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState, useRef, useCallback } from 'react';
+import { Animated, LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+
+if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 import Svg, { Path, Circle, G, Line, Text as SvgText } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { formatMoneyShort } from '../format';
@@ -29,6 +31,19 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(null);
+  const [open, setOpen] = useState(true);
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  const toggleOpen = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpen((prev) => {
+      const next = !prev;
+      Animated.timing(rotateAnim, { toValue: next ? 0 : 1, duration: 250, useNativeDriver: true }).start();
+      return next;
+    });
+  }, [rotateAnim]);
+
+  const chevronRotate = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-90deg'] });
 
   const onLayout = (e) => {
     setChartWidth(e.nativeEvent.layout.width);
@@ -104,10 +119,12 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
 
   return (
     <View style={styles.card}>
-      <View style={styles.titleRow}>
-        <Text style={styles.chevron}>▾</Text>
+      <Pressable style={styles.titleRow} onPress={toggleOpen}>
+        <Animated.Text style={[styles.chevron, { transform: [{ rotate: chevronRotate }] }]}>▾</Animated.Text>
         <Text style={styles.title}>{title}</Text>
-      </View>
+      </Pressable>
+      {open && (
+      <View>
       <View
         style={styles.chartWrap}
         onLayout={onLayout}
@@ -137,7 +154,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
                   y={getY(v) + 3}
                   textAnchor="end"
                   fontSize={9}
-                  fontFamily={fonts.regular}
+                  fontFamily={fonts.numRegular}
                   fill={colors.textMuted}
                 >
                   {formatMoneyShort(v, displayCurrency)}
@@ -194,7 +211,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
                   y={peakPoint.y - 8}
                   textAnchor="middle"
                   fontSize={11}
-                  fontFamily={fonts.bold}
+                  fontFamily={fonts.numBold}
                   fill={colors.danger}
                 >
                   {formatMoneyShort(peakVal, displayCurrency)}
@@ -229,7 +246,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
                 y={PADDING_TOP + drawHeight + 18}
                 textAnchor="middle"
                 fontSize={12}
-                fontFamily={fonts.regular}
+                fontFamily={fonts.numRegular}
                 fill={colors.textMuted}
               >
                 {l.day}
@@ -258,6 +275,8 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
           </View>
         )}
       </View>
+      </View>
+      )}
     </View>
   );
 }
@@ -271,6 +290,8 @@ const createStyles = (colors) =>
       marginTop: spacing.md,
       padding: spacing.md,
       paddingBottom: spacing.sm,
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.06,
@@ -312,13 +333,13 @@ const createStyles = (colors) =>
     },
     tooltipDay: {
       color: colors.textMuted,
-      fontFamily: fonts.regular,
+      fontFamily: fonts.numRegular,
       fontSize: 10,
       lineHeight: 13,
     },
     tooltipValue: {
       color: colors.textPrimary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 13,
       fontVariant: ['tabular-nums'],
       lineHeight: 17,

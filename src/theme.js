@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 
 export const THEMES = {
   vivid: {
@@ -26,6 +26,8 @@ export const THEMES = {
     headerText: '#ffffff',
     headerTextSecondary: 'rgba(255, 255, 255, 0.75)',
     icon: '#38bdf8',
+    widgetBorderWidth: 0,
+    widgetBorderColor: 'transparent',
   },
   slate: {
     name: 'slate',
@@ -52,6 +54,8 @@ export const THEMES = {
     headerText: '#f6f8f9',
     headerTextSecondary: 'rgba(246, 248, 249, 0.65)',
     icon: '#638394',
+    widgetBorderWidth: 0,
+    widgetBorderColor: 'transparent',
   },
   sand: {
     name: 'sand',
@@ -78,6 +82,8 @@ export const THEMES = {
     headerText: '#f5f3ee',
     headerTextSecondary: 'rgba(245, 243, 238, 0.65)',
     icon: '#948461',
+    widgetBorderWidth: 0,
+    widgetBorderColor: 'transparent',
   },
   neutral: {
     name: 'neutral',
@@ -104,6 +110,8 @@ export const THEMES = {
     headerText: '#fafafa',
     headerTextSecondary: 'rgba(250, 250, 250, 0.65)',
     icon: '#727272',
+    widgetBorderWidth: 0,
+    widgetBorderColor: 'transparent',
   },
   plum: {
     name: 'plum',
@@ -130,6 +138,36 @@ export const THEMES = {
     headerText: '#faf7fb',
     headerTextSecondary: 'rgba(250, 247, 251, 0.65)',
     icon: '#b376bf',
+    widgetBorderWidth: 0,
+    widgetBorderColor: 'transparent',
+  },
+  mono: {
+    name: 'mono',
+    statusBarStyle: 'dark',
+    keyboardAppearance: 'light',
+    background: '#f4f4f0',
+    card: '#ffffff',
+    cardPressed: '#eaeae6',
+    border: '#d4d4d0',
+    textPrimary: '#0a0a0a',
+    textSecondary: '#3a3a3a',
+    textMuted: '#888888',
+    accent: '#0a0a0a',
+    accentDark: '#000000',
+    onAccent: '#ffffff',
+    success: '#22a867',
+    successAlt: '#6ee7b7',
+    successOverlay: '#eaf5ee',
+    warning: '#d4950a',
+    danger: '#dc3545',
+    backdrop: 'rgba(0, 0, 0, 0.4)',
+    gradientStart: '#0a0a0a',
+    gradientEnd: '#2a2a2a',
+    headerText: '#ffffff',
+    headerTextSecondary: 'rgba(255, 255, 255, 0.6)',
+    icon: '#0a0a0a',
+    widgetBorderWidth: 0.85,
+    widgetBorderColor: '#0a0a0a',
   },
 };
 
@@ -138,9 +176,12 @@ export function getTheme(name) {
 }
 
 export const fonts = {
-  regular: 'Inter_400Regular',
-  medium: 'Inter_500Medium',
-  bold: 'Inter_700Bold',
+  regular: 'Lora_400Regular',
+  medium: 'Lora_500Medium',
+  bold: 'Lora_700Bold',
+  numRegular: 'Outfit_400Regular',
+  numMedium: 'Outfit_500Medium',
+  numBold: 'Outfit_700Bold',
 };
 
 export const spacing = {
@@ -160,9 +201,12 @@ export const radius = {
 const ThemeContext = createContext({ themeName: 'vivid', colors: THEMES.vivid });
 
 export function ThemeProvider({ themeName, children }) {
-  const colors = getTheme(themeName);
+  const value = useMemo(() => {
+    const colors = getTheme(themeName);
+    return { themeName: colors.name, colors };
+  }, [themeName]);
   return (
-    <ThemeContext.Provider value={{ themeName: colors.name, colors }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

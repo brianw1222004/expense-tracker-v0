@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState, useRef, useCallback } from 'react';
+import { Animated, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, UIManager, View } from 'react-native';
+
+if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 import { LinearGradient } from 'expo-linear-gradient';
 import BudgetGauge from '../components/BudgetGauge';
 import EmptyState from '../components/EmptyState';
@@ -75,17 +77,37 @@ export default function DashboardScreen({
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysLeft = daysInMonth - now.getDate();
 
-  const budgetUsedPercent =
-    monthlyBudget > 0
-      ? Math.min(999, Math.round((regularSpent / monthlyBudget) * 100))
-      : null;
-
   const summaryData = [
     { key: 'today', value: formatMoneyShort(todayTotal, displayCurrency), label: t('dash.today'), color: colors.accent },
     { key: 'expenses', value: String(monthCount), label: t('dash.expenses'), color: colors.success },
     { key: 'avgPerDay', value: formatMoneyShort(avgPerDay, displayCurrency), label: t('dash.avgPerDay'), color: colors.warning },
     { key: 'daysLeft', value: String(daysLeft), label: t('dash.daysLeft'), color: colors.textMuted },
   ];
+
+  const [summaryOpen, setSummaryOpen] = useState(true);
+  const [budgetOpen, setBudgetOpen] = useState(true);
+  const summaryRotate = useRef(new Animated.Value(0)).current;
+  const budgetRotate = useRef(new Animated.Value(0)).current;
+
+  const toggleSection = useCallback((section) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (section === 'summary') {
+      setSummaryOpen((prev) => {
+        const next = !prev;
+        Animated.timing(summaryRotate, { toValue: next ? 0 : 1, duration: 250, useNativeDriver: true }).start();
+        return next;
+      });
+    } else {
+      setBudgetOpen((prev) => {
+        const next = !prev;
+        Animated.timing(budgetRotate, { toValue: next ? 0 : 1, duration: 250, useNativeDriver: true }).start();
+        return next;
+      });
+    }
+  }, [summaryRotate, budgetRotate]);
+
+  const summaryChevronRotate = summaryRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-90deg'] });
+  const budgetChevronRotate = budgetRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-90deg'] });
 
   return (
     <ScrollView
@@ -129,30 +151,24 @@ export default function DashboardScreen({
         <View style={styles.summaryArea}>
           <View style={styles.summaryCardShadow}>
             <View style={styles.summaryCardClip}>
-              <View style={styles.summaryHeader}>
-                <Text style={styles.sectionChevron}>▾</Text>
+              <Pressable style={styles.summaryHeader} onPress={() => toggleSection('summary')} accessibilityRole="button" accessibilityState={{ expanded: summaryOpen }}>
+                <Animated.Text style={[styles.sectionChevron, { transform: [{ rotate: summaryChevronRotate }] }]}>▾</Animated.Text>
                 <Text style={styles.summaryTitle}>
                   {monthLabel(new Date(), language)}
                 </Text>
-              </View>
-              <View style={styles.summaryGrid}>
-                {summaryData.map((item, index) => (
-                  <View
-                    key={item.key}
-                    style={[
-                      styles.summaryCell,
-                      index % 2 === 0 && styles.cellBorderRight,
-                      index < 2 && styles.cellBorderBottom,
-                    ]}
-                  >
-                    <View style={styles.cellHeader}>
-                      <View style={[styles.cellDot, { backgroundColor: item.color }]} />
+              </Pressable>
+              {summaryOpen && (
+                <View style={styles.summaryGrid}>
+                  {summaryData.map((item) => (
+                    <View key={item.key} style={styles.summaryCell}>
+                      <View style={[styles.cellAccent, { backgroundColor: item.color + '18' }]}>
+                        <Text style={[styles.cellValue, { color: item.color }]}>{item.value}</Text>
+                      </View>
                       <Text style={styles.cellLabel}>{item.label}</Text>
                     </View>
-                    <Text style={styles.cellValue}>{item.value}</Text>
-                  </View>
-                ))}
-              </View>
+                  ))}
+                </View>
+              )}
             </View>
           </View>
         </View>
@@ -169,83 +185,75 @@ export default function DashboardScreen({
       {!hasExpenses && <View style={styles.chartPlaceholder} />}
 
       {hasExpenses && (
-        <Pressable
-          onPress={onEditBudgets}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.budgetCard, pressed && styles.budgetCardPressed]}
-        >
+        <View style={styles.budgetCard}>
           <View style={styles.budgetHeader}>
-            <View style={styles.budgetTitleRow}>
-              <Text style={styles.sectionChevron}>▾</Text>
-              <View>
-                <Text style={styles.sectionTitle}>{t('budget.title')}</Text>
-                <View style={styles.budgetMeta}>
-                  {budgetUsedPercent != null && (
-                    <>
-                      <Text style={styles.budgetMetaVal}>{budgetUsedPercent}%</Text>
-                      <Text style={styles.budgetMetaDot}>·</Text>
-                    </>
-                  )}
-                  <Text style={styles.budgetMetaVal}>{daysLeft}</Text>
-                  <Text style={styles.budgetMetaLabel}>{t('dash.daysLeft')}</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.editPill}>
+            <Pressable style={styles.budgetTitleRow} onPress={() => toggleSection('budget')} accessibilityRole="button" accessibilityState={{ expanded: budgetOpen }}>
+              <Animated.Text style={[styles.sectionChevron, { transform: [{ rotate: budgetChevronRotate }] }]}>▾</Animated.Text>
+              <Text style={styles.sectionTitle}>{t('budget.title')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={onEditBudgets}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.editPill, pressed && { opacity: 0.7 }]}
+            >
               <Text style={styles.editPillText}>{t('budget.edit')}</Text>
-            </View>
+            </Pressable>
           </View>
 
-          <BudgetGauge
-            spent={gaugeSpent}
-            budget={gaugeBudget}
-            displayCurrency={displayCurrency}
-            empty={!hasBudgets}
-          />
+          {budgetOpen && (
+            <View>
+            <BudgetGauge
+              spent={gaugeSpent}
+              budget={gaugeBudget}
+              displayCurrency={displayCurrency}
+              empty={!hasBudgets}
+            />
 
-          {hasBudgets && budgetedCategories.length > 0 && (
-            <>
-              <View style={styles.divider} />
-              <Text style={styles.sectionTitle}>{t('budget.categoryTitle')}</Text>
-              {budgetedCategories.map((category) => (
-                <CategoryBar
-                  key={category.id}
-                  category={category}
-                  budget={categoryBudgets[category.id]}
-                  spent={Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor}
-                  displayCurrency={displayCurrency}
-                  styles={styles}
-                  colors={colors}
-                  t={t}
-                />
-              ))}
-            </>
-          )}
+            {hasBudgets && budgetedCategories.length > 0 && (
+              <>
+                <View style={styles.divider} />
+                <Text style={styles.sectionTitle}>{t('budget.categoryTitle')}</Text>
+                {budgetedCategories.map((category) => (
+                  <CategoryBar
+                    key={category.id}
+                    category={category}
+                    budget={categoryBudgets[category.id]}
+                    spent={Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor}
+                    displayCurrency={displayCurrency}
+                    styles={styles}
+                    colors={colors}
+                    t={t}
+                  />
+                ))}
+              </>
+            )}
 
-          {externalSpent > 0 && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.externalRow}>
-                <Text style={styles.externalLabel}>{t('budget.externalTotal')}</Text>
-                <Text style={styles.externalAmount}>
-                  {formatMoneyShort(externalSpent, displayCurrency)}
-                </Text>
-              </View>
-              {budgetedExternal.map((category) => (
-                <CategoryBar
-                  key={category.id}
-                  category={category}
-                  budget={categoryBudgets[category.id]}
-                  spent={Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor}
-                  displayCurrency={displayCurrency}
-                  styles={styles}
-                  colors={colors}
-                  t={t}
-                />
-              ))}
-            </>
+            {externalSpent > 0 && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.externalRow}>
+                  <Text style={styles.externalLabel}>{t('budget.externalTotal')}</Text>
+                  <Text style={styles.externalAmount}>
+                    {formatMoneyShort(externalSpent, displayCurrency)}
+                  </Text>
+                </View>
+                {budgetedExternal.map((category) => (
+                  <CategoryBar
+                    key={category.id}
+                    category={category}
+                    budget={categoryBudgets[category.id]}
+                    spent={Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor}
+                    displayCurrency={displayCurrency}
+                    styles={styles}
+                    colors={colors}
+                    t={t}
+                  />
+                ))}
+              </>
+            )}
+            </View>
           )}
-        </Pressable>
+        </View>
       )}
 
       {loaded && !hasExpenses && (
@@ -255,7 +263,7 @@ export default function DashboardScreen({
   );
 }
 
-function CategoryBar({ category, budget, spent, displayCurrency, styles, colors, t }) {
+const CategoryBar = React.memo(function CategoryBar({ category, budget, spent, displayCurrency, styles, colors, t }) {
   const over = spent > budget;
   return (
     <View style={styles.categoryRow}>
@@ -284,7 +292,7 @@ function CategoryBar({ category, budget, spent, displayCurrency, styles, colors,
       </View>
     </View>
   );
-}
+});
 
 const CARD_SHADOW = {
   shadowColor: '#000',
@@ -347,7 +355,7 @@ const createStyles = (colors) =>
     },
     heroTotal: {
       color: colors.headerText,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 40,
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.5,
@@ -369,7 +377,7 @@ const createStyles = (colors) =>
     },
     compareDelta: {
       color: colors.headerText,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 14,
       fontVariant: ['tabular-nums'],
     },
@@ -398,6 +406,8 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
     },
     summaryHeader: {
       flexDirection: 'row',
@@ -410,7 +420,6 @@ const createStyles = (colors) =>
       color: colors.accent,
       fontSize: 16,
       marginRight: spacing.xs + 2,
-      marginTop: -1,
     },
     summaryTitle: {
       color: colors.textPrimary,
@@ -419,45 +428,30 @@ const createStyles = (colors) =>
     },
     summaryGrid: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
+      paddingHorizontal: spacing.sm + 2,
+      paddingBottom: spacing.md,
+      gap: spacing.sm,
     },
     summaryCell: {
-      width: '50%',
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.md,
-    },
-    cellBorderRight: {
-      borderRightWidth: StyleSheet.hairlineWidth,
-      borderRightColor: colors.border,
-    },
-    cellBorderBottom: {
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
-    },
-    cellHeader: {
-      flexDirection: 'row',
+      flex: 1,
       alignItems: 'center',
-      marginBottom: spacing.xs + 2,
+      gap: spacing.xs + 2,
     },
-    cellDot: {
-      width: 7,
-      height: 7,
-      borderRadius: 3.5,
-      marginRight: spacing.sm,
+    cellAccent: {
+      width: '100%',
+      alignItems: 'center',
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm + 4,
     },
     cellLabel: {
       color: colors.textMuted,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 11,
     },
     cellValue: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 18,
+      fontFamily: fonts.numBold,
+      fontSize: 17,
       fontVariant: ['tabular-nums'],
-      marginLeft: spacing.sm + 7,
     },
 
     budgetCard: {
@@ -466,10 +460,9 @@ const createStyles = (colors) =>
       padding: spacing.md,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
       ...CARD_SHADOW,
-    },
-    budgetCardPressed: {
-      backgroundColor: colors.cardPressed,
     },
     budgetHeader: {
       flexDirection: 'row',
@@ -479,7 +472,7 @@ const createStyles = (colors) =>
     },
     budgetTitleRow: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      alignItems: 'center',
     },
     sectionTitle: {
       color: colors.textSecondary,
@@ -498,28 +491,6 @@ const createStyles = (colors) =>
       color: colors.accent,
       fontFamily: fonts.bold,
       fontSize: 12,
-    },
-    budgetMeta: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: 3,
-      gap: spacing.xs + 2,
-    },
-    budgetMetaVal: {
-      color: colors.textMuted,
-      fontFamily: fonts.bold,
-      fontSize: 11,
-      fontVariant: ['tabular-nums'],
-    },
-    budgetMetaLabel: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 11,
-    },
-    budgetMetaDot: {
-      color: colors.textMuted,
-      fontSize: 8,
-      opacity: 0.5,
     },
     divider: {
       height: StyleSheet.hairlineWidth,
@@ -550,7 +521,7 @@ const createStyles = (colors) =>
     },
     categoryAmount: {
       color: colors.textSecondary,
-      fontFamily: fonts.regular,
+      fontFamily: fonts.numRegular,
       fontSize: 12,
       fontVariant: ['tabular-nums'],
     },
@@ -579,7 +550,7 @@ const createStyles = (colors) =>
     },
     externalAmount: {
       color: colors.textSecondary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 13,
       fontVariant: ['tabular-nums'],
     },

@@ -312,7 +312,6 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId
         const isCustom = category.custom;
         const delta = lastVal > 0 ? ((thisVal - lastVal) / lastVal) * 100 : null;
         const isDragging = dragIndex === i;
-        const tint = { backgroundColor: `${category.color}0A`, borderLeftWidth: 3, borderLeftColor: `${category.color}33` };
 
         const content = (
           <View style={styles.catRowInner}>
@@ -346,7 +345,7 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId
         return (
           <Animated.View
             key={item.id}
-            style={[styles.catRow, tint, animStyle]}
+            style={[styles.catRow, { backgroundColor: `${category.color}0A`, borderLeftWidth: 3, borderLeftColor: `${category.color}33` }, animStyle]}
             onLayout={(e) => { cellLayouts.current[i] = e.nativeEvent.layout; }}
           >
             <Pressable
@@ -756,6 +755,13 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       padding: spacing.md,
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 3,
     },
     monthNav: {
       flexDirection: 'row',
@@ -779,7 +785,7 @@ const createStyles = (colors) =>
       paddingHorizontal: DONUT_STROKE + 8,
     },
     donutTotal: {
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 14,
       fontVariant: ['tabular-nums'],
     },
@@ -793,6 +799,13 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.sm,
       width: '48.5%',
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 3,
     },
     catRowPressed: {
       backgroundColor: colors.cardPressed,
@@ -816,13 +829,13 @@ const createStyles = (colors) =>
       gap: spacing.xs,
     },
     catMonthVal: {
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 16,
       color: colors.textPrimary,
       fontVariant: ['tabular-nums'],
     },
     catDelta: {
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 12,
       fontVariant: ['tabular-nums'],
     },

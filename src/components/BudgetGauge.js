@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   centerValue: {
-    fontFamily: fonts.bold,
+    fontFamily: fonts.numBold,
     fontSize: 22,
     fontVariant: ['tabular-nums'],
     maxWidth: '75%',
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   spentLine: {
-    fontFamily: fonts.regular,
+    fontFamily: fonts.numRegular,
     fontSize: 13,
     marginTop: spacing.sm,
     fontVariant: ['tabular-nums'],

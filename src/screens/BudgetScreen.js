@@ -92,7 +92,7 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.overlay}
       >
         <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
@@ -229,6 +229,13 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
       maxHeight: '88%',
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 3,
     },
     titleRow: {
       flexDirection: 'row',
@@ -272,6 +279,13 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 3,
     },
     row: {
       flexDirection: 'row',
@@ -288,7 +302,7 @@ const createStyles = (colors) =>
     },
     currencySymbol: {
       color: colors.textPrimary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 15,
       width: 48,
       fontVariant: ['tabular-nums'],
@@ -312,14 +326,14 @@ const createStyles = (colors) =>
     },
     budgetSymbol: {
       color: colors.textSecondary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 16,
       marginRight: spacing.sm,
     },
     budgetInput: {
       flex: 1,
       color: colors.textPrimary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 16,
       paddingVertical: spacing.sm + 4,
       fontVariant: ['tabular-nums'],
@@ -340,7 +354,7 @@ const createStyles = (colors) =>
     },
     categorySymbol: {
       color: colors.textMuted,
-      fontFamily: fonts.regular,
+      fontFamily: fonts.numRegular,
       fontSize: 14,
       marginRight: spacing.xs,
       fontVariant: ['tabular-nums'],
@@ -348,7 +362,7 @@ const createStyles = (colors) =>
     categoryInput: {
       width: 110,
       color: colors.textPrimary,
-      fontFamily: fonts.bold,
+      fontFamily: fonts.numBold,
       fontSize: 15,
       textAlign: 'right',
       paddingVertical: spacing.sm + 4,

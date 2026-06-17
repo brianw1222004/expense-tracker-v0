@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,12 +9,12 @@ import { HIcon } from '../icons';
 export const TAB_BAR_HEIGHT = 72;
 
 const TABS_LEFT = [
-  { id: 'dashboard', icon: 'home-01' },
-  { id: 'list', icon: 'receipt-text' },
+  { id: 'dashboard', icon: 'home-01', labelKey: 'tabs.dashboard' },
+  { id: 'list', icon: 'receipt-text', labelKey: 'tabs.list' },
 ];
 const TABS_RIGHT = [
-  { id: 'categories', icon: 'grid-view' },
-  { id: 'account', icon: 'user-circle' },
+  { id: 'categories', icon: 'grid-view', labelKey: 'tabs.categories' },
+  { id: 'account', icon: 'user-circle', labelKey: 'tabs.account' },
 ];
 
 export default function TabBar({ tab, onChange, onAddPress, addActive }) {
@@ -35,7 +35,9 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
             colors={colors}
             icon={item.icon}
             selected={tab === item.id}
-            onPress={() => onChange(item.id)}
+            id={item.id}
+            onChange={onChange}
+            label={t(item.labelKey)}
           />
         ))}
 
@@ -61,7 +63,9 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
             colors={colors}
             icon={item.icon}
             selected={tab === item.id}
-            onPress={() => onChange(item.id)}
+            id={item.id}
+            onChange={onChange}
+            label={t(item.labelKey)}
           />
         ))}
       </View>
@@ -69,12 +73,14 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
   );
 }
 
-function TabItem({ styles, colors, icon, selected, onPress }) {
+const TabItem = React.memo(function TabItem({ styles, colors, icon, selected, id, onChange, label }) {
+  const handlePress = useCallback(() => onChange(id), [onChange, id]);
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       accessibilityRole="tab"
       accessibilityState={{ selected }}
+      accessibilityLabel={label}
       style={({ pressed }) => [
         styles.item,
         pressed && !selected && styles.itemPressed,
@@ -90,7 +96,7 @@ function TabItem({ styles, colors, icon, selected, onPress }) {
       </View>
     </Pressable>
   );
-}
+});
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -108,6 +114,8 @@ const createStyles = (colors) =>
       borderRadius: 32,
       height: 58,
       paddingHorizontal: spacing.sm,
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
       shadowOpacity: 0.2,
       shadowRadius: 16,
