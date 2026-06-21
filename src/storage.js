@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_CURRENCY } from './currency';
 
 const STORAGE_KEY = '@expense-tracker/expenses';
+const INCOME_KEY = '@expense-tracker/income';
 const SETTINGS_KEY = '@expense-tracker/settings';
 
 // The cache is per-user so two accounts on one device never read each other's
@@ -48,6 +49,33 @@ export async function saveExpenses(userId, expenses) {
     await AsyncStorage.setItem(scopedKey(STORAGE_KEY, userId), JSON.stringify(expenses));
   } catch {
     // Persistence is best-effort in this demo; in-memory state stays correct.
+  }
+}
+
+// Income entries mirror expenses: client-generated ids, amount in the ENTRY
+// currency, createdAt epoch-ms, plus a `source` and optional `note`.
+export async function loadIncome(userId) {
+  try {
+    const raw = await AsyncStorage.getItem(scopedKey(INCOME_KEY, userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((e) => ({
+      ...e,
+      currency: e.currency || DEFAULT_CURRENCY,
+      source: e.source || 'other',
+      note: e.note ?? '',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveIncome(userId, income) {
+  try {
+    await AsyncStorage.setItem(scopedKey(INCOME_KEY, userId), JSON.stringify(income));
+  } catch {
+    // Best-effort, same as expenses.
   }
 }
 

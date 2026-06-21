@@ -6,11 +6,11 @@ import { getCategory, getCategoryLabel } from '../categories';
 import { formatMoney } from '../format';
 import { HIcon } from '../icons';
 
-export default React.memo(function ExpenseRow({ expense, displayCurrency, onRequestDelete, onEdit }) {
+export default React.memo(function ExpenseRow({ expense, displayCurrency, categories, onRequestDelete, onEdit }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const category = getCategory(expense.category);
+  const category = getCategory(expense.category, categories);
   const converted = expense.currency !== displayCurrency;
 
   const tintStyle = useMemo(() => ({
@@ -71,11 +71,6 @@ const createStyles = (colors) =>
       marginBottom: spacing.sm,
       borderWidth: colors.widgetBorderWidth,
       borderColor: colors.widgetBorderColor,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 3,
     },
     rowPressed: {
       backgroundColor: colors.cardPressed,

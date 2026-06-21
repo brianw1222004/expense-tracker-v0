@@ -179,9 +179,11 @@ export const fonts = {
   regular: 'Lora_400Regular',
   medium: 'Lora_500Medium',
   bold: 'Lora_700Bold',
-  numRegular: 'Outfit_400Regular',
-  numMedium: 'Outfit_500Medium',
-  numBold: 'Outfit_700Bold',
+  // Numbers/money use Tinos — a metric-compatible Times New Roman. Tinos ships
+  // only 400/700, so the (currently unused) medium slot collapses to regular.
+  numRegular: 'Tinos_400Regular',
+  numMedium: 'Tinos_400Regular',
+  numBold: 'Tinos_700Bold',
 };
 
 export const spacing = {

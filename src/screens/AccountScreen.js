@@ -1,133 +1,193 @@
 import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, THEMES, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
-import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 
-export default function AccountScreen({ settings, onUpdateSettings, accountEmail, onSignOut }) {
+// Account view. Presented as a near-full (92%) bottom sheet opened by the
+// floating account button — mirrors BudgetScreen's Modal/backdrop/sheet
+// mechanism (the RN Modal's animationType="slide" provides the slide-up).
+export default function AccountScreen({ visible, settings, onUpdateSettings, accountEmail, onSignOut, onClose }) {
   const { colors } = useTheme();
   const t = useT();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.title}>{t('acct.title')}</Text>
-
-      <Text style={styles.sectionHeader}>{t('acct.section')}</Text>
-      {accountEmail ? (
-        <>
-          <View style={styles.card}>
-            <View style={styles.row}>
-              <HIcon name="user-circle" size={20} color={colors.icon} />
-              <Text style={styles.rowLabel} numberOfLines={1}>
-                {accountEmail}
-              </Text>
-            </View>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{t('acct.title')}</Text>
             <Pressable
-              onPress={onSignOut}
+              onPress={onClose}
+              hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel={t('acct.signOut')}
-              style={({ pressed }) => [styles.row, styles.rowDivider, pressed && styles.rowPressed]}
+              accessibilityLabel={t('common.close')}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
             >
-              <Text style={styles.signOutText}>{t('acct.signOut')}</Text>
+              <HIcon name="cancel-01" size={20} color={colors.icon} />
             </Pressable>
           </View>
-          <Text style={styles.sectionNote}>{t('acct.syncedNote')}</Text>
-        </>
-      ) : (
-        <>
-          <View style={styles.card}>
-            <View style={styles.row}>
-              <HIcon name="user-circle" size={20} color={colors.icon} />
-              <Text style={styles.rowLabel}>{t('acct.localTitle')}</Text>
+
+          <ScrollView
+            contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.sectionHeader}>{t('acct.section')}</Text>
+            {accountEmail ? (
+              <>
+                <View style={styles.card}>
+                  <View style={styles.row}>
+                    <HIcon name="user-circle" size={20} color={colors.icon} />
+                    <Text style={styles.rowLabel} numberOfLines={1}>
+                      {accountEmail}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={onSignOut}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('acct.signOut')}
+                    style={({ pressed }) => [styles.row, styles.rowDivider, pressed && styles.rowPressed]}
+                  >
+                    <Text style={styles.signOutText}>{t('acct.signOut')}</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.sectionNote}>{t('acct.syncedNote')}</Text>
+              </>
+            ) : (
+              <>
+                <View style={styles.card}>
+                  <View style={styles.row}>
+                    <HIcon name="user-circle" size={20} color={colors.icon} />
+                    <Text style={styles.rowLabel}>{t('acct.localTitle')}</Text>
+                  </View>
+                </View>
+                <Text style={styles.sectionNote}>{t('acct.localNote')}</Text>
+              </>
+            )}
+
+            <Text style={styles.sectionHeader}>{t('acct.language')}</Text>
+            <View style={styles.card}>
+              {LANGUAGES.map((entry, index) => {
+                const selected = settings.language === entry.code;
+                return (
+                  <Pressable
+                    key={entry.code}
+                    onPress={() => onUpdateSettings({ language: entry.code })}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    // Each language shows its OWN name (never translated), so a user
+                    // stuck in the wrong language can still find their way back.
+                    accessibilityLabel={entry.label}
+                    style={({ pressed }) => [
+                      styles.row,
+                      index > 0 && styles.rowDivider,
+                      pressed && styles.rowPressed,
+                    ]}
+                  >
+                    <Text style={styles.rowLabel}>{entry.label}</Text>
+                    {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
+                  </Pressable>
+                );
+              })}
             </View>
-          </View>
-          <Text style={styles.sectionNote}>{t('acct.localNote')}</Text>
-        </>
-      )}
 
-      <Text style={styles.sectionHeader}>{t('acct.language')}</Text>
-      <View style={styles.card}>
-        {LANGUAGES.map((entry, index) => {
-          const selected = settings.language === entry.code;
-          return (
-            <Pressable
-              key={entry.code}
-              onPress={() => onUpdateSettings({ language: entry.code })}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-              // Each language shows its OWN name (never translated), so a user
-              // stuck in the wrong language can still find their way back.
-              accessibilityLabel={entry.label}
-              style={({ pressed }) => [
-                styles.row,
-                index > 0 && styles.rowDivider,
-                pressed && styles.rowPressed,
-              ]}
-            >
-              <Text style={styles.rowLabel}>{entry.label}</Text>
-              {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
-            </Pressable>
-          );
-        })}
-      </View>
+            <Text style={styles.sectionHeader}>{t('acct.theme')}</Text>
+            <View style={styles.card}>
+              {Object.values(THEMES).map((theme, index) => {
+                const selected = settings.theme === theme.name;
+                return (
+                  <Pressable
+                    key={theme.name}
+                    onPress={() => onUpdateSettings({ theme: theme.name })}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    style={({ pressed }) => [
+                      styles.row,
+                      index > 0 && styles.rowDivider,
+                      pressed && styles.rowPressed,
+                    ]}
+                  >
+                    <View style={[styles.themeDot, { backgroundColor: theme.accent }]} />
+                    <Text style={styles.rowLabel}>{t('theme.' + theme.name)}</Text>
+                    {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
+                  </Pressable>
+                );
+              })}
+            </View>
 
-      <Text style={styles.sectionHeader}>{t('acct.theme')}</Text>
-      <View style={styles.card}>
-        {Object.values(THEMES).map((theme, index) => {
-          const selected = settings.theme === theme.name;
-          return (
-            <Pressable
-              key={theme.name}
-              onPress={() => onUpdateSettings({ theme: theme.name })}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-              style={({ pressed }) => [
-                styles.row,
-                index > 0 && styles.rowDivider,
-                pressed && styles.rowPressed,
-              ]}
-            >
-              <View style={[styles.themeDot, { backgroundColor: theme.accent }]} />
-              <Text style={styles.rowLabel}>{t('theme.' + theme.name)}</Text>
-              {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <Text style={styles.sectionHeader}>{t('acct.comingSoon')}</Text>
-      <View style={styles.card}>
-        <View style={styles.row}>
-          <HIcon name="user-circle" size={20} color={colors.icon} />
-          <Text style={styles.comingSoonLabel}>{t('acct.exportCsv')}</Text>
-          <Text style={styles.comingSoonTag}>{t('acct.soon')}</Text>
+            <Text style={styles.sectionHeader}>{t('acct.comingSoon')}</Text>
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <HIcon name="user-circle" size={20} color={colors.icon} />
+                <Text style={styles.comingSoonLabel}>{t('acct.exportCsv')}</Text>
+                <Text style={styles.comingSoonTag}>{t('acct.soon')}</Text>
+              </View>
+            </View>
+          </ScrollView>
         </View>
       </View>
-    </ScrollView>
+    </Modal>
   );
 }
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    container: {
+    overlay: {
       flex: 1,
+      justifyContent: 'flex-end',
     },
-    content: {
-      paddingHorizontal: spacing.md,
-      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
+    backdrop: {
+      backgroundColor: colors.backdrop,
+    },
+    sheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      height: '92%',
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 3,
+    },
+    handle: {
+      alignSelf: 'center',
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+      marginBottom: spacing.sm,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.sm,
     },
     title: {
       color: colors.textPrimary,
-      fontSize: 26,
       fontFamily: fonts.bold,
-      paddingTop: spacing.md,
-      textAlign: 'center',
+      fontSize: 18,
+    },
+    closeButton: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    closeButtonPressed: {
+      backgroundColor: colors.cardPressed,
     },
     sectionHeader: {
       color: colors.textSecondary,
@@ -149,6 +209,8 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
+      borderWidth: colors.widgetBorderWidth,
+      borderColor: colors.widgetBorderColor,
     },
     row: {
       flexDirection: 'row',

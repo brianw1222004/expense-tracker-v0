@@ -14,8 +14,13 @@ so nothing breaks in the meantime.
 1. In the dashboard, open **SQL Editor → New query**.
 2. Paste the contents of [`supabase/schema.sql`](supabase/schema.sql) and **Run**.
 
-This creates the `expenses` and `settings` tables with Row Level Security, so
-each signed-in user can only ever read/write their own rows.
+This creates the `expenses`, `income`, and `settings` tables with Row Level
+Security, so each signed-in user can only ever read/write their own rows.
+
+> Already have an older database? Re-run `schema.sql` (or just the `income`
+> table + policy + trigger block) to add the new `income` table. Until it
+> exists, income simply won't sync — expense sync is unaffected (income uses a
+> separate, tolerant sync lane).
 
 ## 3. Configure auth
 

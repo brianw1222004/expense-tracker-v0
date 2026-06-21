@@ -1,4 +1,10 @@
-const { formatMoney, formatMoneyShort, dateKey, buildCalendarWeeks } = require('../format');
+const {
+  formatMoney,
+  formatMoneyShort,
+  dateKey,
+  buildCalendarWeeks,
+  isValidAmountText,
+} = require('../format');
 
 // format.js imports from currency.js (pure) and i18n.js (which uses React's
 // createContext — stubbed via __mocks__/react.js so it remains node-safe).
@@ -405,6 +411,46 @@ describe('buildCalendarWeeks()', () => {
           expect(totalCells % 7).toBe(0);
         }
       });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isValidAmountText() — the amount-entry gate used on every amount/budget input
+// (AddEntryScreen, OnboardingScreen, BudgetScreen). Callers normalize ',' -> '.'
+// before calling, so it only ever sees '.' as the separator.
+// ---------------------------------------------------------------------------
+describe('isValidAmountText()', () => {
+  describe('2-decimal currencies (decimals = 2)', () => {
+    it('accepts whole numbers and valid fractions', () => {
+      ['0', '1', '12', '00', '100', '1.5', '1.55', '0.99', '.5', '.05'].forEach((s) => {
+        expect(isValidAmountText(s, 2)).toBe(true);
+      });
+    });
+
+    it('accepts a trailing dot (mid-typing form "1.")', () => {
+      expect(isValidAmountText('1.', 2)).toBe(true);
+    });
+
+    it('rejects more decimal places than the currency allows', () => {
+      expect(isValidAmountText('1.555', 2)).toBe(false);
+      expect(isValidAmountText('0.001', 2)).toBe(false);
+    });
+
+    it('rejects empty, lone dot, letters, and multiple dots', () => {
+      ['', '.', 'abc', '1.2.3', '1a', '-5', '1,5'].forEach((s) => {
+        expect(isValidAmountText(s, 2)).toBe(false);
+      });
+    });
+  });
+
+  describe('0-decimal currencies (decimals = 0, e.g. JPY/TWD)', () => {
+    it('accepts only whole numbers', () => {
+      ['0', '5', '100', '00'].forEach((s) => expect(isValidAmountText(s, 0)).toBe(true));
+    });
+
+    it('rejects any fractional input, including a trailing dot', () => {
+      ['1.', '1.5', '.5', '', 'x'].forEach((s) => expect(isValidAmountText(s, 0)).toBe(false));
     });
   });
 });

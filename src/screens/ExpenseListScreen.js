@@ -73,7 +73,7 @@ export default function ExpenseListScreen({
   const presentCategories = useMemo(() => {
     const present = new Set();
     for (const section of sections) {
-      for (const item of section.data) present.add(getCategory(item.category).id);
+      for (const item of section.data) present.add(getCategory(item.category, categories).id);
     }
     return (categories ?? []).filter((c) => present.has(c.id));
   }, [sections, categories]);
@@ -85,9 +85,9 @@ export default function ExpenseListScreen({
     if (!selectedSection) return [];
     if (activeFilter === 'all') return selectedSection.data;
     return selectedSection.data.filter(
-      (item) => getCategory(item.category).id === activeFilter
+      (item) => getCategory(item.category, categories).id === activeFilter
     );
-  }, [selectedSection, activeFilter]);
+  }, [selectedSection, activeFilter, categories]);
 
   const filteredTotal = filteredExpenses.reduce((sum, e) => sum + e.displayAmount, 0);
 
@@ -119,7 +119,7 @@ export default function ExpenseListScreen({
     return <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />;
   }
 
-  const deleteCategory = pendingDelete ? getCategory(pendingDelete.category) : null;
+  const deleteCategory = pendingDelete ? getCategory(pendingDelete.category, categories) : null;
 
   return (
     <View style={styles.container}>
@@ -242,7 +242,7 @@ export default function ExpenseListScreen({
           <View style={styles.noMatch}>
             <Text style={styles.noMatchText}>
               {activeFilter !== 'all'
-                ? t('list.noMatch', { category: getCategoryLabel(getCategory(activeFilter), t) })
+                ? t('list.noMatch', { category: getCategoryLabel(getCategory(activeFilter, categories), t) })
                 : t('list.noneOnDay')}
             </Text>
           </View>
@@ -252,6 +252,7 @@ export default function ExpenseListScreen({
               key={expense.id}
               expense={expense}
               displayCurrency={displayCurrency}
+              categories={categories}
               onRequestDelete={setPendingDelete}
               onEdit={onEditPress}
             />
@@ -269,7 +270,7 @@ export default function ExpenseListScreen({
           style={[StyleSheet.absoluteFill, styles.backdrop]}
           onPress={() => setPendingDelete(null)}
         />
-        <View style={styles.modalCenter}>
+        <View style={styles.modalCenter} pointerEvents="box-none">
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{t('list.deleteTitle')}</Text>
             {pendingDelete && (
@@ -367,10 +368,10 @@ const createStyles = (colors) =>
       borderWidth: colors.widgetBorderWidth,
       borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
       shadowRadius: 8,
-      elevation: 3,
+      elevation: 1,
     },
     calHeader: {
       flexDirection: 'row',
@@ -514,10 +515,10 @@ const createStyles = (colors) =>
       borderWidth: colors.widgetBorderWidth,
       borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
       shadowRadius: 8,
-      elevation: 3,
+      elevation: 1,
     },
     modalTitle: {
       color: colors.textPrimary,

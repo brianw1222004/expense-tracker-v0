@@ -26,3 +26,24 @@ export function convert(amount, fromCurrency, toCurrency) {
 export function getCurrency(code) {
   return CURRENCIES.find((c) => c.code === code) ?? CURRENCIES.find((c) => c.code === DEFAULT_CURRENCY);
 }
+
+// Convert a budget figure and round to the target currency's precision (budgets
+// are user-entered round numbers, not stored amounts, so they're re-denominated
+// in place when the display currency changes).
+export function redenominate(value, from, to) {
+  return Number(convert(value, from, to).toFixed(getCurrency(to).decimals));
+}
+
+// Re-denominate the overall + per-category budgets together. A budget of 0 (the
+// "unset" sentinel) is left untouched; zero/negative category entries are
+// dropped. Pure — the caller decides whether to apply the result.
+export function redenominateBudgets(monthlyBudget, categoryBudgets, from, to) {
+  const nextCategoryBudgets = {};
+  for (const [id, value] of Object.entries(categoryBudgets ?? {})) {
+    if (value > 0) nextCategoryBudgets[id] = redenominate(value, from, to);
+  }
+  return {
+    monthlyBudget: monthlyBudget > 0 ? redenominate(monthlyBudget, from, to) : monthlyBudget,
+    categoryBudgets: nextCategoryBudgets,
+  };
+}

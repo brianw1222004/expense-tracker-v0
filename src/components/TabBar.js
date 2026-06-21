@@ -14,7 +14,7 @@ const TABS_LEFT = [
 ];
 const TABS_RIGHT = [
   { id: 'categories', icon: 'grid-view', labelKey: 'tabs.categories' },
-  { id: 'account', icon: 'user-circle', labelKey: 'tabs.account' },
+  { id: 'balance', icon: 'wallet-01', labelKey: 'tabs.balance' },
 ];
 
 export default function TabBar({ tab, onChange, onAddPress, addActive }) {

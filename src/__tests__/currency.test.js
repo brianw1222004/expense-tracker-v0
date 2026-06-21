@@ -1,4 +1,11 @@
-const { convert, CURRENCIES, getCurrency, DEFAULT_CURRENCY } = require('../currency');
+const {
+  convert,
+  CURRENCIES,
+  getCurrency,
+  DEFAULT_CURRENCY,
+  redenominate,
+  redenominateBudgets,
+} = require('../currency');
 
 // The static rates are not exported, but we can derive what the tests expect
 // from the structure of convert() itself. We only read rates indirectly by
@@ -219,5 +226,54 @@ describe('CURRENCIES constant', () => {
     const twd = CURRENCIES.find((c) => c.code === 'TWD');
     expect(jpy.decimals).toBe(0);
     expect(twd.decimals).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// redenominate() / redenominateBudgets() — budget re-denomination on a display
+// currency change (lossy, rounded to the target's precision). Extracted from
+// App.js's updateSettings so it can be unit-tested.
+// ---------------------------------------------------------------------------
+describe('redenominate()', () => {
+  it('is an exact no-op when from === to', () => {
+    expect(redenominate(123.45, 'USD', 'USD')).toBe(123.45);
+  });
+
+  it('rounds to whole numbers for 0-decimal currencies (JPY, TWD)', () => {
+    expect(Number.isInteger(redenominate(100, 'USD', 'JPY'))).toBe(true);
+    expect(Number.isInteger(redenominate(100, 'USD', 'TWD'))).toBe(true);
+  });
+
+  it('rounds to at most 2 decimals for 2-decimal currencies', () => {
+    const r = redenominate(33.333, 'USD', 'EUR');
+    expect(Number(r.toFixed(2))).toBe(r);
+  });
+
+  it('round-trips back to approximately the original value', () => {
+    const once = redenominate(1000, 'USD', 'EUR');
+    expect(redenominate(once, 'EUR', 'USD')).toBeCloseTo(1000, 0);
+  });
+});
+
+describe('redenominateBudgets()', () => {
+  it('leaves a 0 monthly budget (the "unset" sentinel) untouched', () => {
+    expect(redenominateBudgets(0, {}, 'USD', 'EUR').monthlyBudget).toBe(0);
+  });
+
+  it('converts a positive monthly budget', () => {
+    const { monthlyBudget } = redenominateBudgets(1000, {}, 'USD', 'EUR');
+    expect(monthlyBudget).toBe(redenominate(1000, 'USD', 'EUR'));
+    expect(monthlyBudget).not.toBe(1000);
+  });
+
+  it('converts positive category budgets and drops zero/negative ones', () => {
+    const { categoryBudgets } = redenominateBudgets(0, { food: 100, fun: 0, x: -5 }, 'USD', 'EUR');
+    expect(categoryBudgets.food).toBe(redenominate(100, 'USD', 'EUR'));
+    expect(categoryBudgets.fun).toBeUndefined();
+    expect(categoryBudgets.x).toBeUndefined();
+  });
+
+  it('tolerates an undefined categoryBudgets map', () => {
+    expect(redenominateBudgets(0, undefined, 'USD', 'EUR').categoryBudgets).toEqual({});
   });
 });

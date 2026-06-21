@@ -1,34 +1,9 @@
-// NOTE: sync.js's `coalesce` function is not exported. We test it in two ways:
-//  1. A local copy of the function (verbatim from the source) so we can unit-test
-//     the logic directly. This will catch regressions if the source is later changed.
-//  2. The exported `applyPendingOps` function, which exercises compatible queue-
-//     reduction semantics from the consumer side.
-//
-// RECOMMENDATION: export `coalesce` from sync.js so it can be tested directly
-// without duplicating its implementation here.
+// `coalesce` and the pure queue reducer `applyExpenseOps` are imported directly
+// from the source — no duplicated copy — so a regression in sync.js fails here.
+const { coalesce, applyExpenseOps, applyPendingOps } = require('../sync');
 
-const { applyPendingOps } = require('../sync');
-
-// ---------------------------------------------------------------------------
-// Local copy of `coalesce` from src/sync.js
-// (verbatim — any source change that breaks these tests means the test copy
-//  needs updating too, which serves as the regression signal)
-// ---------------------------------------------------------------------------
-function coalesce(queue, op) {
-  const keep = (existing) => {
-    if (op.type === 'settings') return existing.type !== 'settings';
-    if (op.type === 'replace') return existing.type === 'settings';
-    if (existing.type !== 'upsert') return true;
-    if (op.type === 'upsert') return existing.expense.id !== op.expense.id;
-    if (op.type === 'delete') return existing.expense.id !== op.id;
-    return true;
-  };
-  for (let i = queue.length - 1; i >= 0; i--) {
-    if (!keep(queue[i])) queue.splice(i, 1);
-  }
-}
-
-// Helper to build a queue with coalescing applied, then push the new op
+// Helper to build a queue the way enqueue() does: coalesce the incoming op
+// against the existing queue, then push it.
 function buildQueue(initialOps, newOp) {
   const queue = [...initialOps];
   coalesce(queue, newOp);
@@ -206,26 +181,68 @@ describe('coalesce() — mixed operations', () => {
 });
 
 // ---------------------------------------------------------------------------
-// applyPendingOps() — the exported function
+// applyExpenseOps() — the pure queue reducer that folds pending ops over the
+// rows pulled from the server (this is what keeps offline edits after a pull).
+// ---------------------------------------------------------------------------
+describe('applyExpenseOps()', () => {
+  it('returns the input unchanged for an empty or missing queue', () => {
+    const rows = [{ id: 'e1', amount: 10 }];
+    expect(applyExpenseOps([], rows)).toBe(rows);
+    expect(applyExpenseOps(undefined, rows)).toBe(rows);
+  });
+
+  it('upsert prepends a new row', () => {
+    const rows = [{ id: 'e1', amount: 10 }];
+    const result = applyExpenseOps([{ type: 'upsert', expense: { id: 'e2', amount: 20 } }], rows);
+    expect(result.map((e) => e.id)).toEqual(['e2', 'e1']);
+  });
+
+  it('upsert replaces an existing row by id and moves it to the front (no duplicate)', () => {
+    const rows = [{ id: 'e1', amount: 10 }, { id: 'e2', amount: 20 }];
+    const result = applyExpenseOps([{ type: 'upsert', expense: { id: 'e2', amount: 99 } }], rows);
+    expect(result.map((e) => e.id)).toEqual(['e2', 'e1']);
+    expect(result.find((e) => e.id === 'e2').amount).toBe(99);
+    expect(result).toHaveLength(2);
+  });
+
+  it('delete removes the row with the matching id', () => {
+    const rows = [{ id: 'e1', amount: 10 }, { id: 'e2', amount: 20 }];
+    expect(applyExpenseOps([{ type: 'delete', id: 'e1' }], rows).map((e) => e.id)).toEqual(['e2']);
+  });
+
+  it('replace overwrites the entire list', () => {
+    const rows = [{ id: 'e1', amount: 10 }];
+    const replacement = [{ id: 'x', amount: 1 }, { id: 'y', amount: 2 }];
+    expect(applyExpenseOps([{ type: 'replace', expenses: replacement }], rows)).toBe(replacement);
+  });
+
+  it('folds a sequence of ops in order so offline edits survive a server pull', () => {
+    const server = [{ id: 'e1', amount: 10 }, { id: 'e2', amount: 20 }];
+    const queue = [
+      { type: 'upsert', expense: { id: 'e3', amount: 30 } }, // added offline
+      { type: 'delete', id: 'e1' },                          // deleted offline
+      { type: 'upsert', expense: { id: 'e2', amount: 25 } }, // edited offline
+    ];
+    const result = applyExpenseOps(queue, server);
+    expect(result.map((e) => e.id).sort()).toEqual(['e2', 'e3']);
+    expect(result.find((e) => e.id === 'e2').amount).toBe(25);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyPendingOps() — looks the lane's queue up by userId in a private map. The
+// test env never populates it, so it returns the input unchanged.
 // ---------------------------------------------------------------------------
 describe('applyPendingOps()', () => {
-  // To call applyPendingOps we need the in-memory queue to be pre-populated.
-  // sync.js's queues map is private. We test behavior in local-only mode where
-  // the queue is empty (queues.get(userId) === undefined), which should return
-  // the expenses unchanged.
-
   it('returns expenses unchanged when there are no pending ops for the user', () => {
     const expenses = [
       { id: 'e1', amount: 100, currency: 'USD' },
       { id: 'e2', amount: 200, currency: 'EUR' },
     ];
-    const result = applyPendingOps('unknown-user-no-queue', expenses);
-    // The queue for this userId doesn't exist -> returns the original array unchanged
-    expect(result).toEqual(expenses);
+    expect(applyPendingOps('unknown-user-no-queue', expenses)).toEqual(expenses);
   });
 
   it('returns an empty array unchanged when there are no pending ops', () => {
-    const result = applyPendingOps('another-unknown-user', []);
-    expect(result).toEqual([]);
+    expect(applyPendingOps('another-unknown-user', [])).toEqual([]);
   });
 });

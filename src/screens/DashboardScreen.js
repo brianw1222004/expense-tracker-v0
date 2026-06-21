@@ -4,6 +4,7 @@ import { Animated, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet,
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 import { LinearGradient } from 'expo-linear-gradient';
 import BudgetGauge from '../components/BudgetGauge';
+import CurrencyDropdown from '../components/CurrencyDropdown';
 import EmptyState from '../components/EmptyState';
 import SpendingChart from '../components/SpendingChart';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
@@ -28,6 +29,7 @@ export default function DashboardScreen({
   monthlyBudget,
   categoryBudgets,
   onEditBudgets,
+  onChangeCurrency,
   onAddPress,
   onLoadDemo,
   regularCategories,
@@ -189,15 +191,22 @@ export default function DashboardScreen({
           <View style={styles.budgetHeader}>
             <Pressable style={styles.budgetTitleRow} onPress={() => toggleSection('budget')} accessibilityRole="button" accessibilityState={{ expanded: budgetOpen }}>
               <Animated.Text style={[styles.sectionChevron, { transform: [{ rotate: budgetChevronRotate }] }]}>▾</Animated.Text>
-              <Text style={styles.sectionTitle}>{t('budget.title')}</Text>
+              <Text style={styles.summaryTitle} numberOfLines={1}>{t('budget.title')}</Text>
             </Pressable>
-            <Pressable
-              onPress={onEditBudgets}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.editPill, pressed && { opacity: 0.7 }]}
-            >
-              <Text style={styles.editPillText}>{t('budget.edit')}</Text>
-            </Pressable>
+            <View style={styles.budgetActions}>
+              <CurrencyDropdown
+                value={displayCurrency}
+                onChange={onChangeCurrency}
+                accessibilityLabel={t('budget.currencySection')}
+              />
+              <Pressable
+                onPress={onEditBudgets}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
+              >
+                <Text style={styles.editPillText}>{t('budget.edit')}</Text>
+              </Pressable>
+            </View>
           </View>
 
           {budgetOpen && (
@@ -473,6 +482,14 @@ const createStyles = (colors) =>
     budgetTitleRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      flexShrink: 1,
+      marginRight: spacing.sm,
+    },
+    budgetActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexShrink: 0,
+      gap: spacing.sm,
     },
     sectionTitle: {
       color: colors.textSecondary,
@@ -481,11 +498,17 @@ const createStyles = (colors) =>
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
+    // Mirrors the CurrencyDropdown trigger so the two budget-header pills read as a matched pair.
     editPill: {
-      backgroundColor: colors.accent + '18',
+      backgroundColor: colors.background,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
       borderRadius: 12,
-      paddingHorizontal: spacing.sm + 4,
+      paddingHorizontal: spacing.sm + 2,
       paddingVertical: spacing.xs + 1,
+    },
+    editPillPressed: {
+      backgroundColor: colors.cardPressed,
     },
     editPillText: {
       color: colors.accent,

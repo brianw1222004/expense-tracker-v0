@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,12 +16,15 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
+import { INCOME_SOURCES, getIncomeSource, getIncomeSourceLabel } from '../incomeSources';
 import { HIcon } from '../icons';
+import EntryTypeToggle from '../components/EntryTypeToggle';
 import { CURRENCIES, getCurrency } from '../currency';
 import { buildCalendarWeeks, dateKey, dayLabel, isValidAmountText, monthLabel } from '../format';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const NOTE_MAX_LENGTH = 50;
+const NOTE_MAX_LENGTH = 80;
+const AMOUNT_MAX_LENGTH = 12;
 const COLOR_MS = 350;
 const CATS_PER_PAGE = 8;
 
@@ -41,47 +46,67 @@ function offsetForDay(year, month, day) {
   return Math.round((picked - today) / MS_PER_DAY);
 }
 
-// Rendered inside AddExpenseModal as the popup card. The card's border and
-// background tint follow the selected category's color (animated).
-export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, editExpense, categories }) {
+// Shared add/edit form for both expenses and income. Rendered inside
+// AddExpenseModal (the shared popup presenter). The two modes are IDENTICAL in
+// layout, styling and behavior; the ONLY differences are the selector area
+// (a paginated category grid for `expense` vs. a fixed source picker for
+// `income`), the expense-only ÷ split tool, and the accent color of the save
+// button (blue for expense, green for income). The card's border + background
+// tint animate to the selected category/source color in both modes.
+export default function AddEntryScreen({
+  mode,
+  displayCurrency,
+  categories,
+  editEntry,
+  onSubmit,
+  onDelete,
+  onClose,
+  onChangeType,
+}) {
   const { colors } = useTheme();
   const t = useT();
   const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const isExpense = mode === 'expense';
+  const isEdit = editEntry != null;
+  const accent = isExpense ? colors.accent : colors.success;
+
+  // The selected category (expense) or source (income).
+  const selectorItems = isExpense ? (categories ?? []) : INCOME_SOURCES;
+  const firstId = selectorItems[0].id;
+  const colorOf = useCallback(
+    (id) => (isExpense ? getCategory(id, categories).color : getIncomeSource(id).color),
+    [isExpense, categories]
+  );
+  const labelOf = (item) => (isExpense ? getCategoryLabel(item, t) : getIncomeSourceLabel(item, t));
+  const initSelected = isEdit ? (isExpense ? editEntry.category : editEntry.source) : firstId;
 
   const { width: screenWidth } = useWindowDimensions();
   const catPageWidth = screenWidth - spacing.lg * 4;
   const catItemWidth = catPageWidth / 4;
 
   const categoryPages = useMemo(() => {
+    if (!isExpense) return [];
     const pages = [];
-    for (let i = 0; i < categories.length; i += CATS_PER_PAGE) {
-      pages.push(categories.slice(i, i + CATS_PER_PAGE));
+    for (let i = 0; i < selectorItems.length; i += CATS_PER_PAGE) {
+      pages.push(selectorItems.slice(i, i + CATS_PER_PAGE));
     }
     return pages;
-  }, [categories]);
+  }, [isExpense, selectorItems]);
 
   const [catPage, setCatPage] = useState(0);
   const onCatScroll = useCallback((e) => {
-    const page = Math.round(e.nativeEvent.contentOffset.x / catPageWidth);
-    setCatPage(page);
+    setCatPage(Math.round(e.nativeEvent.contentOffset.x / catPageWidth));
   }, [catPageWidth]);
 
-  const isEdit = editExpense != null;
-
-  const [amountText, setAmountText] = useState(() =>
-    isEdit ? String(editExpense.amount) : ''
-  );
-  const [note, setNote] = useState(isEdit ? (editExpense.note || '') : '');
-  const [categoryId, setCategoryId] = useState(
-    isEdit ? editExpense.category : categories[0].id
-  );
-  const [manualCurrency, setManualCurrency] = useState(
-    isEdit ? editExpense.currency : null
-  );
+  const [amountText, setAmountText] = useState(() => (isEdit ? String(editEntry.amount) : ''));
+  const [note, setNote] = useState(isEdit ? (editEntry.note || '') : '');
+  const [selectedId, setSelectedId] = useState(initSelected);
+  const [manualCurrency, setManualCurrency] = useState(isEdit ? editEntry.currency : null);
   const [dayOffset, setDayOffset] = useState(() => {
     if (!isEdit) return 0;
-    const d = new Date(editExpense.createdAt);
+    const d = new Date(editEntry.createdAt);
     return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
   });
   const [splitOpen, setSplitOpen] = useState(false);
@@ -89,19 +114,18 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const calAnim = useRef(new Animated.Value(0)).current;
   const splitAnim = useRef(new Animated.Value(0)).current;
-  const calContentH = useRef(350);
-  const splitContentH = useRef(60);
+  const [calContentH, setCalContentH] = useState(360);
+  const [splitContentH, setSplitContentH] = useState(72);
   const [calMonth, setCalMonth] = useState(() => {
-    const d = isEdit ? new Date(editExpense.createdAt) : new Date();
+    const d = isEdit ? new Date(editEntry.createdAt) : new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
 
-  // Color transitions interpolate from the previously shown category color to
-  // the newly picked one; colors can't animate on the native driver.
-  const initColor = isEdit ? getCategory(editExpense.category).color : categories[0].color;
+  // Color transitions interpolate from the previously shown color to the newly
+  // picked one; colors can't animate on the native driver.
   const colorAnim = useRef(new Animated.Value(1)).current;
-  const colorFrom = useRef(initColor);
-  const colorTo = useRef(initColor);
+  const colorFrom = useRef(colorOf(initSelected));
+  const colorTo = useRef(colorOf(initSelected));
 
   const currencyCode = manualCurrency ?? displayCurrency;
   const currency = getCurrency(currencyCode);
@@ -130,14 +154,14 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
   const reset = () => {
     setAmountText('');
     setNote('');
-    setCategoryId(categories[0].id);
+    setSelectedId(firstId);
     setManualCurrency(null);
     setDayOffset(0);
     setDatePickerOpen(false);
     setSplitOpen(false);
     setSplitBy(2);
-    colorFrom.current = categories[0].color;
-    colorTo.current = categories[0].color;
+    colorFrom.current = colorOf(firstId);
+    colorTo.current = colorOf(firstId);
     colorAnim.setValue(1);
     calAnim.setValue(0);
     splitAnim.setValue(0);
@@ -149,8 +173,8 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
     let createdAt;
     if (isEdit) {
       const newDay = dateKey(dateForOffset(dayOffset).getTime());
-      const originalDay = dateKey(editExpense.createdAt);
-      createdAt = newDay === originalDay ? editExpense.createdAt : dateForOffset(dayOffset).getTime();
+      const originalDay = dateKey(editEntry.createdAt);
+      createdAt = newDay === originalDay ? editEntry.createdAt : dateForOffset(dayOffset).getTime();
     } else {
       createdAt = dayOffset === 0 ? Date.now() : dateForOffset(dayOffset).getTime();
     }
@@ -158,26 +182,38 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
       amount: Math.round(amount * factor) / factor,
       currency: currencyCode,
       note: note.trim(),
-      category: categoryId,
       createdAt,
     };
-    if (isEdit) data.id = editExpense.id;
+    if (isExpense) data.category = selectedId;
+    else data.source = selectedId;
+    if (isEdit) data.id = editEntry.id;
     onSubmit(data);
     if (!isEdit) reset();
     Keyboard.dismiss();
   };
 
-  const pickCategory = (id) => {
-    if (id === categoryId) return;
+  const handleDelete = () => {
+    if (!isEdit) return;
+    const run = () => onDelete(editEntry.id);
+    const title = isExpense ? t('edit.delete') : t('income.delete');
+    const message = isExpense ? t('edit.deleteConfirm') : t('income.deleteConfirm');
+    if (Platform.OS === 'web') {
+      if (window.confirm(message)) run();
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.delete'), style: 'destructive', onPress: run },
+    ]);
+  };
+
+  const pickSelector = (id) => {
+    if (id === selectedId) return;
     colorFrom.current = colorTo.current;
-    colorTo.current = getCategory(id).color;
-    setCategoryId(id);
+    colorTo.current = colorOf(id);
+    setSelectedId(id);
     colorAnim.setValue(0);
-    Animated.timing(colorAnim, {
-      toValue: 1,
-      duration: COLOR_MS,
-      useNativeDriver: false,
-    }).start();
+    Animated.timing(colorAnim, { toValue: 1, duration: COLOR_MS, useNativeDriver: false }).start();
   };
 
   const toggleDatePicker = () => {
@@ -233,7 +269,14 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.title}>{t(isEdit ? 'edit.title' : 'add.title')}</Text>
+          <View style={styles.headerSide} />
+          <View style={styles.headerCenter}>
+            {isEdit ? (
+              <Text style={styles.title}>{t(isExpense ? 'edit.title' : 'income.edit')}</Text>
+            ) : (
+              <EntryTypeToggle mode={mode} onChange={onChangeType} />
+            )}
+          </View>
           <Pressable
             onPress={onClose}
             hitSlop={8}
@@ -283,8 +326,8 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
             </Pressable>
           </View>
 
-          <Animated.View style={{ maxHeight: calAnim.interpolate({ inputRange: [0, 1], outputRange: [0, calContentH.current] }), opacity: calAnim, overflow: 'hidden' }}>
-            <View style={styles.calendar} onLayout={(e) => { calContentH.current = e.nativeEvent.layout.height; }}>
+          <Animated.View style={{ maxHeight: calAnim.interpolate({ inputRange: [0, 1], outputRange: [0, calContentH] }), opacity: calAnim, overflow: 'hidden' }}>
+            <View style={styles.calendar} onLayout={(e) => { setCalContentH(e.nativeEvent.layout.height + spacing.sm); }}>
               <View style={styles.calendarHeader}>
                 <Pressable
                   onPress={() => shiftCalMonth(-1)}
@@ -358,66 +401,72 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
 
         <View style={styles.amountArea}>
           <View style={styles.amountRow}>
-            <View style={styles.amountCenter}>
-              <Text style={styles.currencySymbol}>{currency.symbol}</Text>
-              <TextInput
-                style={styles.amountInput}
-                value={amountText}
-                onChangeText={(text) => setAmountText(text.replace(/[^0-9.,]/g, ''))}
-                placeholder={currency.decimals === 0 ? '0' : '0.00'}
-                placeholderTextColor={colors.textMuted}
-                keyboardType={currency.decimals === 0 ? 'number-pad' : 'decimal-pad'}
-                keyboardAppearance={colors.keyboardAppearance}
-                maxLength={9}
-                accessibilityLabel={t('add.amountLabel')}
-              />
-            </View>
-            <Pressable
-              onPress={toggleSplit}
-              hitSlop={6}
-              style={({ pressed }) => [
-                styles.splitToggle,
-                splitOpen && styles.splitToggleActive,
-                pressed && styles.chipPressed,
-              ]}
-            >
-              <Text style={[styles.splitToggleText, splitOpen && styles.splitToggleTextActive]}>÷</Text>
-            </Pressable>
-          </View>
-
-          <Animated.View style={{ maxHeight: splitAnim.interpolate({ inputRange: [0, 1], outputRange: [0, splitContentH.current] }), opacity: splitAnim, overflow: 'hidden' }}>
-            <View style={styles.splitRow} onLayout={(e) => { splitContentH.current = e.nativeEvent.layout.height; }}>
-              <Pressable
-                onPress={() => setSplitBy((v) => Math.max(2, v - 1))}
-                hitSlop={4}
-                style={({ pressed }) => [styles.splitBtn, pressed && styles.chipPressed]}
-              >
-                <Text style={styles.splitBtnText}>−</Text>
-              </Pressable>
-              <Text style={styles.splitByText}>{splitBy}</Text>
-              <Pressable
-                onPress={() => setSplitBy((v) => Math.min(99, v + 1))}
-                hitSlop={4}
-                style={({ pressed }) => [styles.splitBtn, pressed && styles.chipPressed]}
-              >
-                <Text style={styles.splitBtnText}>+</Text>
-              </Pressable>
-              {splitResult != null && (
-                <>
-                  <Text style={styles.splitEquals}>=</Text>
-                  <Text style={styles.splitResultText}>
-                    {currency.symbol}{splitResult}
-                  </Text>
-                  <Pressable
-                    onPress={applySplit}
-                    style={({ pressed }) => [styles.splitApply, pressed && { opacity: 0.7 }]}
-                  >
-                    <Text style={styles.splitApplyText}>✓</Text>
-                  </Pressable>
-                </>
+            <Text style={styles.currencySymbol} numberOfLines={1}>{currency.symbol}</Text>
+            <TextInput
+              style={styles.amountInput}
+              value={amountText}
+              onChangeText={(text) => setAmountText(text.replace(/[^0-9.,]/g, ''))}
+              placeholder={currency.decimals === 0 ? '0' : '0.00'}
+              placeholderTextColor={colors.textMuted}
+              keyboardType={currency.decimals === 0 ? 'number-pad' : 'decimal-pad'}
+              keyboardAppearance={colors.keyboardAppearance}
+              maxLength={AMOUNT_MAX_LENGTH}
+              accessibilityLabel={t(isExpense ? 'add.amountLabel' : 'income.amount')}
+            />
+            {/* Always reserve the 72px right spacer so the amount stays centered
+                identically in both modes; the ÷ split toggle is expense-only. */}
+            <View style={styles.splitToggleWrap}>
+              {isExpense && (
+                <Pressable
+                  onPress={toggleSplit}
+                  hitSlop={6}
+                  style={({ pressed }) => [
+                    styles.splitToggle,
+                    splitOpen && styles.splitToggleActive,
+                    pressed && styles.chipPressed,
+                  ]}
+                >
+                  <Text style={[styles.splitToggleText, splitOpen && styles.splitToggleTextActive]}>÷</Text>
+                </Pressable>
               )}
             </View>
-          </Animated.View>
+          </View>
+
+          {isExpense && (
+            <Animated.View style={{ maxHeight: splitAnim.interpolate({ inputRange: [0, 1], outputRange: [0, splitContentH] }), opacity: splitAnim, overflow: 'hidden' }}>
+              <View style={styles.splitRow} onLayout={(e) => { setSplitContentH(e.nativeEvent.layout.height + spacing.sm); }}>
+                <Pressable
+                  onPress={() => setSplitBy((v) => Math.max(2, v - 1))}
+                  hitSlop={4}
+                  style={({ pressed }) => [styles.splitBtn, pressed && styles.chipPressed]}
+                >
+                  <Text style={styles.splitBtnText}>−</Text>
+                </Pressable>
+                <Text style={styles.splitByText}>{splitBy}</Text>
+                <Pressable
+                  onPress={() => setSplitBy((v) => Math.min(99, v + 1))}
+                  hitSlop={4}
+                  style={({ pressed }) => [styles.splitBtn, pressed && styles.chipPressed]}
+                >
+                  <Text style={styles.splitBtnText}>+</Text>
+                </Pressable>
+                {splitResult != null && (
+                  <>
+                    <Text style={styles.splitEquals}>=</Text>
+                    <Text style={styles.splitResultText}>
+                      {currency.symbol}{splitResult}
+                    </Text>
+                    <Pressable
+                      onPress={applySplit}
+                      style={({ pressed }) => [styles.splitApply, pressed && { opacity: 0.7 }]}
+                    >
+                      <Text style={styles.splitApplyText}>✓</Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            </Animated.View>
+          )}
         </View>
 
         <ScrollView
@@ -436,15 +485,15 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 style={({ pressed }) => [
-                  styles.currencyChipInline,
-                  selected && styles.currencyChipInlineSelected,
+                  styles.currencyChip,
+                  selected && styles.currencyChipSelected,
                   pressed && !selected && styles.chipPressed,
                 ]}
               >
                 <Text
                   style={[
-                    styles.currencyChipInlineText,
-                    selected && styles.currencyChipInlineTextSelected,
+                    styles.currencyChipText,
+                    selected && styles.currencyChipTextSelected,
                   ]}
                 >
                   {option.symbol} {option.code}
@@ -459,7 +508,7 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
             style={styles.noteInput}
             value={note}
             onChangeText={setNote}
-            placeholder={t('add.notePlaceholder')}
+            placeholder={t(isExpense ? 'add.notePlaceholder' : 'income.descriptionPlaceholder')}
             placeholderTextColor={colors.textMuted}
             maxLength={NOTE_MAX_LENGTH}
             keyboardAppearance={colors.keyboardAppearance}
@@ -469,86 +518,130 @@ export default function AddExpenseScreen({ displayCurrency, onSubmit, onClose, e
           <Text style={styles.noteCounter}>{note.length}/{NOTE_MAX_LENGTH}</Text>
         </View>
 
-        <View style={styles.categoryScroll}>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            onScroll={onCatScroll}
-            scrollEventThrottle={16}
-            decelerationRate="fast"
-          >
-            {categoryPages.map((pageCats, pi) => (
-              <View key={pi} style={{ width: catPageWidth }}>
-                {[pageCats.slice(0, Math.ceil(pageCats.length / 2)),
-                  pageCats.slice(Math.ceil(pageCats.length / 2))].map((row, ri) => (
-                  <View key={ri} style={styles.categoryRow}>
-                    {row.map((category) => {
-                      const selected = category.id === categoryId;
-                      return (
-                        <Pressable
-                          key={category.id}
-                          onPress={() => pickCategory(category.id)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          style={[styles.categoryItem, { width: catItemWidth }]}
-                        >
-                          <View
-                            style={[
-                              styles.categoryCircle,
-                              { backgroundColor: `${category.color}1A` },
-                              selected && {
-                                backgroundColor: `${category.color}33`,
-                                borderColor: category.color,
-                              },
-                            ]}
+        {/* The ONLY structural difference between the two modes. */}
+        {isExpense ? (
+          <View style={styles.categoryScroll}>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              onScroll={onCatScroll}
+              scrollEventThrottle={16}
+              decelerationRate="fast"
+            >
+              {categoryPages.map((pageCats, pi) => (
+                <View key={pi} style={{ width: catPageWidth }}>
+                  {[pageCats.slice(0, Math.ceil(pageCats.length / 2)),
+                    pageCats.slice(Math.ceil(pageCats.length / 2))].map((row, ri) => (
+                    <View key={ri} style={styles.categoryRow}>
+                      {row.map((category) => {
+                        const selected = category.id === selectedId;
+                        return (
+                          <Pressable
+                            key={category.id}
+                            onPress={() => pickSelector(category.id)}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                            style={[styles.categoryItem, { width: catItemWidth }]}
                           >
-                            <HIcon name={category.emoji} size={22} color={category.color} />
-                          </View>
-                          <Text
-                            style={[
-                              styles.categoryLabel,
-                              selected && styles.categoryLabelSelected,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {getCategoryLabel(category, t)}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                            <View
+                              style={[
+                                styles.categoryCircle,
+                                { backgroundColor: `${category.color}1A` },
+                                selected && {
+                                  backgroundColor: `${category.color}33`,
+                                  borderColor: category.color,
+                                },
+                              ]}
+                            >
+                              <HIcon name={category.emoji} size={22} color={category.color} />
+                            </View>
+                            <Text
+                              style={[
+                                styles.categoryLabel,
+                                selected && styles.categoryLabelSelected,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {labelOf(category)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+            {categoryPages.length > 1 && (
+              <View style={styles.pageDots}>
+                {categoryPages.map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.pageDot,
+                      i === catPage && { backgroundColor: colors.textPrimary },
+                    ]}
+                  />
                 ))}
               </View>
-            ))}
-          </ScrollView>
-          {categoryPages.length > 1 && (
-            <View style={styles.pageDots}>
-              {categoryPages.map((_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.pageDot,
-                    i === catPage && { backgroundColor: colors.textPrimary },
+            )}
+          </View>
+        ) : (
+          <View style={styles.sourceWrap}>
+            {selectorItems.map((source) => {
+              const selected = source.id === selectedId;
+              return (
+                <Pressable
+                  key={source.id}
+                  onPress={() => pickSelector(source.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  style={({ pressed }) => [
+                    styles.sourcePill,
+                    selected && { backgroundColor: `${source.color}26`, borderColor: source.color },
+                    pressed && !selected && styles.chipPressed,
                   ]}
-                />
-              ))}
-            </View>
-          )}
-        </View>
+                >
+                  <View style={[styles.sourceDot, { backgroundColor: source.color }]} />
+                  <Text style={[styles.sourcePillText, selected && styles.sourcePillTextSelected]}>
+                    {labelOf(source)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         <Pressable
           onPress={handleSubmit}
           disabled={!isValid}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !isValid }}
           style={({ pressed }) => [
             styles.saveButton,
+            { backgroundColor: accent },
             !isValid && styles.saveButtonDisabled,
             pressed && isValid && styles.saveButtonPressed,
           ]}
         >
-          <Text style={styles.saveButtonText}>{t(isEdit ? 'edit.save' : 'add.save')}</Text>
+          <Text style={styles.saveButtonText}>
+            {t(isEdit ? 'edit.save' : (isExpense ? 'add.save' : 'income.add'))}
+          </Text>
         </Pressable>
+
+        {isEdit && (
+          <Pressable
+            onPress={handleDelete}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.deleteButton, pressed && styles.chipPressed]}
+          >
+            <Text style={styles.deleteButtonText}>
+              {t(isExpense ? 'edit.delete' : 'income.delete')}
+            </Text>
+          </Pressable>
+        )}
       </ScrollView>
     </Animated.View>
   );
@@ -590,8 +683,15 @@ const createStyles = (colors) =>
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       marginBottom: spacing.md,
+    },
+    headerSide: {
+      width: 32,
+    },
+    headerCenter: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     title: {
       color: colors.textPrimary,
@@ -612,28 +712,29 @@ const createStyles = (colors) =>
     amountRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-    },
-    amountCenter: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
     },
     currencySymbol: {
       color: colors.textSecondary,
       fontFamily: fonts.numBold,
       fontSize: 30,
-      width: 56,
-      textAlign: 'right',
-      marginRight: spacing.xs,
+      width: 72,
+      flexShrink: 0,
+      textAlign: 'left',
     },
     amountInput: {
       flex: 1,
+      minWidth: 0,
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
       fontSize: 40,
       textAlign: 'center',
       fontVariant: ['tabular-nums'],
+    },
+    splitToggleWrap: {
+      width: 72,
+      flexShrink: 0,
+      alignItems: 'flex-end',
+      justifyContent: 'center',
     },
     chipPressed: {
       backgroundColor: colors.cardPressed,
@@ -648,7 +749,7 @@ const createStyles = (colors) =>
       gap: spacing.xs,
       flexGrow: 1,
     },
-    currencyChipInline: {
+    currencyChip: {
       backgroundColor: colors.card,
       borderRadius: 16,
       borderWidth: 1,
@@ -656,16 +757,16 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
     },
-    currencyChipInlineSelected: {
+    currencyChipSelected: {
       backgroundColor: `${colors.accent}33`,
       borderColor: colors.accent,
     },
-    currencyChipInlineText: {
+    currencyChipText: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 13,
     },
-    currencyChipInlineTextSelected: {
+    currencyChipTextSelected: {
       color: colors.textPrimary,
     },
     noteRow: {
@@ -728,6 +829,37 @@ const createStyles = (colors) =>
       textAlign: 'center',
     },
     categoryLabelSelected: {
+      color: colors.textPrimary,
+    },
+    sourceWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    sourcePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs + 2,
+      backgroundColor: colors.card,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: spacing.xs + 2,
+    },
+    sourceDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    sourcePillText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 13,
+    },
+    sourcePillTextSelected: {
       color: colors.textPrimary,
     },
     dateSection: {
@@ -814,13 +946,12 @@ const createStyles = (colors) =>
       color: colors.onAccent,
     },
     saveButton: {
-      backgroundColor: colors.accent,
       borderRadius: radius.md,
       paddingVertical: spacing.md,
       alignItems: 'center',
     },
     saveButtonPressed: {
-      backgroundColor: colors.accentDark,
+      opacity: 0.85,
     },
     saveButtonDisabled: {
       opacity: 0.4,
@@ -830,10 +961,22 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 16,
     },
+    deleteButton: {
+      alignItems: 'center',
+      paddingVertical: spacing.sm + 4,
+      marginTop: spacing.sm,
+      borderRadius: radius.md,
+    },
+    deleteButtonText: {
+      color: colors.danger,
+      fontFamily: fonts.bold,
+      fontSize: 15,
+    },
     splitToggle: {
       width: 28,
       height: 28,
       borderRadius: 14,
+      flexShrink: 0,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.card,

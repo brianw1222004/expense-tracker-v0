@@ -466,7 +466,7 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
-      <View style={styles.center}>
+      <View style={styles.center} pointerEvents="box-none">
         <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>
@@ -758,10 +758,10 @@ const createStyles = (colors) =>
       borderWidth: colors.widgetBorderWidth,
       borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
       shadowRadius: 8,
-      elevation: 3,
+      elevation: 1,
     },
     monthNav: {
       flexDirection: 'row',
@@ -796,19 +796,14 @@ const createStyles = (colors) =>
       gap: spacing.sm,
     },
     catRow: {
-      backgroundColor: colors.card,
+      backgroundColor: colors.cardPressed,
       borderRadius: radius.sm,
       width: '48.5%',
       borderWidth: colors.widgetBorderWidth,
       borderColor: colors.widgetBorderColor,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 3,
     },
     catRowPressed: {
-      backgroundColor: colors.cardPressed,
+      opacity: 0.9,
     },
     catRowInner: {
       flexDirection: 'row',
