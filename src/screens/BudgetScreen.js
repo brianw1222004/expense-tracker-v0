@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme } from '../theme';
+import Sheet from '../components/Sheet';
 import { useT } from '../i18n';
 import { CURRENCIES, getCurrency } from '../currency';
 import { isValidAmountText } from '../format';
@@ -90,13 +88,12 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
-      >
-        <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
-        <View style={styles.sheet}>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      avoidKeyboard
+      sheetStyle={styles.sheetOverride}
+    >
           <View style={styles.titleRow}>
             <Text style={styles.title}>{t('budget.sheetTitle')}</Text>
             <Pressable
@@ -207,35 +204,16 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
             </View>
             <Text style={styles.sectionNote}>{t('budget.externalNote')}</Text>
           </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </Sheet>
   );
 }
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    overlay: {
-      flex: 1,
-      justifyContent: 'flex-end',
-    },
-    backdrop: {
-      backgroundColor: colors.backdrop,
-    },
-    sheet: {
-      backgroundColor: colors.background,
-      borderTopLeftRadius: radius.lg,
-      borderTopRightRadius: radius.lg,
+    sheetOverride: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
       maxHeight: '88%',
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: -2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 3,
     },
     titleRow: {
       flexDirection: 'row',

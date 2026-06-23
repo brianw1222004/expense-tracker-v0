@@ -5,7 +5,6 @@ import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
 import { getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
-import { loadCategoryOrder, saveCategoryOrder } from '../storage';
 import EmptyState from '../components/EmptyState';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
@@ -42,7 +41,8 @@ export default function CategoriesScreen({
   hasExpenses,
   displayCurrency,
   allCategories,
-  userId,
+  categoryOrder,
+  onReorderCategories,
   onAddPress,
   onLoadDemo,
   onAddCategory,
@@ -180,7 +180,8 @@ export default function CategoriesScreen({
         categoryRows={categoryRows}
         allCategories={allCategories}
         displayCurrency={displayCurrency}
-        userId={userId}
+        order={categoryOrder}
+        onReorder={onReorderCategories}
         colors={colors}
         styles={styles}
         t={t}
@@ -207,7 +208,7 @@ export default function CategoriesScreen({
   );
 }
 
-function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId, colors, styles, t, onEditCategory, onDragStateChange }) {
+function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, order, onReorder, colors, styles, t, onEditCategory, onDragStateChange }) {
   const customWithout = useMemo(
     () => (allCategories ?? []).filter((c) => c.custom && !categoryRows.some((r) => r.category.id === c.id)),
     [allCategories, categoryRows]
@@ -223,14 +224,6 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId
     return [...spending, ...custom];
   }, [categoryRows, customWithout]);
 
-  const [order, setOrder] = useState(null);
-
-  useEffect(() => {
-    loadCategoryOrder(userId).then((loaded) => {
-      if (loaded) setOrder(loaded);
-    });
-  }, [userId]);
-
   const items = useMemo(() => {
     if (!order) return defaultItems;
     const byId = new Map(defaultItems.map((it) => [it.id, it]));
@@ -240,9 +233,8 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, userId
   }, [defaultItems, order]);
 
   const saveOrder = useCallback((ids) => {
-    setOrder(ids);
-    saveCategoryOrder(userId, ids);
-  }, [userId]);
+    onReorder(ids);
+  }, [onReorder]);
 
   const [dragIndex, setDragIndex] = useState(-1);
   const pan = useRef(new Animated.ValueXY()).current;

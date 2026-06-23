@@ -38,8 +38,20 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // Error already captured in state; info.componentStack is available here
-    // for logging if a service is added later.
+    // Error is already captured in state; surface it for debugging (a logging
+    // service can hook in here later).
+    console.error('ErrorBoundary caught an error:', error, info?.componentStack);
+  }
+
+  componentDidUpdate(prevProps) {
+    // If the caller passes resetKeys (e.g. [userId]) and they change while a
+    // fallback is showing, clear it so a sign-out / account switch recovers.
+    if (!this.state.hasError) return;
+    const prev = prevProps.resetKeys || [];
+    const next = this.props.resetKeys || [];
+    if (prev.length !== next.length || prev.some((v, i) => v !== next[i])) {
+      this.reset();
+    }
   }
 
   reset = () => {

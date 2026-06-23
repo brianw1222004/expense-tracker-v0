@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, THEMES, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
 import { HIcon } from '../icons';
+import Sheet from '../components/Sheet';
 
 // Account view. Presented as a near-full (92%) bottom sheet opened by the
 // floating account button — mirrors BudgetScreen's Modal/backdrop/sheet
@@ -14,12 +15,37 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  const [firstName, setFirstName] = useState(settings.firstName ?? '');
+  const [lastName, setLastName] = useState(settings.lastName ?? '');
+
+  // Re-seed the inputs whenever the sheet opens so they reflect the latest
+  // saved name (set during onboarding, or on another sign-in).
+  useEffect(() => {
+    if (visible) {
+      setFirstName(settings.firstName ?? '');
+      setLastName(settings.lastName ?? '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  // onBlur (not onEndEditing) so the commit also fires on web.
+  const commitName = () => {
+    const first = firstName.trim();
+    const last = lastName.trim();
+    setFirstName(first);
+    setLastName(last);
+    if (first !== (settings.firstName ?? '') || last !== (settings.lastName ?? '')) {
+      onUpdateSettings({ firstName: first, lastName: last });
+    }
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      showHandle
+      sheetStyle={styles.sheetOverride}
+    >
           <View style={styles.titleRow}>
             <Text style={styles.title}>{t('acct.title')}</Text>
             <Pressable
@@ -37,6 +63,43 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
             contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
             showsVerticalScrollIndicator={false}
           >
+            <Text style={styles.sectionHeader}>{t('acct.name')}</Text>
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <HIcon name="user-circle" size={20} color={colors.icon} />
+                <TextInput
+                  style={styles.nameInput}
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  onBlur={commitName}
+                  placeholder={t('acct.firstName')}
+                  placeholderTextColor={colors.textMuted}
+                  keyboardAppearance={colors.keyboardAppearance}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  maxLength={40}
+                  accessibilityLabel={t('acct.firstName')}
+                />
+              </View>
+              <View style={[styles.row, styles.rowDivider]}>
+                <View style={styles.nameIconSpacer} />
+                <TextInput
+                  style={styles.nameInput}
+                  value={lastName}
+                  onChangeText={setLastName}
+                  onBlur={commitName}
+                  placeholder={t('acct.lastName')}
+                  placeholderTextColor={colors.textMuted}
+                  keyboardAppearance={colors.keyboardAppearance}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  maxLength={40}
+                  accessibilityLabel={t('acct.lastName')}
+                />
+              </View>
+            </View>
+            <Text style={styles.sectionNote}>{t('acct.nameNote')}</Text>
+
             <Text style={styles.sectionHeader}>{t('acct.section')}</Text>
             {accountEmail ? (
               <>
@@ -129,43 +192,16 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
               </View>
             </View>
           </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </Sheet>
   );
 }
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    overlay: {
-      flex: 1,
-      justifyContent: 'flex-end',
-    },
-    backdrop: {
-      backgroundColor: colors.backdrop,
-    },
-    sheet: {
-      backgroundColor: colors.background,
-      borderTopLeftRadius: radius.lg,
-      borderTopRightRadius: radius.lg,
+    sheetOverride: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
       height: '92%',
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: -2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 3,
-    },
-    handle: {
-      alignSelf: 'center',
-      width: 36,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: colors.border,
-      marginBottom: spacing.sm,
     },
     titleRow: {
       flexDirection: 'row',
@@ -231,6 +267,16 @@ const createStyles = (colors) =>
       fontSize: 15,
       fontFamily: fonts.regular,
       flex: 1,
+    },
+    nameInput: {
+      flex: 1,
+      color: colors.textPrimary,
+      fontSize: 15,
+      fontFamily: fonts.regular,
+      paddingVertical: 0,
+    },
+    nameIconSpacer: {
+      width: 20,
     },
     signOutText: {
       color: colors.danger,

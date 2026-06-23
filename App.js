@@ -70,7 +70,7 @@ import { redenominateBudgets } from './src/currency';
 import { getAllCategories, getRegularAll, getExternalAll } from './src/categories';
 import { dateKey } from './src/format';
 import { deriveViewData } from './src/derive';
-import { ThemeProvider, getTheme, spacing } from './src/theme';
+import { ThemeProvider, getTheme, spacing, ACCOUNT_FAB_SIZE } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 import { HIcon } from './src/icons';
 
@@ -320,6 +320,9 @@ function ExpenseTracker() {
   const deleteExpense = (id) => {
     setExpenses((prev) => prev.filter((e) => e.id !== id));
     enqueueExpenseDelete(userId, id);
+    // Mirror deleteIncome: close the edit popup if the delete came from it
+    // (no-op when deleting from the list, where editingExpense is already null).
+    setEditingExpense(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
@@ -409,6 +412,11 @@ function ExpenseTracker() {
       });
     },
     [userId]
+  );
+
+  const reorderCategories = useCallback(
+    (ids) => updateSettings({ categoryOrder: ids }),
+    [updateSettings]
   );
 
   const changeTab = useCallback(
@@ -602,7 +610,7 @@ function ExpenseTracker() {
     }));
   };
 
-  const { sections, months, monthTotal, lastMonthTotal, todayTotal, avgPerDay, totalsByCategory, monthCount, dailyTotals } =
+  const { sections, months, monthTotal, lastMonthTotal, totalsByCategory, dailyTotals } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language, settings.customCategories),
       [expenses, displayCurrency, language, dayStamp, settings.customCategories]
@@ -619,6 +627,14 @@ function ExpenseTracker() {
     }
     return { expenseByMonth: map, totalExpenses: total };
   }, [months]);
+
+  // Most-recent expenses (globally newest-first) for the dashboard activity
+  // feed. `sections` is already day-grouped newest-first with newest-first
+  // entries inside each day, so a flat slice preserves chronological order.
+  const recentExpenses = useMemo(
+    () => sections.flatMap((section) => section.data).slice(0, 5),
+    [sections]
+  );
 
   const loaded = dataUser != null && dataUser === userId;
   const hasExpenses = expenses.length > 0;
@@ -646,19 +662,22 @@ function ExpenseTracker() {
               hasExpenses={hasExpenses}
               monthTotal={monthTotal}
               lastMonthTotal={lastMonthTotal}
-              todayTotal={todayTotal}
-              monthCount={monthCount}
-              avgPerDay={avgPerDay}
               dailyTotals={dailyTotals}
               totalsByCategory={totalsByCategory}
+              recentExpenses={recentExpenses}
+              categories={allCategories}
+              userName={settings.firstName}
               displayCurrency={displayCurrency}
               monthlyBudget={settings.monthlyBudget}
               categoryBudgets={settings.categoryBudgets}
               regularCategories={regularCategories}
               externalCategories={externalCategories}
               onEditBudgets={() => setOverlay('budget')}
+              onOpenAccount={() => setOverlay('account')}
               onChangeCurrency={(code) => updateSettings({ displayCurrency: code })}
               onAddPress={() => openAdd('expense')}
+              onEditExpense={setEditingExpense}
+              onSeeAll={() => changeTab('list')}
               onLoadDemo={loadDemo}
             />
           </Animated.View>
@@ -683,7 +702,8 @@ function ExpenseTracker() {
               hasExpenses={hasExpenses}
               displayCurrency={displayCurrency}
               allCategories={allCategories}
-              userId={userId}
+              categoryOrder={settings.categoryOrder}
+              onReorderCategories={reorderCategories}
               onAddPress={() => openAdd('expense')}
               onLoadDemo={loadDemo}
               onAddCategory={addCustomCategory}
@@ -834,7 +854,7 @@ function ExpenseTracker() {
           edges={['top', 'left', 'right']}
         >
           <StatusBar style={theme.statusBarStyle} />
-          <ErrorBoundary>{content}</ErrorBoundary>
+          <ErrorBoundary resetKeys={[userId]}>{content}</ErrorBoundary>
         </SafeAreaView>
       </I18nProvider>
     </ThemeProvider>
@@ -873,9 +893,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.sm,
     left: spacing.md,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: ACCOUNT_FAB_SIZE,
+    height: ACCOUNT_FAB_SIZE,
+    borderRadius: ACCOUNT_FAB_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,

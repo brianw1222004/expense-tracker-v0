@@ -19,6 +19,8 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [budgetText, setBudgetText] = useState('');
 
   const { symbol: currencySymbol, decimals } = getCurrency(settings.displayCurrency);
@@ -27,7 +29,11 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
     const normalized = budgetText.trim().replace(/,(\d{3})\b/g, '$1').replace(',', '.');
     const isValid = isValidAmountText(normalized, decimals);
     const parsed = parseFloat(normalized);
-    const patch = { onboardingDone: true };
+    const patch = {
+      onboardingDone: true,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+    };
     if (isValid && parsed > 0) {
       patch.monthlyBudget = Number(parsed.toFixed(decimals));
     }
@@ -47,6 +53,35 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
         <HIcon name="sparkles" size={40} color={colors.icon} />
         <Text style={styles.title}>{t('onboard.welcome')}</Text>
         <Text style={styles.subtitle}>{t('onboard.subtitle')}</Text>
+
+        <View style={styles.widget}>
+          <Text style={styles.widgetTitle}>{t('onboard.nameTitle')}</Text>
+          <TextInput
+            style={styles.nameInput}
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholder={t('onboard.firstName')}
+            placeholderTextColor={colors.textMuted}
+            keyboardAppearance={colors.keyboardAppearance}
+            autoCapitalize="words"
+            autoCorrect={false}
+            returnKeyType="next"
+            maxLength={40}
+          />
+          <TextInput
+            style={[styles.nameInput, styles.nameInputSpaced]}
+            value={lastName}
+            onChangeText={setLastName}
+            placeholder={t('onboard.lastName')}
+            placeholderTextColor={colors.textMuted}
+            keyboardAppearance={colors.keyboardAppearance}
+            autoCapitalize="words"
+            autoCorrect={false}
+            returnKeyType="done"
+            maxLength={40}
+          />
+          <Text style={styles.widgetHint}>{t('onboard.nameHint')}</Text>
+        </View>
 
         <View style={styles.widget}>
           <Text style={styles.widgetTitle}>{t('onboard.budget')}</Text>
@@ -174,6 +209,18 @@ const createStyles = (colors) =>
       fontFamily: fonts.regular,
       fontSize: 18,
       paddingVertical: spacing.sm + 4,
+    },
+    nameInput: {
+      backgroundColor: colors.background,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 4,
+      color: colors.textPrimary,
+      fontFamily: fonts.regular,
+      fontSize: 16,
+    },
+    nameInputSpaced: {
+      marginTop: spacing.sm,
     },
     langRow: {
       flexDirection: 'row',

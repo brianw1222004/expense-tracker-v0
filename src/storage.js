@@ -27,6 +27,9 @@ export const DEFAULT_SETTINGS = {
   customCategories: [],
   theme: 'vivid',
   language: 'en',
+  firstName: '',
+  lastName: '',
+  categoryOrder: [],
   onboardingDone: false,
 };
 
@@ -93,6 +96,9 @@ function withDefaults(parsed) {
   if (!Array.isArray(merged.customCategories)) {
     merged.customCategories = [];
   }
+  if (!Array.isArray(merged.categoryOrder)) {
+    merged.categoryOrder = [];
+  }
   if (parsed && typeof parsed === 'object' && parsed.onboardingDone === undefined) {
     merged.onboardingDone = true;
   }
@@ -102,8 +108,15 @@ function withDefaults(parsed) {
 export async function loadSettings(userId) {
   try {
     const raw = await AsyncStorage.getItem(scopedKey(SETTINGS_KEY, userId));
-    if (!raw) return withDefaults(null);
-    return withDefaults(JSON.parse(raw));
+    const merged = withDefaults(raw ? JSON.parse(raw) : null);
+    // One-time migration: older builds stored the category drag-order under a
+    // standalone key. Fold it into settings so it lives under the same
+    // dataUser-gated lifecycle as the rest of the settings.
+    if (merged.categoryOrder.length === 0) {
+      const legacy = await loadCategoryOrder(userId);
+      if (Array.isArray(legacy) && legacy.length) merged.categoryOrder = legacy;
+    }
+    return merged;
   } catch {
     return withDefaults(null);
   }
@@ -125,13 +138,5 @@ export async function loadCategoryOrder(userId) {
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
-  }
-}
-
-export async function saveCategoryOrder(userId, order) {
-  try {
-    await AsyncStorage.setItem(scopedKey(CATEGORY_ORDER_KEY, userId), JSON.stringify(order));
-  } catch {
-    // Best-effort.
   }
 }

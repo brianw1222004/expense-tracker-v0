@@ -200,6 +200,8 @@ export const radius = {
   lg: 24,
 };
 
+export const ACCOUNT_FAB_SIZE = 40;
+
 const ThemeContext = createContext({ themeName: 'vivid', colors: THEMES.vivid });
 
 export function ThemeProvider({ themeName, children }) {

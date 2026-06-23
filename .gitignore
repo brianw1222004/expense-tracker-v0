@@ -40,3 +40,14 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# design-sync build output (regenerated per sync)
+.ds-sync/
+ds-bundle/
+dist-lib/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+
+# generated test report
+test-results.json

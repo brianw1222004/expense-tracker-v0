@@ -1,0 +1,47 @@
+{
+  "pkg": "expense-tracker",
+  "globalName": "ExpenseTracker",
+  "shape": "package",
+  "projectId": "05363e1c-5ba4-4404-81fe-ecb35f63104c",
+  "buildCmd": "node .ds-sync/prebuild.mjs",
+  "srcDir": "src",
+  "componentSrcMap": {
+    "BudgetGauge": "src/components/BudgetGauge.js",
+    "SpendingChart": "src/components/SpendingChart.js",
+    "TabBar": "src/components/TabBar.js",
+    "ExpenseRow": "src/components/ExpenseRow.js",
+    "AddExpenseModal": "src/components/AddExpenseModal.js",
+    "RewardCheck": "src/components/RewardCheck.js",
+    "EmptyState": "src/components/EmptyState.js",
+    "ErrorBoundary": "src/components/ErrorBoundary.js"
+  },
+  "dtsPropsFor": {
+    "BudgetGauge": "spent?: number;\nbudget?: number;\ndisplayCurrency?: string;\nempty?: boolean;",
+    "SpendingChart": "dailyTotals?: number[];\ndisplayCurrency?: string;\ntitle?: string;",
+    "TabBar": "tab?: 'dashboard' | 'list' | 'categories' | 'account';\nonChange?: (tab: string) => void;\nonAddPress?: () => void;\naddActive?: boolean;",
+    "ExpenseRow": "expense?: { id: string; amount: number; currency: string; note: string; category: string; createdAt: number; displayAmount: number };\ndisplayCurrency?: string;\nonRequestDelete?: (expense: any) => void;\nonEdit?: (expense: any) => void;",
+    "AddExpenseModal": "visible?: boolean;\nonClose?: () => void;\nchildren?: React.ReactNode;",
+    "RewardCheck": "trigger?: number;",
+    "EmptyState": "onAdd?: () => void;\nonLoadDemo?: () => void;\ncolors?: Record<string, string>;\nt?: (key: string) => string;\nhintKey?: string;",
+    "ErrorBoundary": "children?: React.ReactNode;"
+  },
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": {
+    "ExpenseRow": {"cardMode": "column"},
+    "TabBar": {"cardMode": "column"},
+    "AddExpenseModal": {"cardMode": "column"},
+    "RewardCheck": {"cardMode": "single"}
+  },
+  "provider": {
+    "component": "SafeAreaProvider",
+    "props": {},
+    "inner": {
+      "component": "ThemeProvider",
+      "props": {"themeName": "vivid"},
+      "inner": {
+        "component": "I18nProvider",
+        "props": {"language": "en"}
+      }
+    }
+  }
+}
