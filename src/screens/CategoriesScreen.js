@@ -11,7 +11,8 @@ import { HIcon } from '../icons';
 
 
 const DONUT_SIZE = 132;
-const DONUT_STROKE = 14;
+const DONUT_STROKE = 16;
+const DONUT_GAP = 4; // visible gap between segments, in arc-length px
 const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2;
 const DONUT_CX = DONUT_SIZE / 2;
 const DONUT_CY = DONUT_SIZE / 2;
@@ -652,9 +653,51 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
   );
 }
 
-// Donut + legend breakdown of one month's spending by category (moved here from
-// the dashboard). Segments and legend share one denominator (`total`), so the
-// arcs sum to 100% and the legend percentages match the slices.
+// Builds the rounded arc geometry for the donut. Each segment gets a *painted
+// footprint* proportional to its share of the remaining circumference after one
+// DONUT_GAP is reserved per segment, so footprints stay proportional and the
+// gaps between them are exactly DONUT_GAP. A round line cap adds DONUT_STROKE to
+// the painted length, so a segment uses round caps only when its footprint can
+// absorb that (>= DONUT_STROKE); thinner slivers fall back to butt caps and stay
+// proportional instead of ballooning into a fixed-size dot that overlaps its
+// neighbours. A lone segment renders as a full, unbroken ring.
+function buildArcs(segments, total) {
+  if (total <= 0 || segments.length === 0) return [];
+  if (segments.length === 1) {
+    const seg = segments[0];
+    return [{ key: seg.category.id, color: seg.category.color, dash: DONUT_CIRC, offset: DONUT_CIRC * 0.25, cap: 'round' }];
+  }
+  const paintBudget = Math.max(DONUT_CIRC - segments.length * DONUT_GAP, 0);
+  let cursor = 0; // arc length from the top, advancing clockwise
+  return segments.map((seg) => {
+    const span = (seg.value / total) * paintBudget; // painted footprint incl. caps
+    const round = span >= DONUT_STROKE;
+    const dash = round ? span - DONUT_STROKE : span;
+    const dashStart = round ? cursor + DONUT_STROKE / 2 : cursor;
+    const offset = DONUT_CIRC * 0.25 - dashStart;
+    cursor += span + DONUT_GAP;
+    return {
+      key: seg.category.id,
+      color: seg.category.color,
+      dash: Math.max(dash, 0),
+      offset,
+      cap: round ? 'round' : 'butt',
+    };
+  });
+}
+
+function formatPct(pct) {
+  if (pct < 10) return `${pct.toFixed(1)}%`;
+  // Never round a sub-100% share up to "100%" — beside a non-zero "least" card
+  // that reads as a contradiction (the two visibly don't sum).
+  const rounded = Math.round(pct);
+  return `${rounded >= 100 && pct < 100 ? 99 : rounded}%`;
+}
+
+// Modern rounded-segment donut of one month's spending by category. The ring
+// still carries the breakdown of ALL categories; beside it we surface only the
+// extremes — the single most- and least-spent categories — sharing the same
+// `total` denominator so their percentages match the arcs.
 function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colors, styles, t }) {
   const segments = useMemo(() => {
     if (total <= 0) return [];
@@ -663,6 +706,11 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
       .filter((s) => s.value > 0)
       .sort((a, b) => b.value - a.value);
   }, [byCategory, total, allCategories]);
+
+  const arcs = useMemo(() => buildArcs(segments, total), [segments, total]);
+
+  const mostSeg = segments[0] ?? null;
+  const leastSeg = segments.length > 1 ? segments[segments.length - 1] : null;
 
   return (
     <View style={styles.donutBody}>
@@ -676,25 +724,20 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
             strokeWidth={DONUT_STROKE}
             fill="none"
           />
-          {segments.map((seg, i) => {
-            const len = (seg.value / total) * DONUT_CIRC;
-            const offset =
-              DONUT_CIRC * 0.25 -
-              segments.slice(0, i).reduce((s, p) => s + (p.value / total) * DONUT_CIRC, 0);
-            return (
-              <Circle
-                key={seg.category.id}
-                cx={DONUT_CX}
-                cy={DONUT_CY}
-                r={DONUT_R}
-                stroke={seg.category.color}
-                strokeWidth={DONUT_STROKE}
-                fill="none"
-                strokeDasharray={`${len} ${DONUT_CIRC - len}`}
-                strokeDashoffset={offset}
-              />
-            );
-          })}
+          {arcs.map((arc) => (
+            <Circle
+              key={arc.key}
+              cx={DONUT_CX}
+              cy={DONUT_CY}
+              r={DONUT_R}
+              stroke={arc.color}
+              strokeWidth={DONUT_STROKE}
+              fill="none"
+              strokeLinecap={arc.cap}
+              strokeDasharray={`${arc.dash} ${DONUT_CIRC - arc.dash}`}
+              strokeDashoffset={arc.offset}
+            />
+          ))}
         </Svg>
         <View style={[StyleSheet.absoluteFill, styles.donutCenter]}>
           <Text
@@ -704,28 +747,55 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
           >
             {formatMoneyShort(total, displayCurrency)}
           </Text>
+          <Text style={styles.donutCaption}>{t('cats.totalCaption')}</Text>
         </View>
       </View>
 
-      <View style={styles.legend}>
-        {segments.slice(0, 4).map((seg) => {
-          const pct = (seg.value / total) * 100;
-          return (
-            <View
-              key={seg.category.id}
-              style={[styles.legendRow, { backgroundColor: `${seg.category.color}12` }]}
-            >
-              <View style={[styles.legendDot, { backgroundColor: seg.category.color }]} />
-              <Text style={styles.legendName} numberOfLines={1}>
-                {getCategoryLabel(seg.category, t)}
-              </Text>
-              <Text style={styles.legendPct}>
-                {pct >= 10 ? Math.round(pct) : pct.toFixed(1)}%
-              </Text>
-            </View>
-          );
-        })}
+      <View style={styles.statCol}>
+        {mostSeg && (
+          <ExtremeStat
+            label={t('cats.mostSpending')}
+            seg={mostSeg}
+            total={total}
+            displayCurrency={displayCurrency}
+            colors={colors}
+            styles={styles}
+            t={t}
+          />
+        )}
+        {leastSeg && (
+          <ExtremeStat
+            label={t('cats.leastSpending')}
+            seg={leastSeg}
+            total={total}
+            displayCurrency={displayCurrency}
+            colors={colors}
+            styles={styles}
+            t={t}
+          />
+        )}
       </View>
+    </View>
+  );
+}
+
+// One "most/least spending" card beside the donut: a tinted pill with the
+// category's color, its name + share, and the amount in the display currency.
+function ExtremeStat({ label, seg, total, displayCurrency, colors, styles, t }) {
+  const pct = (seg.value / total) * 100;
+  return (
+    <View style={[styles.statCard, { backgroundColor: `${seg.category.color}14` }]}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <View style={styles.statRow}>
+        <View style={[styles.statDot, { backgroundColor: seg.category.color }]} />
+        <Text style={styles.statName} numberOfLines={1}>
+          {getCategoryLabel(seg.category, t)}
+        </Text>
+        <Text style={[styles.statPct, { color: seg.category.color }]}>{formatPct(pct)}</Text>
+      </View>
+      <Text style={styles.statAmount} numberOfLines={1}>
+        {formatMoneyShort(seg.value, displayCurrency)}
+      </Text>
     </View>
   );
 }
@@ -807,37 +877,60 @@ const createStyles = (colors) =>
     },
     donutTotal: {
       fontFamily: fonts.numBold,
-      fontSize: 16,
+      fontSize: 18,
       fontVariant: ['tabular-nums'],
     },
-    legend: {
+    donutCaption: {
+      color: colors.textMuted,
+      fontFamily: fonts.medium,
+      fontSize: 10,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+      marginTop: 1,
+    },
+    statCol: {
       flex: 1,
       marginLeft: spacing.md,
       gap: spacing.sm,
     },
-    legendRow: {
+    statCard: {
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: spacing.sm,
+      gap: 3,
+    },
+    statLabel: {
+      color: colors.textMuted,
+      fontFamily: fonts.medium,
+      fontSize: 10,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+    },
+    statRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
-      gap: spacing.sm,
+      gap: spacing.xs + 2,
     },
-    legendDot: {
-      width: 10,
-      height: 10,
+    statDot: {
+      width: 9,
+      height: 9,
       borderRadius: 5,
     },
-    legendName: {
+    statName: {
       flex: 1,
-      color: colors.textSecondary,
+      color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 13,
     },
-    legendPct: {
-      color: colors.textPrimary,
+    statPct: {
       fontFamily: fonts.numBold,
       fontSize: 13,
+      fontVariant: ['tabular-nums'],
+    },
+    statAmount: {
+      color: colors.textSecondary,
+      fontFamily: fonts.numRegular,
+      fontSize: 12,
       fontVariant: ['tabular-nums'],
     },
 

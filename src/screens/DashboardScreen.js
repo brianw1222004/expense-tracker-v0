@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { Animated, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, UIManager, View } from 'react-native';
+import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 import BudgetGauge from '../components/BudgetGauge';
@@ -13,6 +14,49 @@ import { formatMoney, formatMoneyShort, monthLabel, dayLabel } from '../format';
 import { getCurrency } from '../currency';
 import { getCategory, getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
+
+// Soft iridescent bloom for the hero card's upper-right corner. Two warm-to-cool
+// hues fade to transparent so the wash reads luminous on the white card without
+// tying to a single theme accent. Tune intensity/position here.
+const GLOW_PINK = '#F8B6D2';
+const GLOW_VIOLET = '#BCA9F5';
+
+// Absolutely-fills its parent and paints a radial bloom anchored at the
+// top-right. Rendered as the parent card's first child (so content paints over
+// it) and wrapped in a rounded, clipped layer so the bloom follows the card's
+// corners without clipping the card's drop shadow.
+function CardGlow() {
+  return (
+    <View style={styles_cardGlowClip} pointerEvents="none">
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="spendCardGlow" cx="92%" cy="3%" r="95%" fx="92%" fy="3%">
+            <Stop offset="0" stopColor={GLOW_PINK} stopOpacity="0.5" />
+            <Stop offset="0.45" stopColor={GLOW_VIOLET} stopOpacity="0.22" />
+            <Stop offset="1" stopColor={GLOW_VIOLET} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#spendCardGlow)" />
+      </Svg>
+    </View>
+  );
+}
+
+// Static style for the glow clip layer (outside createStyles — it needs no theme
+// colors, only the card's corner radius). Positioning is spelled out because
+// StyleSheet.absoluteFillObject was removed in RN 0.85.
+const styles_cardGlowClip = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  borderRadius: radius.md,
+  overflow: 'hidden',
+  // Sit behind the card content but above the card's own background fill — on
+  // web an absolute child would otherwise paint over the static text.
+  zIndex: -1,
+};
 
 export default function DashboardScreen({
   loaded,
@@ -117,6 +161,7 @@ export default function DashboardScreen({
 
       {/* Monthly Spending — total, month-over-month delta, currency picker, trend chart */}
       <View style={styles.spendCard}>
+        <CardGlow />
         <View style={styles.spendTopRow}>
           <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
           <CurrencyDropdown

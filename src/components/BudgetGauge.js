@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { fonts, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { formatMoney } from '../format';
@@ -7,7 +7,7 @@ import { getCurrency } from '../currency';
 import { HIcon } from '../icons';
 
 const SIZE = 200;
-const STROKE = 14;
+const STROKE = 18;
 const R = (SIZE - STROKE) / 2;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
@@ -59,6 +59,13 @@ export default function BudgetGauge({ spent, budget, displayCurrency, empty }) {
     <View style={styles.container}>
       <View style={styles.donut}>
         <Svg width="100%" height="100%" viewBox={`0 0 ${SIZE} ${SIZE}`}>
+          <Defs>
+            {/* Diagonal sheen along the arc for a soft, luminous fill. */}
+            <LinearGradient id="budgetGaugeFill" x1="0%" y1="0%" x2="100%" y2="100%">
+              <Stop offset="0" stopColor={zoneColor} stopOpacity="1" />
+              <Stop offset="1" stopColor={zoneColor} stopOpacity="0.6" />
+            </LinearGradient>
+          </Defs>
           <Circle
             cx={CX}
             cy={CY}
@@ -66,13 +73,14 @@ export default function BudgetGauge({ spent, budget, displayCurrency, empty }) {
             stroke={colors.cardPressed}
             strokeWidth={STROKE}
             fill="none"
+            strokeLinecap="round"
           />
           {capped > 0 && (
             <Circle
               cx={CX}
               cy={CY}
               r={R}
-              stroke={zoneColor}
+              stroke="url(#budgetGaugeFill)"
               strokeWidth={STROKE}
               fill="none"
               strokeDasharray={`${fillLength} ${CIRCUMFERENCE - fillLength}`}
