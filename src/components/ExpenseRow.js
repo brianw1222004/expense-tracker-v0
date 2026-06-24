@@ -69,8 +69,6 @@ const createStyles = (colors) =>
       padding: spacing.sm + 4,
       marginHorizontal: spacing.md,
       marginBottom: spacing.sm,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
     },
     rowPressed: {
       backgroundColor: colors.cardPressed,

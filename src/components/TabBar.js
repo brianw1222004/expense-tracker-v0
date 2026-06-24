@@ -114,8 +114,6 @@ const createStyles = (colors) =>
       borderRadius: 32,
       height: 58,
       paddingHorizontal: spacing.sm,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
       shadowOpacity: 0.2,
       shadowRadius: 16,

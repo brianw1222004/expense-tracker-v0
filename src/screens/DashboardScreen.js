@@ -76,7 +76,10 @@ export default function DashboardScreen({
 
   const delta = monthTotal - (lastMonthTotal ?? 0);
   const hasLastMonth = (lastMonthTotal ?? 0) > 0;
-  const spentLess = delta < 0;
+  // Spending down = good (green ↓), up = bad (red ↑), flat = neutral — mirrors
+  // the three-way convention in CategoriesScreen so an exact tie isn't shown red.
+  const heroDir = delta < 0 ? 'down' : delta > 0 ? 'up' : 'flat';
+  const deltaPct = hasLastMonth ? (Math.abs(delta) / lastMonthTotal) * 100 : 0;
 
   const [budgetOpen, setBudgetOpen] = useState(true);
   const budgetRotate = useRef(new Animated.Value(0)).current;
@@ -112,42 +115,42 @@ export default function DashboardScreen({
         )}
       </View>
 
+      {/* Monthly Spending — total, month-over-month delta, currency picker, trend chart */}
       <View style={styles.spendCard}>
         <View style={styles.spendTopRow}>
           <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
-          <View style={styles.monthPill}>
-            <Text style={styles.monthPillText}>
-              {monthLabel(new Date(), language)}
-            </Text>
-          </View>
+          <CurrencyDropdown
+            value={displayCurrency}
+            onChange={onChangeCurrency}
+            accessibilityLabel={t('budget.currencySection')}
+          />
         </View>
 
-        <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
-          {formatMoney(monthTotal, displayCurrency)}
-        </Text>
+        <View style={styles.heroNumberRow}>
+          <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
+            {formatMoney(monthTotal, displayCurrency)}
+          </Text>
+          {hasExpenses && hasLastMonth && (
+            <DeltaBadge value={deltaPct.toFixed(1)} dir={heroDir} colors={colors} styles={styles} />
+          )}
+        </View>
 
-        {hasExpenses && hasLastMonth && (
-          <View
-            style={[
-              styles.compareBadge,
-              spentLess ? styles.compareBadgeGood : styles.compareBadgeUp,
-            ]}
-          >
-            <Text style={[styles.compareDelta, spentLess && styles.compareDeltaGood]}>
-              {spentLess ? '↓' : '↑'} {formatMoneyShort(Math.abs(delta), displayCurrency)}
-            </Text>
-            <Text style={styles.compareLabel}>{t('dash.vsLastMonth')}</Text>
+        <View style={styles.heroSubRow}>
+          <View style={styles.monthPill}>
+            <Text style={styles.monthPillText}>{monthLabel(new Date(), language)}</Text>
           </View>
+          {hasExpenses && hasLastMonth && (
+            <Text style={styles.vsText}>{t('dash.vsLastMonth')}</Text>
+          )}
+        </View>
+
+        {hasExpenses && dailyTotals && (
+          <SpendingChart
+            dailyTotals={dailyTotals}
+            displayCurrency={displayCurrency}
+          />
         )}
       </View>
-
-      {hasExpenses && dailyTotals && (
-        <SpendingChart
-          dailyTotals={dailyTotals}
-          displayCurrency={displayCurrency}
-          title={t('dash.trend')}
-        />
-      )}
 
       {hasExpenses && (
         <View style={styles.budgetCard}>
@@ -156,20 +159,13 @@ export default function DashboardScreen({
               <Animated.Text style={[styles.sectionChevron, { transform: [{ rotate: budgetChevronRotate }] }]}>▾</Animated.Text>
               <Text style={styles.summaryTitle} numberOfLines={1}>{t('budget.title')}</Text>
             </Pressable>
-            <View style={styles.budgetActions}>
-              <CurrencyDropdown
-                value={displayCurrency}
-                onChange={onChangeCurrency}
-                accessibilityLabel={t('budget.currencySection')}
-              />
-              <Pressable
-                onPress={onEditBudgets}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
-              >
-                <Text style={styles.editPillText}>{t('budget.edit')}</Text>
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={onEditBudgets}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
+            >
+              <Text style={styles.editPillText}>{t('budget.edit')}</Text>
+            </Pressable>
           </View>
 
           {budgetOpen && (
@@ -263,6 +259,24 @@ export default function DashboardScreen({
   );
 }
 
+// Pill showing a percentage change. `dir`: 'down' = spending fell (green ↓),
+// 'up' = rose (red ↑), 'flat' = unchanged (muted, no arrow). The circle/arrow
+// is omitted when flat so an exact tie never reads as an increase.
+const DeltaBadge = React.memo(function DeltaBadge({ value, dir, colors, styles }) {
+  const tone = dir === 'down' ? colors.success : dir === 'up' ? colors.danger : colors.textMuted;
+  const flat = dir === 'flat';
+  return (
+    <View style={[styles.deltaBadge, flat && styles.deltaBadgeFlat, { backgroundColor: `${tone}1A` }]}>
+      {!flat && (
+        <View style={[styles.deltaCircle, { backgroundColor: tone }]}>
+          <Text style={[styles.deltaArrow, { color: colors.onAccent }]}>{dir === 'down' ? '↓' : '↑'}</Text>
+        </View>
+      )}
+      <Text style={[styles.deltaPct, { color: tone }]}>{value}%</Text>
+    </View>
+  );
+});
+
 const CategoryBar = React.memo(function CategoryBar({ category, budget, spent, displayCurrency, styles, colors, t }) {
   const over = spent > budget;
   return (
@@ -350,6 +364,10 @@ const CARD_SHADOW = {
   elevation: 1,
 };
 
+// Shared height for the budget-header pills and the matching line-box of the
+// section title/chevron, so the title centers on the pills' vertical midpoint.
+const PILL_HEIGHT = 24;
+
 const createStyles = (colors) =>
   StyleSheet.create({
     container: {
@@ -380,8 +398,6 @@ const createStyles = (colors) =>
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
       padding: spacing.lg,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
       ...CARD_SHADOW,
     },
     spendTopRow: {
@@ -409,52 +425,75 @@ const createStyles = (colors) =>
       letterSpacing: 0.8,
       textTransform: 'uppercase',
     },
+    heroNumberRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: spacing.sm,
+    },
     heroTotal: {
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
       fontSize: 40,
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.5,
+      flexShrink: 1,
     },
-    compareBadge: {
+    heroSubRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      alignSelf: 'flex-start',
-      borderRadius: 16,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      marginTop: spacing.md,
       gap: spacing.sm,
+      marginTop: spacing.md,
     },
-    compareBadgeUp: {
-      backgroundColor: colors.background,
-    },
-    compareBadgeGood: {
-      backgroundColor: colors.success + '1A',
-    },
-    compareDelta: {
-      color: colors.textPrimary,
-      fontFamily: fonts.numBold,
-      fontSize: 14,
-      fontVariant: ['tabular-nums'],
-    },
-    compareDeltaGood: {
-      color: colors.success,
-    },
-    compareLabel: {
+    vsText: {
       color: colors.textMuted,
       fontFamily: fonts.medium,
       fontSize: 12,
     },
+
+    // Percentage-change pill (filled circle + arrow + percent).
+    deltaBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-end',
+      borderRadius: 14,
+      paddingLeft: 3,
+      paddingRight: spacing.sm,
+      paddingVertical: 3,
+      gap: spacing.xs + 1,
+      marginBottom: 6,
+    },
+    deltaBadgeFlat: {
+      paddingLeft: spacing.sm,
+    },
+    deltaCircle: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    deltaArrow: {
+      fontFamily: fonts.numBold,
+      fontSize: 11,
+      lineHeight: 13,
+    },
+    deltaPct: {
+      fontFamily: fonts.numBold,
+      fontSize: 13,
+      fontVariant: ['tabular-nums'],
+    },
+
     sectionChevron: {
       color: colors.accent,
       fontSize: 16,
       marginRight: spacing.xs + 2,
+      lineHeight: PILL_HEIGHT,
     },
     summaryTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 15,
+      lineHeight: PILL_HEIGHT,
     },
     budgetCard: {
       backgroundColor: colors.card,
@@ -462,8 +501,6 @@ const createStyles = (colors) =>
       padding: spacing.md,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
       ...CARD_SHADOW,
     },
     budgetHeader: {
@@ -478,12 +515,6 @@ const createStyles = (colors) =>
       flexShrink: 1,
       marginRight: spacing.sm,
     },
-    budgetActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexShrink: 0,
-      gap: spacing.sm,
-    },
     sectionTitle: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
@@ -491,14 +522,16 @@ const createStyles = (colors) =>
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
-    // Mirrors the CurrencyDropdown trigger so the two budget-header pills read as a matched pair.
+    // Mirrors the CurrencyDropdown trigger so the budget-header pill matches the hero picker.
     editPill: {
       backgroundColor: colors.background,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
-      borderRadius: 12,
+      borderRadius: 10,
       paddingHorizontal: spacing.sm + 2,
-      paddingVertical: spacing.xs + 1,
+      height: PILL_HEIGHT,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     editPillPressed: {
       backgroundColor: colors.cardPressed,
@@ -603,8 +636,6 @@ const createStyles = (colors) =>
       padding: spacing.sm + 4,
       marginHorizontal: spacing.md,
       marginBottom: spacing.sm,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
     },
     activityRowPressed: {
       backgroundColor: colors.cardPressed,

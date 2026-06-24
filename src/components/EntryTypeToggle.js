@@ -5,11 +5,11 @@ import { useT } from '../i18n';
 
 // Segmented pill that switches the add popup between expense and income entry.
 // Sits centered in the add card header (only in add mode, not edit). The active
-// segment is tinted by its brand color — accent for expense, success for income
-// — so the control reads correctly no matter which form is showing.
+// segment is tinted with the theme `accent` color in both modes so the income
+// form mimics the look of the primary expense form.
 const SEGMENTS = [
   { key: 'expense', labelKey: 'add.typeExpense', colorKey: 'accent' },
-  { key: 'income', labelKey: 'add.typeIncome', colorKey: 'success' },
+  { key: 'income', labelKey: 'add.typeIncome', colorKey: 'accent' },
 ];
 
 export default function EntryTypeToggle({ mode, onChange }) {
@@ -52,8 +52,6 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: 999,
       padding: 3,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
     },
     segment: {
       paddingHorizontal: spacing.md,

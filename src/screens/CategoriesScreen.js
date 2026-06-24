@@ -3,15 +3,15 @@ import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switc
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
-import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
+import { formatMoneyShort, monthKeyLabel } from '../format';
 import { getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
 import EmptyState from '../components/EmptyState';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 
 
-const DONUT_SIZE = 160;
-const DONUT_STROKE = 16;
+const DONUT_SIZE = 132;
+const DONUT_STROKE = 14;
 const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2;
 const DONUT_CX = DONUT_SIZE / 2;
 const DONUT_CY = DONUT_SIZE / 2;
@@ -172,6 +172,7 @@ export default function CategoriesScreen({
           allCategories={allCategories}
           colors={colors}
           styles={styles}
+          t={t}
         />
       </View>
 
@@ -651,53 +652,79 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
   );
 }
 
-function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colors, styles }) {
+// Donut + legend breakdown of one month's spending by category (moved here from
+// the dashboard). Segments and legend share one denominator (`total`), so the
+// arcs sum to 100% and the legend percentages match the slices.
+function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colors, styles, t }) {
   const segments = useMemo(() => {
     if (total <= 0) return [];
     return (allCategories ?? [])
-      .map((cat) => ({ color: cat.color, value: byCategory[cat.id] ?? 0 }))
-      .filter((s) => s.value > 0);
+      .map((cat) => ({ category: cat, value: byCategory[cat.id] ?? 0 }))
+      .filter((s) => s.value > 0)
+      .sort((a, b) => b.value - a.value);
   }, [byCategory, total, allCategories]);
 
   return (
-    <View style={styles.donut}>
-      <Svg width="100%" height="100%" viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}>
-        <Circle
-          cx={DONUT_CX}
-          cy={DONUT_CY}
-          r={DONUT_R}
-          stroke={colors.cardPressed}
-          strokeWidth={DONUT_STROKE}
-          fill="none"
-        />
-        {segments.map((seg, i) => {
-          const len = (seg.value / total) * DONUT_CIRC;
-          const offset =
-            DONUT_CIRC * 0.25 -
-            segments.slice(0, i).reduce((s, p) => s + (p.value / total) * DONUT_CIRC, 0);
+    <View style={styles.donutBody}>
+      <View style={styles.donut}>
+        <Svg width="100%" height="100%" viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}>
+          <Circle
+            cx={DONUT_CX}
+            cy={DONUT_CY}
+            r={DONUT_R}
+            stroke={colors.cardPressed}
+            strokeWidth={DONUT_STROKE}
+            fill="none"
+          />
+          {segments.map((seg, i) => {
+            const len = (seg.value / total) * DONUT_CIRC;
+            const offset =
+              DONUT_CIRC * 0.25 -
+              segments.slice(0, i).reduce((s, p) => s + (p.value / total) * DONUT_CIRC, 0);
+            return (
+              <Circle
+                key={seg.category.id}
+                cx={DONUT_CX}
+                cy={DONUT_CY}
+                r={DONUT_R}
+                stroke={seg.category.color}
+                strokeWidth={DONUT_STROKE}
+                fill="none"
+                strokeDasharray={`${len} ${DONUT_CIRC - len}`}
+                strokeDashoffset={offset}
+              />
+            );
+          })}
+        </Svg>
+        <View style={[StyleSheet.absoluteFill, styles.donutCenter]}>
+          <Text
+            style={[styles.donutTotal, { color: colors.textPrimary }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {formatMoneyShort(total, displayCurrency)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.legend}>
+        {segments.slice(0, 4).map((seg) => {
+          const pct = (seg.value / total) * 100;
           return (
-            <Circle
-              key={i}
-              cx={DONUT_CX}
-              cy={DONUT_CY}
-              r={DONUT_R}
-              stroke={seg.color}
-              strokeWidth={DONUT_STROKE}
-              fill="none"
-              strokeDasharray={`${len} ${DONUT_CIRC - len}`}
-              strokeDashoffset={offset}
-            />
+            <View
+              key={seg.category.id}
+              style={[styles.legendRow, { backgroundColor: `${seg.category.color}12` }]}
+            >
+              <View style={[styles.legendDot, { backgroundColor: seg.category.color }]} />
+              <Text style={styles.legendName} numberOfLines={1}>
+                {getCategoryLabel(seg.category, t)}
+              </Text>
+              <Text style={styles.legendPct}>
+                {pct >= 10 ? Math.round(pct) : pct.toFixed(1)}%
+              </Text>
+            </View>
           );
         })}
-      </Svg>
-      <View style={[StyleSheet.absoluteFill, styles.donutCenter]}>
-        <Text
-          style={[styles.donutTotal, { color: colors.textPrimary }]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-        >
-          {formatMoney(total, displayCurrency)}
-        </Text>
       </View>
     </View>
   );
@@ -747,8 +774,6 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       padding: spacing.md,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.06,
@@ -770,15 +795,49 @@ const createStyles = (colors) =>
       minWidth: 100,
       textAlign: 'center',
     },
-    donut: { width: DONUT_SIZE, height: DONUT_SIZE, alignSelf: 'center' },
+    donutBody: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    donut: { width: DONUT_SIZE, height: DONUT_SIZE },
     donutCenter: {
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: DONUT_STROKE + 8,
+      paddingHorizontal: DONUT_STROKE + 4,
     },
     donutTotal: {
       fontFamily: fonts.numBold,
-      fontSize: 14,
+      fontSize: 16,
+      fontVariant: ['tabular-nums'],
+    },
+    legend: {
+      flex: 1,
+      marginLeft: spacing.md,
+      gap: spacing.sm,
+    },
+    legendRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+      gap: spacing.sm,
+    },
+    legendDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    legendName: {
+      flex: 1,
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 13,
+    },
+    legendPct: {
+      color: colors.textPrimary,
+      fontFamily: fonts.numBold,
+      fontSize: 13,
       fontVariant: ['tabular-nums'],
     },
 
@@ -791,8 +850,6 @@ const createStyles = (colors) =>
       backgroundColor: colors.cardPressed,
       borderRadius: radius.sm,
       width: '48.5%',
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
     },
     catRowPressed: {
       opacity: 0.9,

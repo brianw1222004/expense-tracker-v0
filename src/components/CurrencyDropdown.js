@@ -100,16 +100,19 @@ export default function CurrencyDropdown({ value, onChange, accessibilityLabel }
 
 const createStyles = (colors) =>
   StyleSheet.create({
+    // Height kept in sync with editPill (PILL_HEIGHT = 24) in DashboardScreen so
+    // the two budget-header pills read as a matched pair.
     trigger: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
       gap: 4,
       backgroundColor: colors.background,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
-      borderRadius: 12,
+      borderRadius: 10,
       paddingHorizontal: spacing.sm + 2,
-      paddingVertical: spacing.xs + 1,
+      height: 24,
     },
     triggerPressed: {
       backgroundColor: colors.cardPressed,
@@ -131,8 +134,6 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.18,

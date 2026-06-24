@@ -37,7 +37,7 @@
     "props": {},
     "inner": {
       "component": "ThemeProvider",
-      "props": {"themeName": "vivid"},
+      "props": {"themeName": "neutral"},
       "inner": {
         "component": "I18nProvider",
         "props": {"language": "en"}

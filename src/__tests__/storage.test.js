@@ -51,8 +51,8 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.customCategories).toHaveLength(0);
   });
 
-  test('theme defaults to vivid', () => {
-    expect(DEFAULT_SETTINGS.theme).toBe('vivid');
+  test('theme defaults to neutral', () => {
+    expect(DEFAULT_SETTINGS.theme).toBe('neutral');
   });
 
   test('language defaults to en', () => {
@@ -156,7 +156,7 @@ describe('loadSettings() — onboardingDone backfill', () => {
   test('a cached object that LACKS onboardingDone is treated as already-onboarded (true)', async () => {
     // Simulate an older cache written before the onboardingDone field existed.
     // We write directly to AsyncStorage so the key is absent in the stored JSON.
-    const legacySettings = { displayCurrency: 'USD', monthlyBudget: 0, theme: 'vivid', language: 'en' };
+    const legacySettings = { displayCurrency: 'USD', monthlyBudget: 0, theme: 'neutral', language: 'en' };
     // Note: legacySettings deliberately has no onboardingDone field.
     await AsyncStorage.setItem('@expense-tracker/settings', JSON.stringify(legacySettings));
 
@@ -299,14 +299,14 @@ describe('per-user key scoping', () => {
   });
 
   test('LOCAL_USER settings do not bleed into a real userId', async () => {
-    await saveSettings(LOCAL_USER, { ...DEFAULT_SETTINGS, theme: 'mono', onboardingDone: true });
-    await saveSettings('user-xyz', { ...DEFAULT_SETTINGS, theme: 'plum', onboardingDone: true });
+    await saveSettings(LOCAL_USER, { ...DEFAULT_SETTINGS, theme: 'slate', onboardingDone: true });
+    await saveSettings('user-xyz', { ...DEFAULT_SETTINGS, theme: 'sand', onboardingDone: true });
 
     const localSettings = await loadSettings(LOCAL_USER);
     const userSettings = await loadSettings('user-xyz');
 
-    expect(localSettings.theme).toBe('mono');
-    expect(userSettings.theme).toBe('plum');
+    expect(localSettings.theme).toBe('slate');
+    expect(userSettings.theme).toBe('sand');
   });
 
   test('LOCAL_USER income key is un-suffixed (@expense-tracker/income)', async () => {

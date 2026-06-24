@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS = {
   monthlyBudget: 0,
   categoryBudgets: {},
   customCategories: [],
-  theme: 'vivid',
+  theme: 'neutral',
   language: 'en',
   firstName: '',
   lastName: '',

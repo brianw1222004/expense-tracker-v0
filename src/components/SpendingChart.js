@@ -1,9 +1,7 @@
-import { useMemo, useState, useRef, useCallback } from 'react';
-import { Animated, LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
-
-if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
+import { useMemo, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Circle, G, Line, Text as SvgText } from 'react-native-svg';
-import { fonts, spacing, radius, useTheme } from '../theme';
+import { fonts, spacing, useTheme } from '../theme';
 import { formatMoneyShort } from '../format';
 
 const CHART_HEIGHT = 150;
@@ -26,44 +24,80 @@ function gridSteps(maxVal) {
   return lines;
 }
 
-export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
+// A bare daily-spending line chart, rendered inside the dashboard hero card.
+// `dailyTotals` holds one entry per day of the current month; only days up to
+// today are plotted, but the x-axis spans the whole month.
+export default function SpendingChart({ dailyTotals, displayCurrency }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(null);
-  const [open, setOpen] = useState(true);
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-
-  const toggleOpen = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpen((prev) => {
-      const next = !prev;
-      Animated.timing(rotateAnim, { toValue: next ? 0 : 1, duration: 250, useNativeDriver: true }).start();
-      return next;
-    });
-  }, [rotateAnim]);
-
-  const chevronRotate = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-90deg'] });
 
   const onLayout = (e) => {
     setChartWidth(e.nativeEvent.layout.width);
   };
 
-  const today = new Date().getDate();
-  const daysInMonth = dailyTotals.length;
-  const totalsUpToToday = dailyTotals.slice(0, today);
+  // All data-derived geometry. Recomputed only when the data or width changes —
+  // not on every pointer move (the tooltip reads `activeIndex` separately) or
+  // parent re-render (currency change, budget toggle, tab slide).
+  const geom = useMemo(() => {
+    const daysInMonth = dailyTotals.length;
+    // getDate() is the day-of-month (1..31); clamp so it can never index past
+    // the array near a month boundary.
+    const today = Math.min(new Date().getDate(), daysInMonth);
+    const totalsUpToToday = dailyTotals.slice(0, today);
+    const maxVal = Math.max(...totalsUpToToday, 1);
 
-  const maxVal = Math.max(...totalsUpToToday, 1);
+    const drawWidth = chartWidth - PADDING_LEFT - PADDING_RIGHT;
+    const drawHeight = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
+    const baselineY = PADDING_TOP + drawHeight;
 
-  const drawWidth = chartWidth - PADDING_LEFT - PADDING_RIGHT;
-  const drawHeight = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
+    const getX = (dayIndex) =>
+      daysInMonth <= 1 ? PADDING_LEFT + drawWidth / 2 : PADDING_LEFT + (dayIndex / (daysInMonth - 1)) * drawWidth;
+    const getY = (value) => PADDING_TOP + drawHeight - (value / maxVal) * drawHeight;
 
-  const getX = (dayIndex) =>
-    daysInMonth <= 1 ? PADDING_LEFT + drawWidth / 2 : PADDING_LEFT + (dayIndex / (daysInMonth - 1)) * drawWidth;
-  const getY = (value) =>
-    PADDING_TOP + drawHeight - (value / maxVal) * drawHeight;
+    const points = totalsUpToToday.map((val, i) => ({ x: getX(i), y: getY(val) }));
 
-  const points = totalsUpToToday.map((val, i) => ({ x: getX(i), y: getY(val) }));
+    let linePath = '';
+    if (points.length > 1) {
+      linePath = `M${points[0].x},${points[0].y}`;
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        const cpx1 = prev.x + (curr.x - prev.x) * 0.4;
+        const cpx2 = curr.x - (curr.x - prev.x) * 0.4;
+        linePath += ` C${cpx1},${prev.y} ${cpx2},${curr.y} ${curr.x},${curr.y}`;
+      }
+    } else if (points.length === 1) {
+      linePath = `M${points[0].x},${points[0].y} L${points[0].x},${points[0].y}`;
+    }
+
+    const areaPath = linePath
+      ? `${linePath} L${points[points.length - 1].x},${baselineY} L${points[0].x},${baselineY} Z`
+      : '';
+
+    const xLabels = X_TICKS.filter((d) => d <= daysInMonth).map((d) => ({ day: d, x: getX(d - 1) }));
+
+    const peakIndex = totalsUpToToday.reduce(
+      (best, val, i) => (val > totalsUpToToday[best] ? i : best),
+      0
+    );
+    const peakPoint = points.length > 0 ? points[peakIndex] : null;
+    const peakVal = totalsUpToToday[peakIndex] ?? 0;
+    const lastPoint = points.length > 0 ? points[points.length - 1] : null;
+
+    const gridLines = gridSteps(maxVal).map((v) => ({ value: v, y: getY(v) }));
+
+    return {
+      daysInMonth, totalsUpToToday, drawWidth, baselineY,
+      points, linePath, areaPath, xLabels, peakIndex, peakPoint, peakVal, lastPoint, gridLines,
+    };
+  }, [dailyTotals, chartWidth]);
+
+  const {
+    daysInMonth, totalsUpToToday, drawWidth, baselineY,
+    points, linePath, areaPath, xLabels, peakIndex, peakPoint, peakVal, lastPoint, gridLines,
+  } = geom;
 
   const handleInteraction = (e) => {
     const localX = e.nativeEvent.locationX ?? e.nativeEvent.offsetX;
@@ -72,59 +106,18 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
       return;
     }
     const ratio = (localX - PADDING_LEFT) / drawWidth;
-    const idx = Math.round(ratio * (daysInMonth - 1));
-    if (idx >= 0 && idx < totalsUpToToday.length) {
-      setActiveIndex(idx);
-    } else {
-      setActiveIndex(null);
-    }
+    // Snap to the nearest plotted day, capped at today — so the whole chart
+    // width is interactive instead of going dead past the last point.
+    const idx = Math.max(0, Math.min(Math.round(ratio * (daysInMonth - 1)), totalsUpToToday.length - 1));
+    setActiveIndex((cur) => (cur === idx ? cur : idx));
   };
 
-  const clearActive = () => setActiveIndex(null);
+  const clearActive = () => setActiveIndex((cur) => (cur === null ? cur : null));
 
-  let linePath = '';
-  if (points.length > 1) {
-    linePath = `M${points[0].x},${points[0].y}`;
-    for (let i = 1; i < points.length; i++) {
-      const prev = points[i - 1];
-      const curr = points[i];
-      const cpx1 = prev.x + (curr.x - prev.x) * 0.4;
-      const cpx2 = curr.x - (curr.x - prev.x) * 0.4;
-      linePath += ` C${cpx1},${prev.y} ${cpx2},${curr.y} ${curr.x},${curr.y}`;
-    }
-  } else if (points.length === 1) {
-    linePath = `M${points[0].x},${points[0].y} L${points[0].x},${points[0].y}`;
-  }
-
-  const areaPath = linePath
-    ? `${linePath} L${points[points.length - 1].x},${PADDING_TOP + drawHeight} L${points[0].x},${PADDING_TOP + drawHeight} Z`
-    : '';
-
-  const xLabels = X_TICKS.filter((d) => d <= daysInMonth).map((d) => ({
-    day: d,
-    x: getX(d - 1),
-  }));
-
-  const lastPoint = points.length > 0 ? points[points.length - 1] : null;
-  const peakIndex = totalsUpToToday.reduce(
-    (best, val, i) => (val > totalsUpToToday[best] ? i : best),
-    0
-  );
-  const peakPoint = points.length > 0 ? points[peakIndex] : null;
-  const peakVal = totalsUpToToday[peakIndex] ?? 0;
-
-  const yGridLines = gridSteps(maxVal);
-
-  const activePoint = activeIndex != null ? points[activeIndex] : null;
+  const activePoint = activeIndex != null && activeIndex < points.length ? points[activeIndex] : null;
 
   return (
-    <View style={styles.card}>
-      <Pressable style={styles.titleRow} onPress={toggleOpen}>
-        <Animated.Text style={[styles.chevron, { transform: [{ rotate: chevronRotate }] }]}>▾</Animated.Text>
-        <Text style={styles.title}>{title}</Text>
-      </Pressable>
-      {open && (
-      <View>
+    <View style={styles.container}>
       <View
         style={styles.chartWrap}
         onLayout={onLayout}
@@ -138,35 +131,35 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
       >
         {chartWidth > 0 && (
           <Svg width={chartWidth} height={CHART_HEIGHT}>
-            {yGridLines.map((v) => (
-              <G key={v}>
+            {gridLines.map((g) => (
+              <G key={g.value}>
                 <Line
                   x1={PADDING_LEFT}
-                  y1={getY(v)}
+                  y1={g.y}
                   x2={PADDING_LEFT + drawWidth}
-                  y2={getY(v)}
+                  y2={g.y}
                   stroke={colors.border}
                   strokeWidth={StyleSheet.hairlineWidth}
                   strokeDasharray="4,4"
                 />
                 <SvgText
                   x={PADDING_LEFT - 6}
-                  y={getY(v) + 3}
+                  y={g.y + 3}
                   textAnchor="end"
                   fontSize={9}
                   fontFamily={fonts.numRegular}
                   fill={colors.textMuted}
                 >
-                  {formatMoneyShort(v, displayCurrency)}
+                  {formatMoneyShort(g.value, displayCurrency)}
                 </SvgText>
               </G>
             ))}
 
             <Line
               x1={PADDING_LEFT}
-              y1={PADDING_TOP + drawHeight}
+              y1={baselineY}
               x2={PADDING_LEFT + drawWidth}
-              y2={PADDING_TOP + drawHeight}
+              y2={baselineY}
               stroke={colors.border}
               strokeWidth={StyleSheet.hairlineWidth * 2}
             />
@@ -190,7 +183,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
                 x1={activePoint.x}
                 y1={PADDING_TOP}
                 x2={activePoint.x}
-                y2={PADDING_TOP + drawHeight}
+                y2={baselineY}
                 stroke={colors.accent}
                 strokeWidth={1}
                 strokeDasharray="4,3"
@@ -243,7 +236,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
               <SvgText
                 key={l.day}
                 x={l.x}
-                y={PADDING_TOP + drawHeight + 18}
+                y={baselineY + 18}
                 textAnchor="middle"
                 fontSize={12}
                 fontFamily={fonts.numRegular}
@@ -275,43 +268,15 @@ export default function SpendingChart({ dailyTotals, displayCurrency, title }) {
           </View>
         )}
       </View>
-      </View>
-      )}
     </View>
   );
 }
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    card: {
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      marginHorizontal: spacing.md,
+    // Spacing above the plotted chart when embedded inside the hero card.
+    container: {
       marginTop: spacing.md,
-      padding: spacing.md,
-      paddingBottom: spacing.sm,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 8,
-      elevation: 1,
-    },
-    titleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    chevron: {
-      color: colors.accent,
-      fontSize: 16,
-      marginRight: spacing.xs + 2,
-      marginTop: -1,
-    },
-    title: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 15,
     },
     chartWrap: {
       position: 'relative',

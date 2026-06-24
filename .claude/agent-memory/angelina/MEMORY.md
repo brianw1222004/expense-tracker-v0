@@ -1,5 +1,6 @@
 - [Audit: expense-tracker codebase 2026-06-16](audit-expense-tracker-2026-06-16.md) — Full codebase audit findings, severity map, and architecture assessment (partly stale: mono palette + dead font deps since resolved)
 - [Audit: perf+UX batch 2026-06-17](audit-perf-ux-batch-2026-06-17.md) — Post-fix review of b509bd6 batch: LayoutAnimation, categories refactor, ErrorBoundary, i18n, a11y
+- [Audit: home-screen rewrite 2026-06-24](audit-home-screen-2026-06-24.md) — Most current. 297 tests pass; dashboard/SpendingChart embedded rewrite; what's resolved vs open; supersedes stale font/categoryOrder notes
 - [User: Brian](user-brian.md) — project owner; uses lowercase agent persona names; wants file:line + severity tags + strengths
 - [Prior code review (authoritative)](project-prior-code-review.md) — CODE_REVIEW.md 2026-06-23, 242 tests pass; cross-check before re-reporting bugs
 - [Architecture notes](project-architecture-notes.md) — non-obvious structural facts (derive.js location, layering, income asymmetry, firstName device-local)

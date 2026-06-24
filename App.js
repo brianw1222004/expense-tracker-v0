@@ -735,8 +735,8 @@ function ExpenseTracker() {
               styles.accountFab,
               {
                 backgroundColor: theme.card,
-                borderColor: theme.widgetBorderColor,
-                borderWidth: theme.widgetBorderWidth,
+                borderColor: theme.border,
+                borderWidth: StyleSheet.hairlineWidth,
               },
               pressed && styles.accountFabPressed,
             ]}

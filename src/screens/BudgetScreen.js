@@ -257,8 +257,6 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.3,

@@ -57,8 +57,6 @@ const createStyles = (colors) =>
       backgroundColor: colors.background,
       borderTopLeftRadius: radius.lg,
       borderTopRightRadius: radius.lg,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: -2 },
       shadowOpacity: 0.3,

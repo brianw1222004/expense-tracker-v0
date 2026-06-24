@@ -10,13 +10,13 @@ const strings: Record<string, string> = {
 const t = (key: string) => strings[key] ?? key;
 
 export function Default() {
-  return <EmptyState colors={THEMES.vivid} t={t} onAdd={() => {}} onLoadDemo={() => {}} />;
+  return <EmptyState colors={THEMES.neutral} t={t} onAdd={() => {}} onLoadDemo={() => {}} />;
 }
 
 export function SlateTheme() {
   return <EmptyState colors={THEMES.slate} t={t} onAdd={() => {}} onLoadDemo={() => {}} />;
 }
 
-export function MonoTheme() {
-  return <EmptyState colors={THEMES.mono} t={t} onAdd={() => {}} onLoadDemo={() => {}} />;
+export function SandTheme() {
+  return <EmptyState colors={THEMES.sand} t={t} onAdd={() => {}} onLoadDemo={() => {}} />;
 }

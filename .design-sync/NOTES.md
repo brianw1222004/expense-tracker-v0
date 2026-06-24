@@ -13,7 +13,7 @@
 
 - Components need `SafeAreaProvider` → `ThemeProvider` → `I18nProvider` wrapping
 - `SafeAreaProvider` was added because `TabBar` uses `useSafeAreaInsets()` which throws without it
-- `ThemeProvider` wraps with `{themeName: "vivid"}` (default theme)
+- `ThemeProvider` wraps with `{themeName: "neutral"}` (default theme)
 - `I18nProvider` wraps with `{language: "en"}`
 
 ## Known Render Warns

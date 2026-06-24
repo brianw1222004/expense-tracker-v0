@@ -47,12 +47,13 @@ function offsetForDay(year, month, day) {
 }
 
 // Shared add/edit form for both expenses and income. Rendered inside
-// AddExpenseModal (the shared popup presenter). The two modes are IDENTICAL in
-// layout, styling and behavior; the ONLY differences are the selector area
-// (a paginated category grid for `expense` vs. a fixed source picker for
-// `income`), the expense-only ÷ split tool, and the accent color of the save
-// button (blue for expense, green for income). The card's border + background
-// tint animate to the selected category/source color in both modes.
+// AddExpenseModal (the shared popup presenter). Add Expense is the primary
+// design and Add Income mimics its format: the two modes are IDENTICAL in
+// layout, styling and behavior (including the `accent`-colored save button);
+// the ONLY differences are the selector area (a paginated category grid for
+// `expense` vs. a fixed source picker for `income`) and the expense-only ÷
+// split tool. The card's border + background tint animate to the selected
+// category/source color in both modes.
 export default function AddEntryScreen({
   mode,
   displayCurrency,
@@ -70,7 +71,9 @@ export default function AddEntryScreen({
 
   const isExpense = mode === 'expense';
   const isEdit = editEntry != null;
-  const accent = isExpense ? colors.accent : colors.success;
+  // Income mimics the primary expense form, so the save button uses the same
+  // theme accent in both modes.
+  const accent = colors.accent;
 
   // The selected category (expense) or source (income).
   const selectorItems = isExpense ? (categories ?? []) : INCOME_SOURCES;

@@ -2,7 +2,7 @@
 
 ## Wrapping and Setup
 
-Every screen must be wrapped in `<SafeAreaProvider>` → `<ThemeProvider themeName="vivid">` → `<I18nProvider language="en">`. Without ThemeProvider, every component's `useTheme()` call returns the vivid palette by default but won't respond to theme switches. Without I18nProvider, `useT()` falls back to English.
+Every screen must be wrapped in `<SafeAreaProvider>` → `<ThemeProvider themeName="neutral">` → `<I18nProvider language="en">`. Without ThemeProvider, every component's `useTheme()` call returns the neutral palette by default but won't respond to theme switches. Without I18nProvider, `useT()` falls back to English.
 
 ## Styling Idiom: React Native StyleSheet (No CSS Classes)
 
@@ -14,9 +14,9 @@ This is a React Native app rendered via react-native-web. **There are no CSS cla
 
 When building new screens, use `View`, `Text`, `Pressable` from react-native with `StyleSheet.create()`. Apply colors from `useTheme()` and spacing/radius from static imports.
 
-## 6 Theme Palettes
+## 3 Theme Palettes
 
-`vivid` (default, sky blue), `slate` (cool gray), `sand` (warm earth), `neutral` (B&W), `plum` (purple), `mono` (off-white with sharp 0.85px borders via `widgetBorderWidth`/`widgetBorderColor`).
+`slate` (cool gray), `sand` (warm earth), `neutral` (default, grayscale).
 
 ## Where the Truth Lives
 
@@ -36,8 +36,6 @@ function InfoCard({ title, value }) {
   return (
     <View style={[styles.card, {
       backgroundColor: colors.card,
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
     }]}>
       <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
       <Text style={[styles.value, { color: colors.accent }]}>{value}</Text>

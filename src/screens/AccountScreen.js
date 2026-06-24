@@ -245,8 +245,6 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
-      borderWidth: colors.widgetBorderWidth,
-      borderColor: colors.widgetBorderColor,
     },
     row: {
       flexDirection: 'row',
