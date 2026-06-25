@@ -95,3 +95,106 @@ describe('deriveViewData()', () => {
     expect(v.months.map((m) => m.key)).toEqual(['2026-06', '2026-05', '2026-04']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// extraSpending (6th arg) — split-bill shares that count as spending but must
+// NOT appear in the Expenses list sections.
+// ---------------------------------------------------------------------------
+
+describe('deriveViewData() extraSpending arg', () => {
+  // A synthetic split-share item (what yourShareAsExpenses() produces).
+  const splitItem = (id, amount, currency, category, createdAt) => ({
+    id: 'split:' + id,
+    amount,
+    currency,
+    category,
+    note: '',
+    createdAt,
+    splitId: id,
+    groupId: 'g1',
+  });
+
+  it('extraSpending folds into monthTotal', () => {
+    const extra = [splitItem('b1', 40, 'USD', 'food', ts(2026, 5, 10))];
+    const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
+    expect(v.monthTotal).toBeCloseTo(40, 5);
+  });
+
+  it('extraSpending folds into totalsByCategory', () => {
+    const extra = [splitItem('b1', 25, 'USD', 'transport', ts(2026, 5, 10))];
+    const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
+    expect(v.totalsByCategory.transport).toBeCloseTo(25, 5);
+  });
+
+  it('extraSpending folds into dailyTotals', () => {
+    const extra = [splitItem('b1', 55, 'USD', 'food', ts(2026, 5, 8))];
+    const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
+    expect(v.dailyTotals[7]).toBeCloseTo(55, 5); // day 8 -> index 7
+  });
+
+  it('extraSpending does NOT appear in sections', () => {
+    const extra = [splitItem('b1', 40, 'USD', 'food', ts(2026, 5, 10))];
+    const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
+    // sections should be empty (no direct expenses)
+    expect(v.sections).toHaveLength(0);
+  });
+
+  it('direct expenses still appear in sections alongside extraSpending', () => {
+    const expenses = [make('e1', 30, 'USD', 'food', ts(2026, 5, 10))];
+    const extra = [splitItem('b1', 40, 'USD', 'food', ts(2026, 5, 10))];
+    const v = deriveViewData(expenses, 'USD', 'en', [], NOW, extra);
+    // sections has the direct expense
+    expect(v.sections).toHaveLength(1);
+    expect(v.sections[0].data[0].id).toBe('e1');
+    // But monthTotal includes both
+    expect(v.monthTotal).toBeCloseTo(70, 5);
+  });
+
+  it('monthCount counts only direct expenses, not extraSpending', () => {
+    const expenses = [make('e1', 30, 'USD', 'food', ts(2026, 5, 10))];
+    const extra = [
+      splitItem('b1', 40, 'USD', 'food', ts(2026, 5, 10)),
+      splitItem('b2', 20, 'USD', 'food', ts(2026, 5, 11)),
+    ];
+    const v = deriveViewData(expenses, 'USD', 'en', [], NOW, extra);
+    expect(v.monthCount).toBe(1); // only the direct expense counts
+  });
+
+  it('extraSpending outside current month does not affect monthTotal', () => {
+    // Item is in May (previous month)
+    const extra = [splitItem('b1', 50, 'USD', 'food', ts(2026, 4, 10))];
+    const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
+    expect(v.monthTotal).toBe(0);
+  });
+
+  it('extraSpending outside current month still folds into months array', () => {
+    // May split item should create a "2026-05" month entry
+    const extra = [splitItem('b1', 50, 'USD', 'food', ts(2026, 4, 10))];
+    const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
+    const mayMonth = v.months.find((m) => m.key === '2026-05');
+    expect(mayMonth).toBeDefined();
+    expect(mayMonth.total).toBeCloseTo(50, 5);
+  });
+
+  it('extraSpending converts currency to displayCurrency', () => {
+    const extra = [splitItem('b1', 100, 'EUR', 'food', ts(2026, 5, 10))];
+    const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
+    const expected = convert(100, 'EUR', 'USD');
+    expect(v.monthTotal).toBeCloseTo(expected, 5);
+  });
+
+  it('empty extraSpending (default) gives identical result to no 6th arg', () => {
+    const expenses = [make('e1', 30, 'USD', 'food', ts(2026, 5, 10))];
+    const v1 = deriveViewData(expenses, 'USD', 'en', [], NOW);
+    const v2 = deriveViewData(expenses, 'USD', 'en', [], NOW, []);
+    expect(v1.monthTotal).toBeCloseTo(v2.monthTotal, 10);
+    expect(v1.monthCount).toBe(v2.monthCount);
+    expect(v1.sections).toHaveLength(v2.sections.length);
+  });
+
+  it('todayTotal includes extraSpending for today', () => {
+    const extra = [splitItem('b1', 35, 'USD', 'food', ts(2026, 5, 15))]; // today = June 15
+    const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
+    expect(v.todayTotal).toBeCloseTo(35, 5);
+  });
+});

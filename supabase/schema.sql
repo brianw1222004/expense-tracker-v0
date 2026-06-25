@@ -40,6 +40,47 @@ create table public.income (
 -- (user_id, date) lookup pattern from the spec since created_at IS the entry date.
 create index income_user_created_idx on public.income (user_id, created_at desc);
 
+-- Split-bills groups — each user's groups are independent (personal ledger, not
+-- shared-access). Members are stored as a jsonb array of {id, name} objects
+-- because they're typed names, not Supabase users.
+create table public.groups (
+  id text not null,
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name text not null,
+  currency text not null,
+  payment_method text not null default 'cash',
+  members jsonb not null default '[]'::jsonb,
+  created_at bigint not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
+create index groups_user_created_idx on public.groups (user_id, created_at desc);
+
+-- Split expenses (bills + settlement records). Both live in the same table;
+-- settlements are distinguished by `settlement = true` and use from_member/to_member
+-- instead of paid_by/mode/shares. shares is a jsonb object {memberId: amount}.
+create table public.split_expenses (
+  id text not null,
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  group_id text not null,
+  description text not null default '',
+  amount numeric not null,
+  currency text not null,
+  category text not null default 'other',
+  paid_by text not null default '',
+  mode text not null default 'equal',
+  shares jsonb not null default '{}'::jsonb,
+  settlement boolean not null default false,
+  from_member text not null default '',
+  to_member text not null default '',
+  created_at bigint not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
+create index split_expenses_user_created_idx on public.split_expenses (user_id, created_at desc);
+
 -- One settings row per user.
 create table public.settings (
   user_id uuid primary key default auth.uid() references auth.users (id) on delete cascade,
@@ -53,12 +94,20 @@ create table public.settings (
 -- column default (auth.uid()) fills it on insert.
 alter table public.expenses enable row level security;
 alter table public.income enable row level security;
+alter table public.groups enable row level security;
+alter table public.split_expenses enable row level security;
 alter table public.settings enable row level security;
 
 create policy "Users manage their own expenses" on public.expenses
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "Users manage their own income" on public.income
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users manage their own groups" on public.groups
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users manage their own split expenses" on public.split_expenses
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "Users manage their own settings" on public.settings
@@ -71,6 +120,12 @@ create trigger expenses_updated_at before update on public.expenses
   for each row execute procedure extensions.moddatetime (updated_at);
 
 create trigger income_updated_at before update on public.income
+  for each row execute procedure extensions.moddatetime (updated_at);
+
+create trigger groups_updated_at before update on public.groups
+  for each row execute procedure extensions.moddatetime (updated_at);
+
+create trigger split_expenses_updated_at before update on public.split_expenses
   for each row execute procedure extensions.moddatetime (updated_at);
 
 create trigger settings_updated_at before update on public.settings

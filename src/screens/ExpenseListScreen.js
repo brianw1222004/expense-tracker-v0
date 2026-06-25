@@ -81,15 +81,17 @@ export default function ExpenseListScreen({
   const activeFilter =
     filter !== 'all' && !presentCategories.some((c) => c.id === filter) ? 'all' : filter;
 
-  const filteredExpenses = useMemo(() => {
-    if (!selectedSection) return [];
-    if (activeFilter === 'all') return selectedSection.data;
-    return selectedSection.data.filter(
-      (item) => getCategory(item.category, categories).id === activeFilter
-    );
+  const { filteredExpenses, filteredTotal } = useMemo(() => {
+    const expenses = !selectedSection
+      ? []
+      : activeFilter === 'all'
+      ? selectedSection.data
+      : selectedSection.data.filter(
+          (item) => getCategory(item.category, categories).id === activeFilter
+        );
+    const total = expenses.reduce((sum, e) => sum + e.displayAmount, 0);
+    return { filteredExpenses: expenses, filteredTotal: total };
   }, [selectedSection, activeFilter, categories]);
-
-  const filteredTotal = filteredExpenses.reduce((sum, e) => sum + e.displayAmount, 0);
 
   const selectDay = (day) => {
     if (!day) return;

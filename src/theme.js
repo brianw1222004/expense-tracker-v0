@@ -23,6 +23,9 @@ export const THEMES = {
     backdrop: 'rgba(33, 42, 48, 0.5)',
     gradientStart: '#323f48',
     gradientEnd: '#4e6a7b',
+    // Hero-card corner bloom — a cool blue→teal wash that echoes this palette.
+    glowStart: '#A9CBE8',
+    glowEnd: '#9FD3C8',
     headerText: '#f6f8f9',
     headerTextSecondary: 'rgba(246, 248, 249, 0.65)',
     icon: '#638394',
@@ -49,6 +52,9 @@ export const THEMES = {
     backdrop: 'rgba(40, 33, 27, 0.5)',
     gradientStart: '#483e34',
     gradientEnd: '#79694e',
+    // Hero-card corner bloom — a warm peach→gold wash that echoes this palette.
+    glowStart: '#F3C6A4',
+    glowEnd: '#E6CF9A',
     headerText: '#f5f3ee',
     headerTextSecondary: 'rgba(245, 243, 238, 0.65)',
     icon: '#948461',
@@ -75,6 +81,10 @@ export const THEMES = {
     backdrop: 'rgba(11, 11, 11, 0.5)',
     gradientStart: '#1a1a1a',
     gradientEnd: '#535353',
+    // Hero-card corner bloom — the original pink→violet iridescence, an
+    // intentional pop of color against this grayscale palette.
+    glowStart: '#F8B6D2',
+    glowEnd: '#BCA9F5',
     headerText: '#fafafa',
     headerTextSecondary: 'rgba(250, 250, 250, 0.65)',
     icon: '#727272',
@@ -89,11 +99,12 @@ export const fonts = {
   regular: 'Lora_400Regular',
   medium: 'Lora_500Medium',
   bold: 'Lora_700Bold',
-  // Numbers/money use Tinos — a metric-compatible Times New Roman. Tinos ships
-  // only 400/700, so the (currently unused) medium slot collapses to regular.
-  numRegular: 'Tinos_400Regular',
-  numMedium: 'Tinos_400Regular',
-  numBold: 'Tinos_700Bold',
+  // Numbers/money use Inter — a neutral grotesque sans with strong tabular
+  // figures, so columns of money stay aligned (paired with the all-text styles
+  // set in fonts.medium for the medium slot).
+  numRegular: 'Inter_400Regular',
+  numMedium: 'Inter_500Medium',
+  numBold: 'Inter_700Bold',
 };
 
 export const spacing = {

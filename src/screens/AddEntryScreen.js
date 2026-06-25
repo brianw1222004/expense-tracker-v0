@@ -77,7 +77,7 @@ export default function AddEntryScreen({
 
   // The selected category (expense) or source (income).
   const selectorItems = isExpense ? (categories ?? []) : INCOME_SOURCES;
-  const firstId = selectorItems[0].id;
+  const firstId = selectorItems[0]?.id ?? null;
   const colorOf = useCallback(
     (id) => (isExpense ? getCategory(id, categories).color : getIncomeSource(id).color),
     [isExpense, categories]
@@ -103,7 +103,11 @@ export default function AddEntryScreen({
     setCatPage(Math.round(e.nativeEvent.contentOffset.x / catPageWidth));
   }, [catPageWidth]);
 
-  const [amountText, setAmountText] = useState(() => (isEdit ? String(editEntry.amount) : ''));
+  const [amountText, setAmountText] = useState(() => {
+    if (!isEdit) return '';
+    const dec = getCurrency(editEntry.currency ?? displayCurrency).decimals;
+    return dec === 0 ? String(Math.round(editEntry.amount)) : editEntry.amount.toFixed(dec);
+  });
   const [note, setNote] = useState(isEdit ? (editEntry.note || '') : '');
   const [selectedId, setSelectedId] = useState(initSelected);
   const [manualCurrency, setManualCurrency] = useState(isEdit ? editEntry.currency : null);
@@ -147,7 +151,8 @@ export default function AddEntryScreen({
 
   const applySplit = () => {
     if (splitResult != null) {
-      setAmountText(String(splitResult));
+      const formatted = currency.decimals === 0 ? String(splitResult) : splitResult.toFixed(currency.decimals);
+      setAmountText(formatted);
       setSplitOpen(false);
       setSplitBy(2);
       Animated.timing(splitAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start();
@@ -457,7 +462,7 @@ export default function AddEntryScreen({
                   <>
                     <Text style={styles.splitEquals}>=</Text>
                     <Text style={styles.splitResultText}>
-                      {currency.symbol}{splitResult}
+                      {currency.symbol}{currency.decimals === 0 ? String(splitResult) : splitResult.toFixed(currency.decimals)}
                     </Text>
                     <Pressable
                       onPress={applySplit}

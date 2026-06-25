@@ -4,6 +4,8 @@ import { DEFAULT_CURRENCY } from './currency';
 const STORAGE_KEY = '@expense-tracker/expenses';
 const INCOME_KEY = '@expense-tracker/income';
 const SETTINGS_KEY = '@expense-tracker/settings';
+const GROUPS_KEY = '@expense-tracker/groups';
+const SPLITS_KEY = '@expense-tracker/splits';
 
 // The cache is per-user so two accounts on one device never read each other's
 // data. Local-only mode (Supabase not configured) uses this sentinel and keeps
@@ -125,6 +127,56 @@ export async function loadSettings(userId) {
 export async function saveSettings(userId, settings) {
   try {
     await AsyncStorage.setItem(scopedKey(SETTINGS_KEY, userId), JSON.stringify(settings));
+  } catch {
+    // Best-effort, same as expenses.
+  }
+}
+
+// Split-bills groups and shared bills — synced to Supabase via the groups and
+// splits lanes in sync.js (queue keys ${userId}::groups / ${userId}::splits).
+// The local cache here is the fast-read layer; pulls are tolerant so a missing
+// table leaves this cache intact. Loads are tolerant: a corrupt/missing cache
+// yields an empty list and the app still boots.
+export async function loadGroups(userId) {
+  try {
+    const raw = await AsyncStorage.getItem(scopedKey(GROUPS_KEY, userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((g) => ({
+      ...g,
+      currency: g.currency || DEFAULT_CURRENCY,
+      paymentMethod: g.paymentMethod || 'cash',
+      members: Array.isArray(g.members) ? g.members : [],
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveGroups(userId, groups) {
+  try {
+    await AsyncStorage.setItem(scopedKey(GROUPS_KEY, userId), JSON.stringify(groups));
+  } catch {
+    // Best-effort, same as expenses.
+  }
+}
+
+export async function loadSplitExpenses(userId) {
+  try {
+    const raw = await AsyncStorage.getItem(scopedKey(SPLITS_KEY, userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((s) => ({ ...s, currency: s.currency || DEFAULT_CURRENCY }));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSplitExpenses(userId, splits) {
+  try {
+    await AsyncStorage.setItem(scopedKey(SPLITS_KEY, userId), JSON.stringify(splits));
   } catch {
     // Best-effort, same as expenses.
   }

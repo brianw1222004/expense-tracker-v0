@@ -5,3 +5,4 @@
 - [Perf patterns in this codebase](perf-patterns.md) — recurring anti-patterns and what's already done well
 - [Web/native parity gotchas](platform-parity.md) — react-native-web vs Expo Go divergences the team tracks
 - [App Store readiness notes](appstore-readiness.md) — blockers and config gaps for store submission
+- [Split Bills audit](split-bills-audit.md) — audit #2 findings for the Split Bills screens (stacked sheets, settle-up confirm, list perf)

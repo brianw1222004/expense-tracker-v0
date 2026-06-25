@@ -28,6 +28,26 @@ export default function AuthScreen() {
 
   const signIn = mode === 'signIn';
 
+  // Map common Supabase auth error messages to translated i18n keys.
+  // Falls back to the raw message for any unrecognized error.
+  const translateAuthError = (msg) => {
+    if (!msg) return msg;
+    const lower = msg.toLowerCase();
+    if (lower.includes('invalid login credentials') || lower.includes('invalid credentials') || lower.includes('wrong password') || lower.includes('invalid email or password')) {
+      return t('auth.errInvalidCredentials');
+    }
+    if (lower.includes('user already registered') || lower.includes('already been registered') || lower.includes('email already')) {
+      return t('auth.errUserExists');
+    }
+    if (lower.includes('email not confirmed') || lower.includes('email confirmation')) {
+      return t('auth.errEmailNotConfirmed');
+    }
+    if (lower.includes('password should be at least') || lower.includes('weak password') || lower.includes('password is too short')) {
+      return t('auth.errWeakPassword');
+    }
+    return msg;
+  };
+
   const submit = async () => {
     if (busy) return;
     const trimmedEmail = email.trim();
@@ -43,14 +63,14 @@ export default function AuthScreen() {
           email: trimmedEmail,
           password,
         });
-        if (authError) setError(authError.message);
+        if (authError) setError(translateAuthError(authError.message));
       } else {
         const { data, error: authError } = await supabase.auth.signUp({
           email: trimmedEmail,
           password,
         });
         if (authError) {
-          setError(authError.message);
+          setError(translateAuthError(authError.message));
         } else if (!data.session) {
           setMode('confirm');
         }

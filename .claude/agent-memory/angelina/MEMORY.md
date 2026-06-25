@@ -4,3 +4,6 @@
 - [User: Brian](user-brian.md) — project owner; uses lowercase agent persona names; wants file:line + severity tags + strengths
 - [Prior code review (authoritative)](project-prior-code-review.md) — CODE_REVIEW.md 2026-06-23, 242 tests pass; cross-check before re-reporting bugs
 - [Architecture notes](project-architecture-notes.md) — non-obvious structural facts (derive.js location, layering, income asymmetry, firstName device-local)
+- [Audit: sync engine 2026-06-25](audit-sync-engine-2026-06-25.md) — sync.js/supabase/storage/schema deep review; sign-out drops groups/splits queue (HIGH); rest solid
+- [Audit: components+crosscutting 2026-06-25](audit-components-crosscutting-2026-06-25.md) — theme/i18n/icons clean (218 keys x3, no fontWeight); CurrencyDropdown dead (CODE_REVIEW stale); icons.js style-forward doc drift
+- [Audit: FINAL VERDICT 2026-06-25](audit-final-verdict-2026-06-25.md) — Authoritative synthesis of 9 reports. needs-work. Blockers: signout flush data-loss, resync race, custom-split rounding. 527 tests green

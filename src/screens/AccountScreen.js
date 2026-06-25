@@ -183,14 +183,6 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
               })}
             </View>
 
-            <Text style={styles.sectionHeader}>{t('acct.comingSoon')}</Text>
-            <View style={styles.card}>
-              <View style={styles.row}>
-                <HIcon name="user-circle" size={20} color={colors.icon} />
-                <Text style={styles.comingSoonLabel}>{t('acct.exportCsv')}</Text>
-                <Text style={styles.comingSoonTag}>{t('acct.soon')}</Text>
-              </View>
-            </View>
           </ScrollView>
     </Sheet>
   );
@@ -286,22 +278,5 @@ const createStyles = (colors) =>
       height: 20,
       borderRadius: 10,
       marginRight: spacing.sm + 4,
-    },
-    comingSoonLabel: {
-      color: colors.textMuted,
-      fontSize: 15,
-      fontFamily: fonts.regular,
-      flex: 1,
-    },
-    comingSoonTag: {
-      color: colors.textMuted,
-      fontSize: 12,
-      fontFamily: fonts.bold,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-      backgroundColor: colors.background,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
     },
   });

@@ -11,8 +11,7 @@ import { HIcon } from '../icons';
 
 
 const DONUT_SIZE = 132;
-const DONUT_STROKE = 16;
-const DONUT_GAP = 4; // visible gap between segments, in arc-length px
+const DONUT_STROKE = 20;
 const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2;
 const DONUT_CX = DONUT_SIZE / 2;
 const DONUT_CY = DONUT_SIZE / 2;
@@ -248,6 +247,17 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, order,
 
   useEffect(() => { dragIndexRef.current = dragIndex; }, [dragIndex]);
 
+  // Prune stale cell layout entries when the list shrinks (e.g. switching months
+  // removes categories that had no spending). Without this, a drop can land on a
+  // phantom cell whose index no longer exists in `items`.
+  useEffect(() => {
+    Object.keys(cellLayouts.current).forEach((key) => {
+      if (Number(key) >= items.length) {
+        delete cellLayouts.current[key];
+      }
+    });
+  }, [items.length]);
+
   const endDrag = useCallback(() => {
     Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start(() => {
       setDragIndex(-1);
@@ -268,7 +278,9 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, order,
       const dropY = dragOrigin.current.y + g.dy;
       let targetIdx = di;
       let minDist = Infinity;
+      const currentLen = itemsRef.current.length;
       Object.entries(cellLayouts.current).forEach(([idx, layout]) => {
+        if (Number(idx) >= currentLen) return;
         const cx = layout.x + layout.width / 2;
         const cy = layout.y + layout.height / 2;
         const dist = Math.sqrt((dropX - cx) ** 2 + (dropY - cy) ** 2);
@@ -653,35 +665,25 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
   );
 }
 
-// Builds the rounded arc geometry for the donut. Each segment gets a *painted
-// footprint* proportional to its share of the remaining circumference after one
-// DONUT_GAP is reserved per segment, so footprints stay proportional and the
-// gaps between them are exactly DONUT_GAP. A round line cap adds DONUT_STROKE to
-// the painted length, so a segment uses round caps only when its footprint can
-// absorb that (>= DONUT_STROKE); thinner slivers fall back to butt caps and stay
-// proportional instead of ballooning into a fixed-size dot that overlaps its
-// neighbours. A lone segment renders as a full, unbroken ring.
+// Minimum gap (in SVG units along the circumference) reserved between segments
+// so a 100%-one-category month never renders a seam from a zero-width gap.
+const MIN_GAP = 0.5;
+
 function buildArcs(segments, total) {
   if (total <= 0 || segments.length === 0) return [];
-  if (segments.length === 1) {
-    const seg = segments[0];
-    return [{ key: seg.category.id, color: seg.category.color, dash: DONUT_CIRC, offset: DONUT_CIRC * 0.25, cap: 'round' }];
-  }
-  const paintBudget = Math.max(DONUT_CIRC - segments.length * DONUT_GAP, 0);
-  let cursor = 0; // arc length from the top, advancing clockwise
+  // Reserve MIN_GAP per segment so each arc is visually separated.
+  const totalGap = segments.length * MIN_GAP;
+  const available = Math.max(0, DONUT_CIRC - totalGap);
+  let cursor = 0;
   return segments.map((seg) => {
-    const span = (seg.value / total) * paintBudget; // painted footprint incl. caps
-    const round = span >= DONUT_STROKE;
-    const dash = round ? span - DONUT_STROKE : span;
-    const dashStart = round ? cursor + DONUT_STROKE / 2 : cursor;
-    const offset = DONUT_CIRC * 0.25 - dashStart;
-    cursor += span + DONUT_GAP;
+    const dash = (seg.value / total) * available;
+    const offset = DONUT_CIRC * 0.25 - cursor;
+    cursor += dash + MIN_GAP;
     return {
       key: seg.category.id,
       color: seg.category.color,
       dash: Math.max(dash, 0),
       offset,
-      cap: round ? 'round' : 'butt',
     };
   });
 }
@@ -733,7 +735,6 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
               stroke={arc.color}
               strokeWidth={DONUT_STROKE}
               fill="none"
-              strokeLinecap={arc.cap}
               strokeDasharray={`${arc.dash} ${DONUT_CIRC - arc.dash}`}
               strokeDashoffset={arc.offset}
             />

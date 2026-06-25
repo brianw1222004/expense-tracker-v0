@@ -8,16 +8,18 @@ import { HIcon } from '../icons';
 
 export const TAB_BAR_HEIGHT = 72;
 
-const TABS_LEFT = [
+// Five tabs since the add "+" moved to a floating button (App.js). `split` sits
+// between Categories and Balance — keep this order in sync with TAB_INDEX/
+// TAB_NAMES in App.js so the slide-transition direction stays correct.
+const TABS = [
   { id: 'dashboard', icon: 'home-01', labelKey: 'tabs.dashboard' },
   { id: 'list', icon: 'receipt-text', labelKey: 'tabs.list' },
-];
-const TABS_RIGHT = [
   { id: 'categories', icon: 'grid-view', labelKey: 'tabs.categories' },
+  { id: 'split', icon: 'user-group', labelKey: 'tabs.split' },
   { id: 'balance', icon: 'wallet-01', labelKey: 'tabs.balance' },
 ];
 
-export default function TabBar({ tab, onChange, onAddPress, addActive }) {
+export default function TabBar({ tab, onChange }) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const t = useT();
@@ -28,35 +30,7 @@ export default function TabBar({ tab, onChange, onAddPress, addActive }) {
       <View style={styles.capsule}>
         <BlurView intensity={50} tint="light" style={styles.blurLayer} />
 
-        {TABS_LEFT.map((item) => (
-          <TabItem
-            key={item.id}
-            styles={styles}
-            colors={colors}
-            icon={item.icon}
-            selected={tab === item.id}
-            id={item.id}
-            onChange={onChange}
-            label={t(item.labelKey)}
-          />
-        ))}
-
-        <View style={styles.addSlot}>
-          <Pressable
-            onPress={onAddPress}
-            accessibilityRole="button"
-            accessibilityLabel={t('tabs.add')}
-            accessibilityState={{ expanded: addActive }}
-            style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
-          >
-            <View style={styles.plusIcon}>
-              <View style={styles.plusBarH} />
-              <View style={styles.plusBarV} />
-            </View>
-          </Pressable>
-        </View>
-
-        {TABS_RIGHT.map((item) => (
+        {TABS.map((item) => (
           <TabItem
             key={item.id}
             styles={styles}
@@ -148,48 +122,5 @@ const createStyles = (colors) =>
     },
     itemPressed: {
       opacity: 0.6,
-    },
-    addSlot: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginHorizontal: spacing.sm,
-    },
-    addButton: {
-      width: 46,
-      height: 46,
-      borderRadius: 23,
-      backgroundColor: colors.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: '#000',
-      shadowOpacity: 0.25,
-      shadowRadius: 6,
-      shadowOffset: { width: 0, height: 3 },
-      elevation: 5,
-    },
-    addButtonPressed: {
-      backgroundColor: colors.accentDark,
-    },
-    plusIcon: {
-      width: 20,
-      height: 20,
-    },
-    plusBarH: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      top: 8.5,
-      height: 3,
-      borderRadius: 1.5,
-      backgroundColor: colors.onAccent,
-    },
-    plusBarV: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      left: 8.5,
-      width: 3,
-      borderRadius: 1.5,
-      backgroundColor: colors.onAccent,
     },
   });

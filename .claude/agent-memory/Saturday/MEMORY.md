@@ -2,3 +2,4 @@
 - [Font system verification](fonts-verified.md) — dual Lora + Outfit system confirmed, all 6 weights loaded
 - [Theme system validation](themes-6-valid.md) — all 6 themes have 26 required color keys, mono theme complete
 - [Build output format](build-info.md) — Expo SDK 56 exports to dist/, includes 17 font assets, 5927 modules
+- [Test baseline 2026-06-25](test-baseline-2026-06-25.md) — Split Bills hardening: 386 tests pass, build clean

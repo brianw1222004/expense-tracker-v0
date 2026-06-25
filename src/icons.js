@@ -45,6 +45,9 @@ import ChevronRightIcon from '@hugeicons/core-free-icons/ChevronRightIcon';
 import CircleDashedIcon from '@hugeicons/core-free-icons/CircleDashedIcon';
 import Settings01Icon from '@hugeicons/core-free-icons/Settings01Icon';
 import Calendar01Icon from '@hugeicons/core-free-icons/Calendar01Icon';
+import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
+import PlusSignIcon from '@hugeicons/core-free-icons/PlusSignIcon';
+import Search01Icon from '@hugeicons/core-free-icons/Search01Icon';
 const REGISTRY = {
   'hamburger-01': Hamburger01Icon,
   'shopping-cart-01': ShoppingCart01Icon,
@@ -91,6 +94,9 @@ const REGISTRY = {
   'circle-dashed': CircleDashedIcon,
   'settings-01': Settings01Icon,
   'calendar-01': Calendar01Icon,
+  'user-group': UserGroupIcon,
+  'plus-sign': PlusSignIcon,
+  'search-01': Search01Icon,
 };
 
 export function HIcon({ name, size = 24, color = '#000', strokeWidth = 1.5, style }) {

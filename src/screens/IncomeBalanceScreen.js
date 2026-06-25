@@ -57,7 +57,7 @@ export default function IncomeBalanceScreen({
       month.total += displayAmount;
       month.entries.push({ ...entry, displayAmount });
     }
-    const sorted = [...byMonth.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
+    const sorted = [...byMonth.values()].sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
     for (const month of sorted) month.entries.sort((a, b) => b.createdAt - a.createdAt);
     const map = {};
     for (const month of sorted) map[month.key] = month.total;

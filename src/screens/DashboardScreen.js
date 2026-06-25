@@ -4,36 +4,32 @@ import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 import BudgetGauge from '../components/BudgetGauge';
-import CurrencyDropdown from '../components/CurrencyDropdown';
+import CurrencyPill from '../components/CurrencyPill';
+import CurrencyPicker from '../components/CurrencyPicker';
 import EmptyState from '../components/EmptyState';
 import SpendingChart from '../components/SpendingChart';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE } from '../theme';
 import { useT, useLanguage } from '../i18n';
-import { formatMoney, formatMoneyShort, monthLabel, dayLabel } from '../format';
+import { formatMoney, formatMoneyShort, monthLabel } from '../format';
 import { getCurrency } from '../currency';
-import { getCategory, getCategoryLabel } from '../categories';
+import { getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
 
-// Soft iridescent bloom for the hero card's upper-right corner. Two warm-to-cool
-// hues fade to transparent so the wash reads luminous on the white card without
-// tying to a single theme accent. Tune intensity/position here.
-const GLOW_PINK = '#F8B6D2';
-const GLOW_VIOLET = '#BCA9F5';
-
-// Absolutely-fills its parent and paints a radial bloom anchored at the
-// top-right. Rendered as the parent card's first child (so content paints over
-// it) and wrapped in a rounded, clipped layer so the bloom follows the card's
-// corners without clipping the card's drop shadow.
-function CardGlow() {
+// Soft iridescent bloom for the hero card's upper-right corner. The two hues
+// (`glowStart` → `glowEnd`) come from the active theme so the wash harmonises
+// with the palette — pink→violet on neutral (an intentional pop against the
+// grayscale), cool blue→teal on slate, warm peach→gold on sand. Tune
+// intensity/position via the stop opacities and gradient center below.
+function CardGlow({ colors }) {
   return (
     <View style={styles_cardGlowClip} pointerEvents="none">
       <Svg width="100%" height="100%">
         <Defs>
           <RadialGradient id="spendCardGlow" cx="92%" cy="3%" r="95%" fx="92%" fy="3%">
-            <Stop offset="0" stopColor={GLOW_PINK} stopOpacity="0.5" />
-            <Stop offset="0.45" stopColor={GLOW_VIOLET} stopOpacity="0.22" />
-            <Stop offset="1" stopColor={GLOW_VIOLET} stopOpacity="0" />
+            <Stop offset="0" stopColor={colors.glowStart} stopOpacity="0.5" />
+            <Stop offset="0.45" stopColor={colors.glowEnd} stopOpacity="0.22" />
+            <Stop offset="1" stopColor={colors.glowEnd} stopOpacity="0" />
           </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#spendCardGlow)" />
@@ -66,8 +62,6 @@ export default function DashboardScreen({
   lastMonthTotal,
   dailyTotals,
   totalsByCategory,
-  recentExpenses,
-  categories,
   displayCurrency,
   monthlyBudget,
   categoryBudgets,
@@ -75,11 +69,11 @@ export default function DashboardScreen({
   onOpenAccount,
   onChangeCurrency,
   onAddPress,
-  onEditExpense,
-  onSeeAll,
   onLoadDemo,
   regularCategories,
   externalCategories,
+  splitSummary,
+  onOpenSplit,
 }) {
   const { colors } = useTheme();
   const t = useT();
@@ -107,7 +101,7 @@ export default function DashboardScreen({
   const gaugeBudget =
     monthlyBudget > 0
       ? monthlyBudget
-      : budgetedCategories.reduce((sum, category) => sum + categoryBudgets[category.id], 0);
+      : budgetedCategories.reduce((sum, category) => sum + (categoryBudgets[category.id] ?? 0), 0);
   const gaugeSpent =
     monthlyBudget > 0
       ? regularSpent
@@ -126,6 +120,7 @@ export default function DashboardScreen({
   const deltaPct = hasLastMonth ? (Math.abs(delta) / lastMonthTotal) * 100 : 0;
 
   const [budgetOpen, setBudgetOpen] = useState(true);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
   const budgetRotate = useRef(new Animated.Value(0)).current;
 
   const toggleBudget = useCallback(() => {
@@ -140,6 +135,7 @@ export default function DashboardScreen({
   const budgetChevronRotate = budgetRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-90deg'] });
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -161,13 +157,13 @@ export default function DashboardScreen({
 
       {/* Monthly Spending — total, month-over-month delta, currency picker, trend chart */}
       <View style={styles.spendCard}>
-        <CardGlow />
+        <CardGlow colors={colors} />
         <View style={styles.spendTopRow}>
           <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
-          <CurrencyDropdown
+          <CurrencyPill
             value={displayCurrency}
-            onChange={onChangeCurrency}
-            accessibilityLabel={t('budget.currencySection')}
+            onPress={() => setCurrencyOpen(true)}
+            accessibilityLabel={t('currency.choose')}
           />
         </View>
 
@@ -176,7 +172,7 @@ export default function DashboardScreen({
             {formatMoney(monthTotal, displayCurrency)}
           </Text>
           {hasExpenses && hasLastMonth && (
-            <DeltaBadge value={deltaPct.toFixed(1)} dir={heroDir} colors={colors} styles={styles} />
+            <DeltaBadge value={deltaPct > 999 ? '999+' : deltaPct.toFixed(1)} dir={heroDir} colors={colors} styles={styles} />
           )}
         </View>
 
@@ -269,38 +265,49 @@ export default function DashboardScreen({
         </View>
       )}
 
-      {hasExpenses && recentExpenses && recentExpenses.length > 0 && (
-        <View style={styles.recentSection}>
-          <View style={styles.recentHeader}>
-            <Text style={styles.recentTitle}>{t('dash.recentActivity')}</Text>
-            <Pressable
-              onPress={onSeeAll}
-              accessibilityRole="button"
-              hitSlop={8}
-              style={({ pressed }) => pressed && styles.viewAllPressed}
-            >
-              <Text style={styles.viewAll}>{t('dash.viewAll')}</Text>
-            </Pressable>
+      {splitSummary && (splitSummary.owed > 0.005 || splitSummary.owe > 0.005) && (
+        <Pressable
+          onPress={onOpenSplit}
+          accessibilityRole="button"
+          accessibilityLabel={t('split.title')}
+          style={({ pressed }) => [styles.splitCard, pressed && styles.splitCardPressed]}
+        >
+          <View style={styles.splitHeader}>
+            <Text style={styles.summaryTitle}>{t('split.dashTitle')}</Text>
+            <Text style={styles.splitChevron}>›</Text>
           </View>
-          {recentExpenses.map((expense) => (
-            <ActivityRow
-              key={expense.id}
-              expense={expense}
-              displayCurrency={displayCurrency}
-              categories={categories}
-              onEdit={onEditExpense}
-              language={language}
-              styles={styles}
-              t={t}
-            />
-          ))}
-        </View>
+          <View style={styles.splitRow}>
+            <View style={styles.splitCol}>
+              <Text style={styles.splitColLabel}>{t('split.owedToYou')}</Text>
+              <Text style={[styles.splitColValue, { color: colors.success }]} numberOfLines={1}>
+                {formatMoneyShort(splitSummary.owed, displayCurrency)}
+              </Text>
+            </View>
+            <View style={styles.splitColDivider} />
+            <View style={styles.splitCol}>
+              <Text style={styles.splitColLabel}>{t('split.youOwe')}</Text>
+              <Text style={[styles.splitColValue, { color: colors.danger }]} numberOfLines={1}>
+                {formatMoneyShort(splitSummary.owe, displayCurrency)}
+              </Text>
+            </View>
+          </View>
+        </Pressable>
       )}
 
       {loaded && !hasExpenses && (
         <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />
       )}
     </ScrollView>
+    <CurrencyPicker
+      visible={currencyOpen}
+      value={displayCurrency}
+      onSelect={(code) => {
+        onChangeCurrency(code);
+        setCurrencyOpen(false);
+      }}
+      onClose={() => setCurrencyOpen(false)}
+    />
+    </>
   );
 }
 
@@ -342,7 +349,7 @@ const CategoryBar = React.memo(function CategoryBar({ category, budget, spent, d
             style={[
               styles.categoryFill,
               {
-                width: `${Math.min(100, (spent / budget) * 100)}%`,
+                width: `${budget > 0 ? Math.min(100, (spent / budget) * 100) : 0}%`,
                 backgroundColor: over ? colors.danger : category.color,
               },
             ]}
@@ -350,54 +357,6 @@ const CategoryBar = React.memo(function CategoryBar({ category, budget, spent, d
         </View>
       </View>
     </View>
-  );
-});
-
-// A recent-activity row. Mirrors ExpenseRow's chrome (circle icon, category
-// left-border tint, card surface) so the dashboard feed blends with the
-// Expenses tab; tap opens the edit popup (deletion lives on the Expenses tab).
-const ActivityRow = React.memo(function ActivityRow({ expense, displayCurrency, categories, onEdit, language, styles, t }) {
-  const category = getCategory(expense.category, categories);
-  const converted = expense.currency !== displayCurrency;
-  const hasNote = !!(expense.note && expense.note.trim());
-  const title = hasNote ? expense.note : getCategoryLabel(category, t);
-  const day = dayLabel(expense.createdAt, language);
-
-  const tintStyle = useMemo(
-    () => ({
-      backgroundColor: `${category.color}0A`,
-      borderLeftWidth: 3,
-      borderLeftColor: `${category.color}33`,
-    }),
-    [category.color]
-  );
-
-  const handlePress = useCallback(() => onEdit(expense), [onEdit, expense]);
-
-  return (
-    <Pressable
-      onPress={handlePress}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}, ${day}, ${formatMoney(expense.displayAmount, displayCurrency)}`}
-      accessibilityHint={t('dash.tapToEdit')}
-      style={({ pressed }) => [styles.activityRow, tintStyle, pressed && styles.activityRowPressed]}
-    >
-      <View style={[styles.activityIconCircle, { backgroundColor: `${category.color}26` }]}>
-        <HIcon name={category.emoji} size={20} color={category.color} />
-      </View>
-      <View style={styles.activityMiddle}>
-        <Text style={styles.activityTitle} numberOfLines={1}>{title}</Text>
-        <Text style={styles.activitySubtitle} numberOfLines={1}>{day}</Text>
-      </View>
-      <View style={styles.activityAmounts}>
-        <Text style={styles.activityAmount}>-{formatMoney(expense.displayAmount, displayCurrency)}</Text>
-        {converted && (
-          <Text style={styles.activityOriginal} numberOfLines={1}>
-            {formatMoney(expense.amount, expense.currency)} {expense.currency}
-          </Text>
-        )}
-      </View>
-    </Pressable>
   );
 });
 
@@ -567,7 +526,7 @@ const createStyles = (colors) =>
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
-    // Mirrors the CurrencyDropdown trigger so the budget-header pill matches the hero picker.
+    // A bordered pill for the budget-header "Edit budgets" action.
     editPill: {
       backgroundColor: colors.background,
       borderWidth: StyleSheet.hairlineWidth,
@@ -649,79 +608,53 @@ const createStyles = (colors) =>
       fontVariant: ['tabular-nums'],
     },
 
-    recentSection: {
+    // Split-balances widget — mirrors the budget card surface.
+    splitCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginHorizontal: spacing.md,
       marginTop: spacing.md,
+      ...CARD_SHADOW,
     },
-    recentHeader: {
+    splitCardPressed: {
+      backgroundColor: colors.cardPressed,
+    },
+    splitHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginHorizontal: spacing.md,
       marginBottom: spacing.sm,
     },
-    recentTitle: {
-      color: colors.textPrimary,
+    splitChevron: {
+      color: colors.textMuted,
       fontFamily: fonts.bold,
-      fontSize: 15,
+      fontSize: 20,
+      lineHeight: 20,
     },
-    viewAll: {
-      color: colors.accent,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-    },
-    viewAllPressed: {
-      opacity: 0.6,
-    },
-    // Mirrors ExpenseRow so the feed reads as the same surface as the list.
-    activityRow: {
+    splitRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      padding: spacing.sm + 4,
-      marginHorizontal: spacing.md,
-      marginBottom: spacing.sm,
     },
-    activityRowPressed: {
-      backgroundColor: colors.cardPressed,
-    },
-    activityIconCircle: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    activityMiddle: {
+    splitCol: {
       flex: 1,
-      marginHorizontal: spacing.sm + 4,
     },
-    activityTitle: {
-      color: colors.textPrimary,
-      fontSize: 15,
-      fontFamily: fonts.bold,
-    },
-    activitySubtitle: {
+    splitColLabel: {
       color: colors.textMuted,
-      fontSize: 13,
       fontFamily: fonts.regular,
-      marginTop: 1,
-    },
-    activityAmounts: {
-      alignItems: 'flex-end',
-    },
-    activityAmount: {
-      color: colors.textPrimary,
-      fontSize: 15,
-      fontFamily: fonts.numBold,
-      fontVariant: ['tabular-nums'],
-    },
-    activityOriginal: {
-      color: colors.textMuted,
       fontSize: 12,
-      fontFamily: fonts.numRegular,
-      marginTop: 1,
+    },
+    splitColValue: {
+      fontFamily: fonts.numBold,
+      fontSize: 18,
       fontVariant: ['tabular-nums'],
+      marginTop: 2,
+    },
+    splitColDivider: {
+      width: StyleSheet.hairlineWidth,
+      alignSelf: 'stretch',
+      backgroundColor: colors.border,
+      marginHorizontal: spacing.md,
     },
 
   });

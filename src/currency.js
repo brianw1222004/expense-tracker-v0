@@ -7,11 +7,21 @@ export const CURRENCIES = [
   { code: 'JPY', symbol: '¥', name: 'Japanese Yen', decimals: 0 },
   { code: 'TWD', symbol: 'NT$', name: 'New Taiwan Dollar', decimals: 0 },
   { code: 'CNY', symbol: 'CN¥', name: 'Chinese Yuan', decimals: 2 },
+  { code: 'KRW', symbol: '₩', name: 'South Korean Won', decimals: 0 },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar', decimals: 2 },
+  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar', decimals: 2 },
+  { code: 'CHF', symbol: 'Fr', name: 'Swiss Franc', decimals: 2 },
+  { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar', decimals: 2 },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar', decimals: 2 },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee', decimals: 2 },
 ];
 
 // Units of each currency per 1 USD. Static snapshot — swapping in live rates
 // (e.g. exchangerate.host) only means replacing this map / the body of convert().
-const RATES_TO_USD = { USD: 1, EUR: 0.92, GBP: 0.79, JPY: 157.5, TWD: 32.5, CNY: 7.25 };
+const RATES_TO_USD = {
+  USD: 1, EUR: 0.92, GBP: 0.79, JPY: 157.5, TWD: 32.5, CNY: 7.25,
+  KRW: 1380, AUD: 1.52, CAD: 1.37, CHF: 0.88, HKD: 7.8, SGD: 1.34, INR: 83.5,
+};
 
 // The single conversion helper: every total, chart, and row goes through here,
 // so moving to a live-rate API is a one-function change.

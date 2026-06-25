@@ -104,7 +104,7 @@ describe('convert()', () => {
     });
   });
 
-  describe('all 6 currencies convert to each other without throwing', () => {
+  describe('all currencies convert to each other without throwing', () => {
     const codes = CURRENCIES.map((c) => c.code);
     codes.forEach((from) => {
       codes.forEach((to) => {
@@ -202,8 +202,8 @@ describe('getCurrency()', () => {
 });
 
 describe('CURRENCIES constant', () => {
-  it('contains exactly 6 entries', () => {
-    expect(CURRENCIES).toHaveLength(6);
+  it('contains exactly 13 entries', () => {
+    expect(CURRENCIES).toHaveLength(13);
   });
 
   it('every entry has code, symbol, name, decimals', () => {

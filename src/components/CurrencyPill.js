@@ -1,0 +1,49 @@
+import { useMemo } from 'react';
+import { Pressable, StyleSheet, Text } from 'react-native';
+import { fonts, spacing, useTheme } from '../theme';
+import { getCurrency } from '../currency';
+
+// Compact currency trigger — a rounded pill showing the current currency code in
+// the accent color. Tapping opens the shared CurrencyPicker page. Used anywhere
+// a currency is decided. `style` lets callers tweak placement.
+export default function CurrencyPill({ value, onPress, accessibilityLabel, style }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const code = getCurrency(value).code;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [styles.pill, pressed && styles.pillPressed, style]}
+    >
+      <Text style={styles.code}>{code}</Text>
+    </Pressable>
+  );
+}
+
+const createStyles = (colors) =>
+  StyleSheet.create({
+    pill: {
+      alignSelf: 'flex-start',
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    pillPressed: {
+      backgroundColor: colors.cardPressed,
+    },
+    code: {
+      color: colors.accent,
+      fontFamily: fonts.bold,
+      fontSize: 13,
+      letterSpacing: 0.5,
+    },
+  });

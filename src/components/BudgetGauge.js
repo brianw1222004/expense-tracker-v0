@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { fonts, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { formatMoney } from '../format';
@@ -7,11 +7,23 @@ import { getCurrency } from '../currency';
 import { HIcon } from '../icons';
 
 const SIZE = 200;
-const STROKE = 18;
+const STROKE = 28;
 const R = (SIZE - STROKE) / 2;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
 const CIRCUMFERENCE = 2 * Math.PI * R;
+
+function buildGaugeArcs(segments) {
+  const live = segments.filter((s) => s.value > 0.0001);
+  if (live.length === 0) return [];
+  let cursor = 0;
+  return live.map((s) => {
+    const dash = s.value * CIRCUMFERENCE;
+    const offset = CIRCUMFERENCE * 0.25 - cursor;
+    cursor += dash;
+    return { key: s.key, color: s.color, dash: Math.max(dash, 0), offset };
+  });
+}
 
 export default function BudgetGauge({ spent, budget, displayCurrency, empty }) {
   const { colors } = useTheme();
@@ -52,42 +64,30 @@ export default function BudgetGauge({ spent, budget, displayCurrency, empty }) {
   const over = rounded > budget;
 
   const zoneColor = over ? colors.danger : ratio >= 0.75 ? colors.warning : colors.success;
-  const fillLength = capped * CIRCUMFERENCE;
   const remaining = over ? rounded - budget : budget - rounded;
+
+  const arcs = buildGaugeArcs([
+    { key: 'spent', value: capped, color: zoneColor },
+    { key: 'remaining', value: 1 - capped, color: colors.border },
+  ]);
 
   return (
     <View style={styles.container}>
       <View style={styles.donut}>
         <Svg width="100%" height="100%" viewBox={`0 0 ${SIZE} ${SIZE}`}>
-          <Defs>
-            {/* Diagonal sheen along the arc for a soft, luminous fill. */}
-            <LinearGradient id="budgetGaugeFill" x1="0%" y1="0%" x2="100%" y2="100%">
-              <Stop offset="0" stopColor={zoneColor} stopOpacity="1" />
-              <Stop offset="1" stopColor={zoneColor} stopOpacity="0.6" />
-            </LinearGradient>
-          </Defs>
-          <Circle
-            cx={CX}
-            cy={CY}
-            r={R}
-            stroke={colors.cardPressed}
-            strokeWidth={STROKE}
-            fill="none"
-            strokeLinecap="round"
-          />
-          {capped > 0 && (
+          {arcs.map((arc) => (
             <Circle
+              key={arc.key}
               cx={CX}
               cy={CY}
               r={R}
-              stroke="url(#budgetGaugeFill)"
+              stroke={arc.color}
               strokeWidth={STROKE}
               fill="none"
-              strokeDasharray={`${fillLength} ${CIRCUMFERENCE - fillLength}`}
-              strokeDashoffset={CIRCUMFERENCE * 0.25}
-              strokeLinecap="round"
+              strokeDasharray={`${arc.dash} ${CIRCUMFERENCE - arc.dash}`}
+              strokeDashoffset={arc.offset}
             />
-          )}
+          ))}
         </Svg>
         <View style={[StyleSheet.absoluteFill, styles.center]}>
           <Text
@@ -123,6 +123,8 @@ const styles = StyleSheet.create({
   center: {
     alignItems: 'center',
     justifyContent: 'center',
+    // Keep the center label inside the (now thicker) ring's hole.
+    paddingHorizontal: STROKE + 4,
   },
   centerValue: {
     fontFamily: fonts.numBold,

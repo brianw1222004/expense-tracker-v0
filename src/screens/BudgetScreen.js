@@ -10,8 +10,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import Sheet from '../components/Sheet';
+import CurrencyPill from '../components/CurrencyPill';
+import CurrencyPicker from '../components/CurrencyPicker';
 import { useT } from '../i18n';
-import { CURRENCIES, getCurrency } from '../currency';
+import { getCurrency } from '../currency';
 import { isValidAmountText } from '../format';
 import { getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
@@ -67,6 +69,7 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
   const t = useT();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
 
   const currency = getCurrency(settings.displayCurrency);
   // Stale caches from before the budget feature may lack categoryBudgets.
@@ -114,27 +117,15 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
           >
             <Text style={styles.sectionHeader}>{t('budget.currencySection')}</Text>
             <View style={styles.card}>
-              {CURRENCIES.map((entry, index) => {
-                const selected = entry.code === settings.displayCurrency;
-                return (
-                  <Pressable
-                    key={entry.code}
-                    onPress={() => onUpdateSettings({ displayCurrency: entry.code })}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    style={({ pressed }) => [
-                      styles.row,
-                      index > 0 && styles.rowDivider,
-                      pressed && styles.rowPressed,
-                    ]}
-                  >
-                    <Text style={styles.currencySymbol}>{entry.symbol}</Text>
-                    <Text style={styles.currencyName}>{entry.name}</Text>
-                    <Text style={styles.currencyCode}>{entry.code}</Text>
-                    {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
-                  </Pressable>
-                );
-              })}
+              <View style={styles.currencyPickRow}>
+                <Text style={styles.currencyPickSymbol}>{currency.symbol}</Text>
+                <Text style={styles.currencyPickName} numberOfLines={1}>{currency.name}</Text>
+                <CurrencyPill
+                  value={settings.displayCurrency}
+                  onPress={() => setCurrencyOpen(true)}
+                  accessibilityLabel={t('currency.choose')}
+                />
+              </View>
             </View>
             <Text style={styles.sectionNote}>{t('budget.currencyNote')}</Text>
 
@@ -204,6 +195,16 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
             </View>
             <Text style={styles.sectionNote}>{t('budget.externalNote')}</Text>
           </ScrollView>
+
+          <CurrencyPicker
+            visible={currencyOpen}
+            value={settings.displayCurrency}
+            onSelect={(code) => {
+              onUpdateSettings({ displayCurrency: code });
+              setCurrencyOpen(false);
+            }}
+            onClose={() => setCurrencyOpen(false)}
+          />
     </Sheet>
   );
 }
@@ -294,6 +295,26 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 13,
       marginRight: spacing.sm,
+    },
+    currencyPickRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 4,
+    },
+    currencyPickSymbol: {
+      color: colors.textPrimary,
+      fontFamily: fonts.numBold,
+      fontSize: 15,
+      width: 44,
+      fontVariant: ['tabular-nums'],
+    },
+    currencyPickName: {
+      color: colors.textPrimary,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      flex: 1,
     },
     budgetRow: {
       flexDirection: 'row',

@@ -93,7 +93,7 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
               onChangeText={setBudgetText}
               placeholder={t('onboard.budgetPlaceholder')}
               placeholderTextColor={colors.textMuted}
-              keyboardType="numeric"
+              keyboardType={decimals === 0 ? 'number-pad' : 'decimal-pad'}
               keyboardAppearance={colors.keyboardAppearance}
               returnKeyType="done"
             />
