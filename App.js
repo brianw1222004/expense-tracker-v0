@@ -85,7 +85,7 @@ import { supabase, isSupabaseConfigured } from './src/supabase';
 import { buildDemoExpenses, buildDemoIncome } from './src/demoData';
 import { redenominateBudgets, getCurrency } from './src/currency';
 import { getAllCategories, getRegularAll, getExternalAll } from './src/categories';
-import { dateKey } from './src/format';
+import { dateKey, shiftMonthKey } from './src/format';
 import { deriveViewData } from './src/derive';
 import { overallBalance, yourShareAsExpenses, groupBalances, YOU } from './src/splits';
 import { ThemeProvider, getTheme, spacing, ACCOUNT_FAB_SIZE } from './src/theme';
@@ -740,11 +740,7 @@ function ExpenseTracker() {
   // when the selected month has no spending data (mirrors the old Categories tab).
   const catEffectiveKey = months.some((m) => m.key === catMonthKey) ? catMonthKey : currentMonthKey;
   const shiftCatMonth = useCallback((dir) => {
-    setCatMonthKey((key) => {
-      const [y, m] = key.split('-').map(Number);
-      const d = new Date(y, m - 1 + dir, 1);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    });
+    setCatMonthKey((key) => shiftMonthKey(key, dir));
   }, []);
 
   let content = null;

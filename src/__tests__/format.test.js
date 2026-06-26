@@ -4,6 +4,7 @@ const {
   dateKey,
   buildCalendarWeeks,
   isValidAmountText,
+  shiftMonthKey,
 } = require('../format');
 
 // format.js imports from currency.js (pure) and i18n.js (which uses React's
@@ -452,5 +453,48 @@ describe('isValidAmountText()', () => {
     it('rejects any fractional input, including a trailing dot', () => {
       ['1.', '1.5', '.5', '', 'x'].forEach((s) => expect(isValidAmountText(s, 0)).toBe(false));
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shiftMonthKey() — the 'YYYY-MM' month stepper shared by the Dashboard category
+// card (shiftCatMonth in App.js) and the breakdown page's prev-month derivation.
+// Year-boundary rollover is the behavior worth locking in.
+// ---------------------------------------------------------------------------
+describe('shiftMonthKey()', () => {
+  it('steps back one month within a year', () => {
+    expect(shiftMonthKey('2026-06', -1)).toBe('2026-05');
+  });
+
+  it('steps forward one month within a year', () => {
+    expect(shiftMonthKey('2026-06', 1)).toBe('2026-07');
+  });
+
+  it('rolls back across the January boundary into the prior December', () => {
+    expect(shiftMonthKey('2026-01', -1)).toBe('2025-12');
+  });
+
+  it('rolls forward across the December boundary into the next January', () => {
+    expect(shiftMonthKey('2026-12', 1)).toBe('2027-01');
+  });
+
+  it('returns the same key for a zero delta', () => {
+    expect(shiftMonthKey('2026-06', 0)).toBe('2026-06');
+  });
+
+  it('keeps the two-digit zero-padded month for single-digit months', () => {
+    expect(shiftMonthKey('2026-10', -1)).toBe('2026-09');
+    expect(shiftMonthKey('2026-09', 1)).toBe('2026-10');
+  });
+
+  it('handles multi-month and multi-year jumps in both directions', () => {
+    expect(shiftMonthKey('2026-03', -5)).toBe('2025-10');
+    expect(shiftMonthKey('2026-11', 4)).toBe('2027-03');
+    expect(shiftMonthKey('2026-06', -18)).toBe('2024-12');
+  });
+
+  it('is its own inverse for ±1 around a year boundary (round-trips)', () => {
+    expect(shiftMonthKey(shiftMonthKey('2026-01', -1), 1)).toBe('2026-01');
+    expect(shiftMonthKey(shiftMonthKey('2026-12', 1), -1)).toBe('2026-12');
   });
 });

@@ -84,3 +84,12 @@ export function monthKeyLabel(key, language = DEFAULT_LANGUAGE) {
   const names = getDateNames(language);
   return interpolate(names.monthYear, { month: names.months[Number(month) - 1], year });
 }
+
+// Shift a 'YYYY-MM' month key by `delta` months (negative = earlier), returning
+// a new 'YYYY-MM' key. Uses Date arithmetic so year boundaries roll correctly
+// (e.g. '2026-01' shifted -1 → '2025-12'; '2026-12' shifted +1 → '2027-01').
+export function shiftMonthKey(key, delta) {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}

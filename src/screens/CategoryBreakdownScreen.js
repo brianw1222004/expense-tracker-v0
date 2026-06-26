@@ -4,7 +4,7 @@ import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
-import { formatMoneyShort, monthKeyLabel } from '../format';
+import { formatMoneyShort, monthKeyLabel, shiftMonthKey } from '../format';
 import { getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
 import Sheet from '../components/Sheet';
 import { HIcon } from '../icons';
@@ -59,11 +59,7 @@ export default function CategoryBreakdownScreen({
     [months, monthKey]
   );
 
-  const prevMonthKey = useMemo(() => {
-    const [y, m] = monthKey.split('-').map(Number);
-    const d = new Date(y, m - 2, 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }, [monthKey]);
+  const prevMonthKey = useMemo(() => shiftMonthKey(monthKey, -1), [monthKey]);
 
   const prevMonth = useMemo(
     () => months.find((m) => m.key === prevMonthKey) ?? { key: prevMonthKey, total: 0, byCategory: {} },
