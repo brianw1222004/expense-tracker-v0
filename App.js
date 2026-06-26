@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
-  Alert,
   Animated,
   AppState,
   Easing,
@@ -37,11 +36,11 @@ import InsightScreen from './src/screens/InsightScreen';
 import SplitBillsScreen from './src/screens/SplitBillsScreen';
 import GroupDetailScreen from './src/screens/GroupDetailScreen';
 import CreateGroupScreen from './src/screens/CreateGroupScreen';
-import AddSplitScreen from './src/screens/AddSplitScreen';
+import SharedSplitForm from './src/screens/SharedSplitForm';
 import BudgetScreen from './src/screens/BudgetScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
-import TabBar, { TAB_BAR_HEIGHT } from './src/components/TabBar';
+import TabBar from './src/components/TabBar';
 import AddExpenseModal from './src/components/AddExpenseModal';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import RewardCheck from './src/components/RewardCheck';
@@ -56,6 +55,7 @@ import {
   saveGroups,
   loadSplitExpenses,
   saveSplitExpenses,
+  clearUserStorage,
   DEFAULT_SETTINGS,
   LOCAL_USER,
 } from './src/storage';
@@ -69,12 +69,12 @@ import {
   enqueueExpensesReplace,
   enqueueGroupDelete,
   enqueueGroupUpsert,
-  enqueueIncomeDelete,
-  enqueueIncomeUpsert,
+  enqueueGroupsReplace,
   enqueueIncomeReplace,
   enqueueSettingsPush,
   enqueueSplitDelete,
   enqueueSplitUpsert,
+  enqueueSplitsReplace,
   flush,
   flushIncome,
   flushGroups,
@@ -91,6 +91,7 @@ import { overallBalance, yourShareAsExpenses, groupBalances, YOU } from './src/s
 import { ThemeProvider, getTheme, spacing, ACCOUNT_FAB_SIZE } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 import { HIcon } from './src/icons';
+import { confirmDestructive } from './src/confirm';
 
 const Haptics = Platform.OS === 'web'
   ? { notificationAsync: () => Promise.resolve(), impactAsync: () => Promise.resolve(), NotificationFeedbackType: HapticsModule.NotificationFeedbackType, ImpactFeedbackStyle: HapticsModule.ImpactFeedbackStyle }
@@ -154,18 +155,24 @@ function ExpenseTracker() {
   const swipeDirRef = useRef(0);
   // The budget editor, account, and create-group sheets sit over the active tab.
   const [overlay, setOverlay] = useState(null); // null | 'budget' | 'account' | 'createGroup' | 'categoryDetail'
-  // Split-bills sheets: the open group's id (detail), and the group a new bill
-  // is being added to. Both null = closed.
+  // Split-bills: the open group's id (detail sheet). New bills are added through
+  // the shared add popup (addEntryMode='shared'), not a separate sheet.
   const [activeGroupId, setActiveGroupId] = useState(null);
-  const [addSplitFor, setAddSplitFor] = useState(null);
   // Selected month for the Dashboard category card + its breakdown page (shared
   // so navigating in either place stays in sync).
   const [catMonthKey, setCatMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
-  // The add popup sits over whichever tab is active (expenses only).
+  // The add popup sits over whichever tab is active. `addEntryMode` toggles its
+  // two forms (personal expense vs. shared split bill). `sharedLockedGroupId`,
+  // when set, locks the shared form to one group (launched from a group's "Add a
+  // bill") and signals to reopen that group's detail sheet when the popup closes.
   const [addOpen, setAddOpen] = useState(false);
+  const [addEntryMode, setAddEntryMode] = useState('personal');
+  const [sharedLockedGroupId, setSharedLockedGroupId] = useState(null);
+  // Bumped on every popup open so the shared form remounts fresh each time (it's
+  // kept mounted while closed, so without this a reopen would show stale state /
+  // the previously locked group).
+  const [addNonce, setAddNonce] = useState(0);
   const [editingExpense, setEditingExpense] = useState(null);
-  // The edit-income popup (add income now lives in the shared add popup above).
-  const [editingIncome, setEditingIncome] = useState(null);
   // Increments on every successful add; RewardCheck animates on each change.
   const [rewardNonce, setRewardNonce] = useState(0);
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
@@ -312,8 +319,31 @@ function ExpenseTracker() {
     if (dataUser && dataUser === userId) saveSettings(dataUser, settings);
   }, [settings, dataUser, userId]);
 
-  // Open the shared add popup (expenses only).
+  // Open the add popup on the Personal side (from the tab-bar "+").
   const openAdd = useCallback(() => {
+    setAddEntryMode('personal');
+    setSharedLockedGroupId(null);
+    setAddNonce((n) => n + 1);
+    setAddOpen(true);
+  }, []);
+
+  // Close the add popup; if it was launched from a group's "Add a bill" (locked
+  // to that group), reopen that group's detail sheet so the user lands back there.
+  const closeAdd = useCallback(() => {
+    setAddOpen(false);
+    if (sharedLockedGroupId) {
+      setActiveGroupId(sharedLockedGroupId);
+      setSharedLockedGroupId(null);
+    }
+  }, [sharedLockedGroupId]);
+
+  // Open the shared add popup locked to one group (from GroupDetailScreen's "Add
+  // a bill"). Closes the group sheet while the popup is up; closeAdd reopens it.
+  const openSharedAddForGroup = useCallback((groupId) => {
+    setActiveGroupId(null);
+    setSharedLockedGroupId(groupId);
+    setAddEntryMode('shared');
+    setAddNonce((n) => n + 1);
     setAddOpen(true);
   }, []);
 
@@ -345,24 +375,9 @@ function ExpenseTracker() {
   const deleteExpense = (id) => {
     setExpenses((prev) => prev.filter((e) => e.id !== id));
     enqueueExpenseDelete(userId, id);
-    // Mirror deleteIncome: close the edit popup if the delete came from it
-    // (no-op when deleting from the list, where editingExpense is already null).
+    // Close the edit popup if the delete came from it (no-op when deleting from
+    // the list, where editingExpense is already null).
     setEditingExpense(null);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-  };
-
-  const updateIncome = ({ id, amount, currency, source, note, createdAt }) => {
-    const updated = { id, amount, currency, source, note, createdAt };
-    setIncome((prev) => prev.map((e) => (e.id === id ? updated : e)));
-    enqueueIncomeUpsert(userId, updated);
-    setEditingIncome(null);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  };
-
-  const deleteIncome = (id) => {
-    setIncome((prev) => prev.filter((e) => e.id !== id));
-    enqueueIncomeDelete(userId, id);
-    setEditingIncome(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
@@ -401,7 +416,7 @@ function ExpenseTracker() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
-  const addSplitExpense = ({ groupId, description, amount, currency, category, paidBy, mode, shares }) => {
+  const addSplitExpense = ({ groupId, description, amount, currency, category, paidBy, mode, shares, createdAt }) => {
     const bill = {
       id: makeId('s'),
       groupId,
@@ -412,11 +427,11 @@ function ExpenseTracker() {
       paidBy,
       mode,
       shares,
-      createdAt: Date.now(),
+      createdAt: createdAt ?? Date.now(),
     };
     setSplitExpenses((prev) => [bill, ...prev]);
     enqueueSplitUpsert(userId, bill);
-    setAddSplitFor(null);
+    closeAdd();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
@@ -446,31 +461,23 @@ function ExpenseTracker() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
-  const loadDemo = () => {
-    // Replaces BOTH expenses and income with sample data — destructive and
-    // not undoable. Confirm on every target (Alert with buttons is a no-op on
-    // web, so web uses window.confirm).
-    const apply = () => {
-      const demo = buildDemoExpenses();
-      setExpenses(demo);
-      enqueueExpensesReplace(userId, demo);
-      const demoIncome = buildDemoIncome();
-      setIncome(demoIncome);
-      enqueueIncomeReplace(userId, demoIncome);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    };
-    if (Platform.OS === 'web') {
-      if (window.confirm(translate(language, 'empty.confirmDemo'))) apply();
-      return;
-    }
-    Alert.alert(
-      translate(language, 'empty.confirmDemoTitle'),
-      translate(language, 'empty.confirmDemo'),
-      [
-        { text: translate(language, 'common.cancel'), style: 'cancel' },
-        { text: translate(language, 'empty.confirmDemoConfirm'), style: 'destructive', onPress: apply },
-      ]
-    );
+  const loadDemo = async () => {
+    // Replaces BOTH expenses and income with sample data — destructive and not
+    // undoable, so confirm first.
+    const ok = await confirmDestructive({
+      title: translate(language, 'empty.confirmDemoTitle'),
+      body: translate(language, 'empty.confirmDemo'),
+      confirmLabel: translate(language, 'empty.confirmDemoConfirm'),
+      cancelLabel: translate(language, 'common.cancel'),
+    });
+    if (!ok) return;
+    const demo = buildDemoExpenses();
+    setExpenses(demo);
+    enqueueExpensesReplace(userId, demo);
+    const demoIncome = buildDemoIncome();
+    setIncome(demoIncome);
+    enqueueIncomeReplace(userId, demoIncome);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
   const settingsRef = useRef(settings);
@@ -645,27 +652,12 @@ function ExpenseTracker() {
   };
 
   const signOut = useCallback(async () => {
-    // Alert with buttons is a no-op on web; window.confirm is the fallback.
-    const title = translate(language, 'acct.signOut');
-    const body = translate(language, 'acct.signOutBody');
-    const confirmed =
-      Platform.OS === 'web'
-        ? window.confirm(`${title}?\n${body}`)
-        : await new Promise((resolve) =>
-            Alert.alert(
-              title,
-              body,
-              [
-                {
-                  text: translate(language, 'common.cancel'),
-                  style: 'cancel',
-                  onPress: () => resolve(false),
-                },
-                { text: title, style: 'destructive', onPress: () => resolve(true) },
-              ],
-              { cancelable: true, onDismiss: () => resolve(false) }
-            )
-          );
+    const confirmed = await confirmDestructive({
+      title: translate(language, 'acct.signOut'),
+      body: translate(language, 'acct.signOutBody'),
+      confirmLabel: translate(language, 'acct.signOut'),
+      cancelLabel: translate(language, 'common.cancel'),
+    });
     if (!confirmed) return;
     setOverlay(null);
     // best-effort push of anything still queued on ALL FOUR lanes (each lane
@@ -678,6 +670,52 @@ function ExpenseTracker() {
     ]);
     // Local scope: clears this device's session even when offline.
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+  }, [userId, language]);
+
+  // Permanently erase the account's data: wipe all server rows (synced mode),
+  // clear this device's caches, reset in-memory state, and sign out. NOTE: the
+  // Supabase auth login record itself can't be removed with the anon key — that
+  // needs a server-side (service-role) function; this is the client-side data
+  // wipe + sign-out. In local-only mode it just clears everything on the device.
+  const deleteAccount = useCallback(async () => {
+    const confirmed = await confirmDestructive({
+      title: translate(language, 'acct.deleteAccount'),
+      body: translate(language, 'acct.deleteBody'),
+      confirmLabel: translate(language, 'acct.deleteConfirm'),
+      cancelLabel: translate(language, 'common.cancel'),
+    });
+    if (!confirmed) return;
+    setOverlay(null);
+
+    const wipeUser = userId;
+    if (isSupabaseConfigured && wipeUser && wipeUser !== LOCAL_USER) {
+      // replace-with-empty deletes every row on each lane, scoped to this user
+      // via RLS. Best-effort: if offline the ops stay queued and wipe on resync.
+      enqueueExpensesReplace(wipeUser, []);
+      enqueueIncomeReplace(wipeUser, []);
+      enqueueGroupsReplace(wipeUser, []);
+      enqueueSplitsReplace(wipeUser, []);
+      await Promise.all([
+        flush(wipeUser),
+        flushIncome(wipeUser),
+        flushGroups(wipeUser),
+        flushSplits(wipeUser),
+      ]).catch(() => {});
+    }
+
+    await clearUserStorage(wipeUser);
+
+    // Reset in-memory state so nothing stale lingers behind the sign-out.
+    setExpenses([]);
+    setIncome([]);
+    setGroups([]);
+    setSplitExpenses([]);
+    setSettings(DEFAULT_SETTINGS);
+
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [userId, language]);
 
   const displayCurrency = settings.displayCurrency;
@@ -730,7 +768,6 @@ function ExpenseTracker() {
     [groups, splitExpenses, displayCurrency]
   );
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
-  const addSplitGroup = groups.find((g) => g.id === addSplitFor) ?? null;
 
   const loaded = dataUser != null && dataUser === userId;
   const hasExpenses = expenses.length > 0;
@@ -762,9 +799,7 @@ function ExpenseTracker() {
       overlay == null &&
       !addOpen &&
       editingExpense == null &&
-      editingIncome == null &&
-      activeGroupId == null &&
-      addSplitFor == null;
+      activeGroupId == null;
     content = (
       <>
         <View style={styles.content} {...swipePanResponder.panHandlers}>
@@ -851,61 +886,47 @@ function ExpenseTracker() {
           </Pressable>
         )}
 
-        {chromeVisible && (
-          <Pressable
-            onPress={() => openAdd()}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel={translate(language, 'tabs.add')}
-            accessibilityState={{ expanded: addOpen }}
-            style={({ pressed }) => [
-              styles.addFab,
-              { backgroundColor: theme.accent },
-              pressed && styles.addFabPressed,
-            ]}
-          >
-            <HIcon name="plus-sign" size={26} color={theme.onAccent} />
-          </Pressable>
-        )}
+        <TabBar tab={tab} onChange={changeTab} onAdd={() => openAdd()} />
 
-        <TabBar tab={tab} onChange={changeTab} />
-
-        {/* Shared add popup (expenses only). The form stays mounted while the
-            popup is closed (AddExpenseModal hides it with display:none) so a
-            half-typed entry survives dismissing the popup. */}
-        <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>
-          <AddEntryScreen
-            mode="expense"
-            displayCurrency={displayCurrency}
-            categories={allCategories}
-            onSubmit={addExpense}
-            onClose={() => setAddOpen(false)}
-          />
+        {/* Add popup with a Personal/Shared toggle: Personal adds an expense
+            (AddEntryScreen), Shared adds a split bill (SharedSplitForm). The
+            active form stays mounted while the popup is closed (AddExpenseModal
+            hides it with display:none) so a half-typed entry survives dismissal. */}
+        <AddExpenseModal visible={addOpen} onClose={closeAdd}>
+          {addEntryMode === 'shared' ? (
+            <SharedSplitForm
+              key={addNonce}
+              entryMode={addEntryMode}
+              onChangeEntryMode={setAddEntryMode}
+              lockedGroupId={sharedLockedGroupId}
+              groups={groups}
+              allCategories={allCategories}
+              displayCurrency={displayCurrency}
+              onAdd={addSplitExpense}
+              onCreateGroup={() => { setAddOpen(false); setSharedLockedGroupId(null); setOverlay('createGroup'); }}
+              onClose={closeAdd}
+            />
+          ) : (
+            <AddEntryScreen
+              entryMode={addEntryMode}
+              onChangeEntryMode={setAddEntryMode}
+              displayCurrency={displayCurrency}
+              categories={allCategories}
+              onSubmit={addExpense}
+              onClose={closeAdd}
+            />
+          )}
         </AddExpenseModal>
 
         <AddExpenseModal visible={editingExpense != null} onClose={() => setEditingExpense(null)}>
           {editingExpense && (
             <AddEntryScreen
-              mode="expense"
               displayCurrency={displayCurrency}
               categories={allCategories}
               editEntry={editingExpense}
               onSubmit={updateExpense}
               onDelete={deleteExpense}
               onClose={() => setEditingExpense(null)}
-            />
-          )}
-        </AddExpenseModal>
-
-        <AddExpenseModal visible={editingIncome != null} onClose={() => setEditingIncome(null)}>
-          {editingIncome && (
-            <AddEntryScreen
-              mode="income"
-              displayCurrency={displayCurrency}
-              editEntry={editingIncome}
-              onSubmit={updateIncome}
-              onDelete={deleteIncome}
-              onClose={() => setEditingIncome(null)}
             />
           )}
         </AddExpenseModal>
@@ -925,6 +946,7 @@ function ExpenseTracker() {
           onUpdateSettings={updateSettings}
           accountEmail={session?.user?.email}
           onSignOut={signOut}
+          onDeleteAccount={deleteAccount}
           onClose={() => setOverlay(null)}
         />
 
@@ -936,23 +958,15 @@ function ExpenseTracker() {
         />
 
         <GroupDetailScreen
-          visible={activeGroupId != null && addSplitFor == null}
+          visible={activeGroupId != null}
           group={activeGroup}
           splitExpenses={splitExpenses}
-          onAddBill={(groupId) => setAddSplitFor(groupId)}
+          onAddBill={openSharedAddForGroup}
           onDeleteBill={deleteSplitExpense}
           onSettle={settleUp}
           onUpdateGroup={updateGroup}
           onDeleteGroup={deleteGroup}
           onClose={() => setActiveGroupId(null)}
-        />
-
-        <AddSplitScreen
-          visible={addSplitFor != null}
-          group={addSplitGroup}
-          allCategories={allCategories}
-          onAdd={addSplitExpense}
-          onClose={() => setAddSplitFor(null)}
         />
 
         <CategoryBreakdownScreen
@@ -1028,26 +1042,5 @@ const styles = StyleSheet.create({
   },
   accountFabPressed: {
     opacity: 0.7,
-  },
-  // Floating add button — bottom-right, just above the tab bar (the "+" moved
-  // here from the tab bar's center slot). Sits clear of the tab capsule.
-  addFab: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: TAB_BAR_HEIGHT + spacing.sm,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 8,
-  },
-  addFabPressed: {
-    opacity: 0.85,
   },
 });

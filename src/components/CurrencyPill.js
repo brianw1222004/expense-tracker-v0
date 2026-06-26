@@ -4,7 +4,7 @@ import { fonts, spacing, useTheme } from '../theme';
 import { getCurrency } from '../currency';
 
 // Compact currency trigger — a rounded pill showing the current currency code in
-// the accent color. Tapping opens the shared CurrencyPicker page. Used anywhere
+// the accent color. Tapping opens the shared CurrencyPicker popup. Used anywhere
 // a currency is decided. `style` lets callers tweak placement.
 export default function CurrencyPill({ value, onPress, accessibilityLabel, style }) {
   const { colors } = useTheme();

@@ -1,19 +1,22 @@
 export const DEFAULT_CURRENCY = 'USD';
 
+// `flag` is the country/region emoji shown in the currency picker's badge.
+// Emoji flags render natively on iOS/Android and macOS browsers; Windows
+// browsers fall back to the 2-letter region code, which is still legible.
 export const CURRENCIES = [
-  { code: 'USD', symbol: '$', name: 'US Dollar', decimals: 2 },
-  { code: 'EUR', symbol: '€', name: 'Euro', decimals: 2 },
-  { code: 'GBP', symbol: '£', name: 'British Pound', decimals: 2 },
-  { code: 'JPY', symbol: '¥', name: 'Japanese Yen', decimals: 0 },
-  { code: 'TWD', symbol: 'NT$', name: 'New Taiwan Dollar', decimals: 0 },
-  { code: 'CNY', symbol: 'CN¥', name: 'Chinese Yuan', decimals: 2 },
-  { code: 'KRW', symbol: '₩', name: 'South Korean Won', decimals: 0 },
-  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar', decimals: 2 },
-  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar', decimals: 2 },
-  { code: 'CHF', symbol: 'Fr', name: 'Swiss Franc', decimals: 2 },
-  { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar', decimals: 2 },
-  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar', decimals: 2 },
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee', decimals: 2 },
+  { code: 'USD', symbol: '$', name: 'US Dollar', decimals: 2, flag: '🇺🇸' },
+  { code: 'EUR', symbol: '€', name: 'Euro', decimals: 2, flag: '🇪🇺' },
+  { code: 'GBP', symbol: '£', name: 'British Pound', decimals: 2, flag: '🇬🇧' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen', decimals: 0, flag: '🇯🇵' },
+  { code: 'TWD', symbol: 'NT$', name: 'New Taiwan Dollar', decimals: 0, flag: '🇹🇼' },
+  { code: 'CNY', symbol: 'CN¥', name: 'Chinese Yuan', decimals: 2, flag: '🇨🇳' },
+  { code: 'KRW', symbol: '₩', name: 'South Korean Won', decimals: 0, flag: '🇰🇷' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar', decimals: 2, flag: '🇦🇺' },
+  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar', decimals: 2, flag: '🇨🇦' },
+  { code: 'CHF', symbol: 'Fr', name: 'Swiss Franc', decimals: 2, flag: '🇨🇭' },
+  { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar', decimals: 2, flag: '🇭🇰' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar', decimals: 2, flag: '🇸🇬' },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee', decimals: 2, flag: '🇮🇳' },
 ];
 
 // Units of each currency per 1 USD. Static snapshot — swapping in live rates

@@ -9,7 +9,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { spacing, useTheme } from '../theme';
+import { spacing, useTheme, panelShadow } from '../theme';
 import { useT } from '../i18n';
 
 const OPEN_MS = 220;
@@ -96,10 +96,6 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     maxHeight: '92%',
     flexShrink: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 3,
+    ...panelShadow,
   },
 });

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fonts, radius, spacing, useTheme } from '../theme';
+import { fonts, radius, spacing, useTheme, panelShadow } from '../theme';
 import Sheet from '../components/Sheet';
 import CurrencyPill from '../components/CurrencyPill';
 import CurrencyPicker from '../components/CurrencyPicker';
 import { useT, useLanguage, translate } from '../i18n';
+import { confirmDestructive } from '../confirm';
 import { getCurrency } from '../currency';
 import { formatMoney, dayLabel } from '../format';
 import { groupBalances, billsForGroup, PAYMENT_METHODS, getPaymentMethodLabel, YOU } from '../splits';
@@ -124,15 +125,14 @@ export default function GroupDetailScreen({
   const nameFor = (id) =>
     id === YOU ? t('split.you') : group.members.find((m) => m.id === id)?.name ?? t('split.someone');
 
-  const confirm = (title, body, onYes) => {
-    if (Platform.OS === 'web') {
-      if (window.confirm(`${title}\n${body}`)) onYes();
-      return;
-    }
-    Alert.alert(title, body, [
-      { text: translate(language, 'common.cancel'), style: 'cancel' },
-      { text: translate(language, 'common.delete'), style: 'destructive', onPress: onYes },
-    ]);
+  const confirm = async (title, body, onYes) => {
+    const ok = await confirmDestructive({
+      title,
+      body,
+      confirmLabel: translate(language, 'common.delete'),
+      cancelLabel: translate(language, 'common.cancel'),
+    });
+    if (ok) onYes();
   };
 
   return (
@@ -476,11 +476,7 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 3,
+      ...panelShadow,
     },
     memberRow: {
       flexDirection: 'row',

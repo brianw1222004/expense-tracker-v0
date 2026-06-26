@@ -123,6 +123,25 @@ export const radius = {
 
 export const ACCOUNT_FAB_SIZE = 40;
 
+// Shared elevation tokens (spread into a style object). `cardShadow` is the soft
+// lift used by dashboard/list cards; `panelShadow` is the heavier lift used by
+// raised cards and modal surfaces. Bottom sheets keep their own upward shadow.
+export const cardShadow = {
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 1,
+};
+
+export const panelShadow = {
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+  elevation: 3,
+};
+
 const ThemeContext = createContext({ themeName: 'neutral', colors: THEMES.neutral });
 
 export function ThemeProvider({ themeName, children }) {

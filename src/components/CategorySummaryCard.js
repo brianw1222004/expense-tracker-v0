@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { fonts, spacing, radius, useTheme } from '../theme';
+import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoneyShort, monthKeyLabel } from '../format';
 import { getCategoryLabel } from '../categories';
@@ -219,14 +219,6 @@ function ExtremeStat({ label, seg, total, displayCurrency, colors, styles, t }) 
   );
 }
 
-const CARD_SHADOW = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 1,
-};
-
 const createStyles = (colors) =>
   StyleSheet.create({
     card: {
@@ -235,7 +227,7 @@ const createStyles = (colors) =>
       padding: spacing.md,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
-      ...CARD_SHADOW,
+      ...cardShadow,
     },
     topRow: {
       flexDirection: 'row',

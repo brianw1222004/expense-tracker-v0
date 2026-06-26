@@ -9,6 +9,9 @@ const {
   getPaymentMethodLabel,
   computeShares,
   customSharesValid,
+  percentageSharesValid,
+  computeTaxShares,
+  taxInputValid,
   billsForGroup,
   groupBalances,
   groupNet,
@@ -297,6 +300,175 @@ describe('customSharesValid()', () => {
 
   it('returns true for zero amount with zero shares', () => {
     expect(customSharesValid(0, { a: 0, b: 0 }, ['a', 'b'])).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeShares() — percentage mode
+// ---------------------------------------------------------------------------
+
+describe('computeShares() percentage mode', () => {
+  it('splits by the given percentages', () => {
+    const shares = computeShares(100, 'percentage', [YOU, 'm1'], { [YOU]: 25, m1: 75 });
+    expect(shares[YOU]).toBeCloseTo(25, 5);
+    expect(shares['m1']).toBeCloseTo(75, 5);
+  });
+
+  it('total of all shares equals the original amount', () => {
+    const shares = computeShares(100, 'percentage', ['a', 'b', 'c'], { a: 33.33, b: 33.33, c: 33.33 });
+    const total = ['a', 'b', 'c'].reduce((s, id) => s + shares[id], 0);
+    expect(total).toBeCloseTo(100, 10);
+  });
+
+  it('hands leftover smallest-units round-robin from the first id', () => {
+    // 33.33% × 3 of $100 → 33.33 each = 99.99; the leftover cent goes to 'a'.
+    const shares = computeShares(100, 'percentage', ['a', 'b', 'c'], { a: 33.33, b: 33.33, c: 33.33 });
+    expect(shares['a']).toBeCloseTo(33.34, 5);
+    expect(shares['b']).toBeCloseTo(33.33, 5);
+    expect(shares['c']).toBeCloseTo(33.33, 5);
+  });
+
+  it('handles a single participant at 100%', () => {
+    const shares = computeShares(80, 'percentage', [YOU], { [YOU]: 100 });
+    expect(shares[YOU]).toBeCloseTo(80, 5);
+  });
+
+  it('respects 0-decimal currencies (JPY)', () => {
+    const shares = computeShares(1000, 'percentage', ['a', 'b'], { a: 50, b: 50 }, 'JPY');
+    expect(shares['a']).toBe(500);
+    expect(shares['b']).toBe(500);
+    expect(Number.isInteger(shares['a'])).toBe(true);
+  });
+
+  it('missing percentage entry becomes 0', () => {
+    const shares = computeShares(100, 'percentage', [YOU, 'm1'], { [YOU]: 100 });
+    expect(shares['m1']).toBe(0);
+    expect(shares[YOU]).toBeCloseTo(100, 5);
+  });
+
+  it('returns an empty object for empty participant list', () => {
+    expect(computeShares(100, 'percentage', [], { x: 100 })).toEqual({});
+  });
+
+  it('does not overshoot when percentages sum slightly over 100 (USD)', () => {
+    // 50.3 + 50.1 = 100.4 — within percentageSharesValid's tolerance, so the
+    // floored units overshoot; shares must still sum EXACTLY to the amount.
+    const shares = computeShares(1000, 'percentage', ['a', 'b'], { a: 50.3, b: 50.1 });
+    expect(shares['a'] + shares['b']).toBeCloseTo(1000, 10);
+  });
+
+  it('trims overshoot for 0-decimal currencies too (JPY)', () => {
+    const shares = computeShares(1000, 'percentage', ['a', 'b'], { a: 50.4, b: 50 }, 'JPY');
+    expect(shares['a'] + shares['b']).toBe(1000);
+    Object.values(shares).forEach((v) => expect(Number.isInteger(v)).toBe(true));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// percentageSharesValid()
+// ---------------------------------------------------------------------------
+
+describe('percentageSharesValid()', () => {
+  it('returns true when percentages sum to exactly 100', () => {
+    expect(percentageSharesValid({ a: 50, b: 50 }, ['a', 'b'])).toBe(true);
+  });
+
+  it('accepts thirds within the half-percent tolerance', () => {
+    expect(percentageSharesValid({ a: 33.33, b: 33.33, c: 33.33 }, ['a', 'b', 'c'])).toBe(true);
+  });
+
+  it('returns false when percentages are well under 100', () => {
+    expect(percentageSharesValid({ a: 50, b: 40 }, ['a', 'b'])).toBe(false);
+  });
+
+  it('returns false when percentages exceed 100', () => {
+    expect(percentageSharesValid({ a: 60, b: 60 }, ['a', 'b'])).toBe(false);
+  });
+
+  it('ignores ids not in the participant list', () => {
+    expect(percentageSharesValid({ a: 50, b: 50, c: 999 }, ['a', 'b'])).toBe(true);
+  });
+
+  it('returns false for an empty participant list', () => {
+    expect(percentageSharesValid({}, [])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeTaxShares()
+// ---------------------------------------------------------------------------
+
+describe('computeTaxShares()', () => {
+  it('adds tax proportionally to each subtotal', () => {
+    const { total, shares } = computeTaxShares({ [YOU]: 30, m1: 20, m2: 30 }, [YOU, 'm1', 'm2'], 15, 0, 'USD');
+    expect(total).toBeCloseTo(92, 5); // 80 × 1.15
+    expect(shares[YOU]).toBeCloseTo(34.5, 5);
+    expect(shares['m1']).toBeCloseTo(23, 5);
+    expect(shares['m2']).toBeCloseTo(34.5, 5);
+  });
+
+  it('shares always sum exactly to the total', () => {
+    const { total, shares } = computeTaxShares({ a: 10, b: 10, c: 10 }, ['a', 'b', 'c'], 8.33, 0, 'USD');
+    const sum = ['a', 'b', 'c'].reduce((s, id) => s + shares[id], 0);
+    expect(sum).toBeCloseTo(total, 10);
+  });
+
+  it('hands the rounding leftover round-robin from the first id', () => {
+    // 30 × 1.0833 = 32.499 → total 32.50; floored shares 10.83 each sum 32.49,
+    // the leftover cent goes to 'a'.
+    const { total, shares } = computeTaxShares({ a: 10, b: 10, c: 10 }, ['a', 'b', 'c'], 8.33, 0, 'USD');
+    expect(total).toBeCloseTo(32.5, 5);
+    expect(shares['a']).toBeCloseTo(10.84, 5);
+    expect(shares['b']).toBeCloseTo(10.83, 5);
+    expect(shares['c']).toBeCloseTo(10.83, 5);
+  });
+
+  it('includes tip on top of tax', () => {
+    const { total, shares } = computeTaxShares({ a: 100 }, ['a'], 10, 5, 'USD');
+    expect(total).toBeCloseTo(115, 5); // 100 × 1.15
+    expect(shares['a']).toBeCloseTo(115, 5);
+  });
+
+  it('keeps 0-decimal currencies whole (JPY)', () => {
+    const { total, shares } = computeTaxShares({ a: 1000, b: 2000 }, ['a', 'b'], 10, 0, 'JPY');
+    expect(total).toBe(3300);
+    expect(shares['a']).toBe(1100);
+    expect(shares['b']).toBe(2200);
+    Object.values(shares).forEach((v) => expect(Number.isInteger(v)).toBe(true));
+  });
+
+  it('no tax/tip just splits by subtotal', () => {
+    const { total, shares } = computeTaxShares({ a: 40, b: 60 }, ['a', 'b'], 0, 0, 'USD');
+    expect(total).toBeCloseTo(100, 5);
+    expect(shares['a']).toBeCloseTo(40, 5);
+    expect(shares['b']).toBeCloseTo(60, 5);
+  });
+
+  it('returns zero total / empty shares for empty participants', () => {
+    expect(computeTaxShares({ a: 30 }, [], 10, 0, 'USD')).toEqual({ total: 0, shares: {} });
+  });
+
+  it('a participant with no subtotal gets a zero share', () => {
+    const { shares } = computeTaxShares({ a: 50, b: 0 }, ['a', 'b'], 10, 0, 'USD');
+    expect(shares['b']).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// taxInputValid()
+// ---------------------------------------------------------------------------
+
+describe('taxInputValid()', () => {
+  it('returns true when at least one subtotal is positive', () => {
+    expect(taxInputValid({ a: 30, b: 0 }, ['a', 'b'])).toBe(true);
+  });
+
+  it('returns false when all subtotals are zero/blank', () => {
+    expect(taxInputValid({ a: 0, b: '' }, ['a', 'b'])).toBe(false);
+  });
+
+  it('returns false for an empty participant list', () => {
+    expect(taxInputValid({ a: 30 }, [])).toBe(false);
   });
 });
 

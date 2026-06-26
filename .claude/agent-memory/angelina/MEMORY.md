@@ -7,3 +7,4 @@
 - [Audit: sync engine 2026-06-25](audit-sync-engine-2026-06-25.md) — sync.js/supabase/storage/schema deep review; sign-out drops groups/splits queue (HIGH); rest solid
 - [Audit: components+crosscutting 2026-06-25](audit-components-crosscutting-2026-06-25.md) — theme/i18n/icons clean (218 keys x3, no fontWeight); CurrencyDropdown dead (CODE_REVIEW stale); icons.js style-forward doc drift
 - [Audit: FINAL VERDICT 2026-06-25](audit-final-verdict-2026-06-25.md) — Authoritative synthesis of 9 reports. needs-work. Blockers: signout flush data-loss, resync race, custom-split rounding. 527 tests green
+- [Audit: restructure 2026-06-26](audit-restructure-2026-06-26.md) — MOST CURRENT. All 3 prior blockers FIXED. 612 tests green. Focus: App.js 1122-line god component, dup StyleSheets (AddEntry/SharedSplitForm), CLAUDE.md "+" doc drift

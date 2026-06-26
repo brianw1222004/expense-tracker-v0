@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fonts, radius, spacing, useTheme } from '../theme';
+import { fonts, radius, spacing, useTheme, panelShadow } from '../theme';
 import Sheet from '../components/Sheet';
 import CurrencyPill from '../components/CurrencyPill';
 import CurrencyPicker from '../components/CurrencyPicker';
@@ -255,11 +255,7 @@ const createStyles = (colors) =>
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 3,
+      ...panelShadow,
     },
     nameInput: {
       color: colors.textPrimary,

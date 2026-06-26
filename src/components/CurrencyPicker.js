@@ -1,140 +1,118 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMemo } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, useTheme } from '../theme';
-import Sheet from './Sheet';
 import { useT } from '../i18n';
 import { CURRENCIES } from '../currency';
 import { HIcon } from '../icons';
 
-// The shared "Choose currency" page — a searchable list of every supported
-// currency, opened from a CurrencyPill anywhere a currency is decided (display
-// currency on the Dashboard/Budget, a group's currency). Tapping a row selects
-// it and closes. `value` is the currently-selected code.
+// Compact "Choose currency" popup — a small centered widget (not a full-height
+// sheet) opened from a CurrencyPill anywhere a currency is decided. Each row
+// shows the country flag in a circle badge, the code, and the name; tapping a
+// row selects it and closes. With only a handful of currencies the list is short
+// enough that no search field is needed. `value` is the currently-selected code.
 export default function CurrencyPicker({ visible, value, onSelect, onClose }) {
   const { colors } = useTheme();
   const t = useT();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [query, setQuery] = useState('');
-
-  // Reset the search each time the picker (re)opens.
-  useEffect(() => {
-    if (visible) setQuery('');
-  }, [visible]);
-
-  const q = query.trim().toLowerCase();
-  const results = q
-    ? CURRENCIES.filter(
-        (c) =>
-          c.code.toLowerCase().includes(q) ||
-          c.name.toLowerCase().includes(q) ||
-          c.symbol.toLowerCase().includes(q)
-      )
-    : CURRENCIES;
 
   return (
-    <Sheet visible={visible} onClose={onClose} avoidKeyboard sheetStyle={styles.sheetOverride}>
-      <View style={styles.headerRow}>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>{t('currency.choose')}</Text>
-          <Text style={styles.subtitle}>{t('currency.chooseHint')}</Text>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
+        <View style={styles.card}>
+          <View style={styles.headerRow}>
+            <Text style={styles.title}>{t('currency.choose')}</Text>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+            >
+              <HIcon name="cancel-01" size={18} color={colors.icon} />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {CURRENCIES.map((entry) => {
+              const selected = entry.code === value;
+              return (
+                <Pressable
+                  key={entry.code}
+                  onPress={() => onSelect(entry.code)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`${entry.code} ${entry.name}`}
+                  style={({ pressed }) => [
+                    styles.row,
+                    selected && styles.rowSelected,
+                    pressed && styles.rowPressed,
+                  ]}
+                >
+                  <View style={styles.badge}>
+                    <Text style={styles.flag} numberOfLines={1}>{entry.flag}</Text>
+                  </View>
+                  <View style={styles.rowText}>
+                    <Text style={styles.code}>{entry.code}</Text>
+                    <Text style={styles.name} numberOfLines={1}>{entry.name}</Text>
+                  </View>
+                  {selected && <HIcon name="tick-01" size={20} color={colors.accent} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
-        <Pressable
-          onPress={onClose}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.close')}
-          style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
-        >
-          <HIcon name="cancel-01" size={20} color={colors.icon} />
-        </Pressable>
       </View>
-
-      <View style={styles.searchRow}>
-        <HIcon name="search-01" size={18} color={colors.textMuted} />
-        <TextInput
-          style={styles.searchInput}
-          value={query}
-          onChangeText={setQuery}
-          placeholder={t('currency.search')}
-          placeholderTextColor={colors.textMuted}
-          keyboardAppearance={colors.keyboardAppearance}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          returnKeyType="search"
-          accessibilityLabel={t('currency.search')}
-        />
-      </View>
-
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
-        showsVerticalScrollIndicator={false}
-      >
-        {results.length === 0 ? (
-          <Text style={styles.noResults}>{t('currency.noResults')}</Text>
-        ) : (
-          results.map((entry) => {
-            const selected = entry.code === value;
-            return (
-              <Pressable
-                key={entry.code}
-                onPress={() => onSelect(entry.code)}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                accessibilityLabel={`${entry.code} ${entry.name}`}
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-              >
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText} numberOfLines={1}>{entry.symbol}</Text>
-                </View>
-                <View style={styles.rowText}>
-                  <Text style={styles.code}>{entry.code}</Text>
-                  <Text style={styles.name} numberOfLines={1}>{entry.name}</Text>
-                </View>
-                {selected && <HIcon name="tick-01" size={20} color={colors.accent} />}
-              </Pressable>
-            );
-          })
-        )}
-      </ScrollView>
-    </Sheet>
+    </Modal>
   );
 }
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    sheetOverride: {
-      paddingHorizontal: spacing.lg,
+    overlay: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    backdrop: {
+      backgroundColor: colors.backdrop,
+    },
+    card: {
+      width: '100%',
+      maxWidth: 380,
+      maxHeight: '72%',
+      backgroundColor: colors.background,
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
-      maxHeight: '88%',
+      paddingBottom: spacing.sm,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      elevation: 8,
     },
     headerRow: {
       flexDirection: 'row',
+      alignItems: 'center',
       justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: spacing.md,
-    },
-    headerText: {
-      flex: 1,
-      marginRight: spacing.sm,
+      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.xs,
     },
     title: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 22,
-    },
-    subtitle: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 14,
-      marginTop: 2,
+      fontSize: 18,
     },
     closeButton: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       backgroundColor: colors.cardPressed,
       alignItems: 'center',
       justifyContent: 'center',
@@ -142,56 +120,35 @@ const createStyles = (colors) =>
     closeButtonPressed: {
       opacity: 0.6,
     },
-    searchRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      backgroundColor: colors.cardPressed,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-      height: 48,
-      marginBottom: spacing.md,
-    },
-    searchInput: {
-      flex: 1,
-      color: colors.textPrimary,
-      fontFamily: fonts.regular,
-      fontSize: 15,
-      height: '100%',
-    },
-    noResults: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 14,
-      textAlign: 'center',
-      paddingVertical: spacing.xl,
+    listContent: {
+      paddingBottom: spacing.xs,
     },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-      backgroundColor: colors.card,
       borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm + 4,
-      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+      marginBottom: 2,
+    },
+    rowSelected: {
+      backgroundColor: colors.cardPressed,
     },
     rowPressed: {
       backgroundColor: colors.cardPressed,
     },
     badge: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: colors.cardPressed,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    badgeText: {
-      color: colors.textPrimary,
-      fontFamily: fonts.numBold,
-      fontSize: 15,
-      fontVariant: ['tabular-nums'],
+    flag: {
+      fontSize: 22,
+      lineHeight: 28,
     },
     rowText: {
       flex: 1,

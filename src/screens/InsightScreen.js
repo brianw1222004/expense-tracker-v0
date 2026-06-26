@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BudgetGauge from '../components/BudgetGauge';
 import EmptyState from '../components/EmptyState';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
-import { fonts, spacing, radius, useTheme } from '../theme';
+import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT } from '../i18n';
 import { formatMoneyShort } from '../format';
 import { getCurrency } from '../currency';
@@ -178,14 +178,6 @@ const CategoryBar = React.memo(function CategoryBar({ category, budget, spent, d
   );
 });
 
-const CARD_SHADOW = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 1,
-};
-
 const createStyles = (colors) =>
   StyleSheet.create({
     container: {
@@ -213,7 +205,7 @@ const createStyles = (colors) =>
       borderRadius: radius.md,
       padding: spacing.md,
       marginBottom: spacing.md,
-      ...CARD_SHADOW,
+      ...cardShadow,
     },
     cardHeader: {
       flexDirection: 'row',

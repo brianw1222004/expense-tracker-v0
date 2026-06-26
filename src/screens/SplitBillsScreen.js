@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
-import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE } from '../theme';
+import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
 import { useT } from '../i18n';
 import { formatMoney } from '../format';
 import { convert } from '../currency';
@@ -150,14 +150,6 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
   );
 });
 
-const CARD_SHADOW = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 1,
-};
-
 const createStyles = (colors) =>
   StyleSheet.create({
     container: {
@@ -190,7 +182,7 @@ const createStyles = (colors) =>
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
       padding: spacing.lg,
-      ...CARD_SHADOW,
+      ...cardShadow,
     },
     summaryLabel: {
       color: colors.textMuted,
@@ -278,7 +270,7 @@ const createStyles = (colors) =>
       padding: spacing.sm + 4,
       marginHorizontal: spacing.md,
       marginBottom: spacing.sm,
-      ...CARD_SHADOW,
+      ...cardShadow,
     },
     groupCardPressed: {
       backgroundColor: colors.cardPressed,

@@ -37,23 +37,68 @@ export function getPaymentMethodLabel(id, t) {
   return t('pay.' + getPaymentMethod(id).id);
 }
 
+// Reconcile a set of floored integer shares so they sum EXACTLY to the intended
+// total: hand out a positive `remainder` round-robin, or trim a negative one
+// (never below zero). A negative remainder happens when percentages sum just
+// over 100 (still within percentageSharesValid's tolerance) so the floored units
+// already overshoot. Shared by the percentage and tax splits.
+function distributeUnits(unitShares, remainder) {
+  const n = unitShares.length;
+  if (n === 0) return unitShares;
+  let r = remainder;
+  let i = 0;
+  while (r > 0) {
+    unitShares[i % n] += 1;
+    r -= 1;
+    i += 1;
+  }
+  // `skips` breaks out if there's nothing left to trim (all zero) — the sum
+  // invariant guarantees enough positive units, so this is just a safety net.
+  let skips = 0;
+  while (r < 0 && skips < n) {
+    const idx = i % n;
+    if (unitShares[idx] > 0) {
+      unitShares[idx] -= 1;
+      r += 1;
+      skips = 0;
+    } else {
+      skips += 1;
+    }
+    i += 1;
+  }
+  return unitShares;
+}
+
 // Split `amount` among `participantIds` (which may include YOU), respecting the
 // currency's decimal precision so the shares always sum back to `amount`.
-//  - 'equal'  → divided evenly; the leftover smallest-units are handed to the
-//               first ids one at a time (deterministic, no rounding drift).
-//  - 'custom' → use `custom` ({ id: amount }); blank/missing ids become 0. When
-//               the rounded customs already sum to the rounded bill amount, any
-//               sub-unit residual from per-share rounding is folded into the LAST
-//               participant so the persisted shares sum EXACTLY to the rounded
-//               bill (mirrors the equal-path leftover handling). When they don't
-//               sum (an invalid split the save gate rejects), they pass through
-//               unchanged.
-// Returns { [id]: shareAmount } in the bill's currency.
+//  - 'equal'      → divided evenly; the leftover smallest-units are handed to the
+//                   first ids one at a time (deterministic, no rounding drift).
+//  - 'custom'     → use `custom` ({ id: amount }); blank/missing ids become 0. When
+//                   the rounded customs already sum to the rounded bill amount, any
+//                   sub-unit residual from per-share rounding is folded into the LAST
+//                   participant so the persisted shares sum EXACTLY to the rounded
+//                   bill (mirrors the equal-path leftover handling). When they don't
+//                   sum (an invalid split the save gate rejects), they pass through
+//                   unchanged.
+//  - 'percentage' → `custom` holds each id's PERCENTAGE (summing to ~100); shares =
+//                   amount * pct/100, floored to smallest units with the leftover
+//                   units handed out round-robin so they sum to the rounded amount.
+// Returns { [id]: shareAmount } in the bill's currency. (The 'tax' mode persists
+// via computeTaxShares — it needs per-person subtotals + a tax/tip rate.)
 export function computeShares(amount, mode, participantIds, custom = {}, currency = 'USD') {
   const ids = participantIds.filter(Boolean);
   if (ids.length === 0) return {};
   const factor = 10 ** getCurrency(currency).decimals;
   const roundUnit = (n) => Math.round(n * factor) / factor;
+
+  if (mode === 'percentage') {
+    const totalUnits = Math.round(amount * factor);
+    const unitShares = ids.map((id) => Math.floor(((Number(custom[id]) || 0) / 100) * amount * factor));
+    distributeUnits(unitShares, totalUnits - unitShares.reduce((s, u) => s + u, 0));
+    const shares = {};
+    ids.forEach((id, i) => { shares[id] = unitShares[i] / factor; });
+    return shares;
+  }
 
   if (mode === 'custom') {
     const shares = {};
@@ -97,6 +142,42 @@ export function customSharesValid(amount, custom, participantIds, currency = 'US
   const roundedAmount = Number(amount.toFixed(decimals));
   const sum = participantIds.reduce((s, id) => s + roundUnit(parseCustomAmount(custom[id])), 0);
   return Math.abs(sum - roundedAmount) < 1 / factor;
+}
+
+// Whether a percentage split's per-person percentages sum to ~100 (within half a
+// percent, generous enough for "33.3" thirds). `percentages` is { id: pct }.
+export function percentageSharesValid(percentages, participantIds) {
+  const ids = participantIds.filter(Boolean);
+  if (ids.length === 0) return false;
+  const sum = ids.reduce((s, id) => s + (Number(percentages[id]) || 0), 0);
+  return Math.abs(sum - 100) < 0.5;
+}
+
+// Itemized tax split: each participant types their own subtotal (what they
+// ordered); a single tax % and optional tip % are added and distributed
+// PROPORTIONALLY to each subtotal. Returns { total, shares } in `currency`, with
+// the shares summing EXACTLY to the rounded grand total (leftover smallest-units
+// handed out round-robin, mirroring computeShares). `subtotals` is { id: amount }.
+export function computeTaxShares(subtotals, participantIds, taxPct = 0, tipPct = 0, currency = 'USD') {
+  const ids = participantIds.filter(Boolean);
+  if (ids.length === 0) return { total: 0, shares: {} };
+  const factor = 10 ** getCurrency(currency).decimals;
+  const mult = 1 + ((Number(taxPct) || 0) + (Number(tipPct) || 0)) / 100;
+  const subtotalOf = (id) => Number(subtotals[id]) || 0;
+  const totalUnits = Math.round(ids.reduce((s, id) => s + subtotalOf(id), 0) * mult * factor);
+  const unitShares = ids.map((id) => Math.floor(subtotalOf(id) * mult * factor));
+  distributeUnits(unitShares, totalUnits - unitShares.reduce((s, u) => s + u, 0));
+  const shares = {};
+  ids.forEach((id, i) => { shares[id] = unitShares[i] / factor; });
+  return { total: totalUnits / factor, shares };
+}
+
+// Whether a tax split has something to split — at least one participant's
+// subtotal is greater than zero. `subtotals` is { id: amount }.
+export function taxInputValid(subtotals, participantIds) {
+  const ids = participantIds.filter(Boolean);
+  if (ids.length === 0) return false;
+  return ids.reduce((s, id) => s + (Number(subtotals[id]) || 0), 0) > 0;
 }
 
 // The bills belonging to one group (helper so callers can pass the flat list).

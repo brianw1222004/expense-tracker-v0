@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { fonts, radius, spacing, useTheme } from '../theme';
+import { fonts, radius, spacing, useTheme, cardShadow } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
 import { buildCalendarWeeks, dateKey, dayLabel, formatMoney, monthLabel } from '../format';
@@ -367,11 +367,7 @@ const createStyles = (colors) =>
       paddingTop: spacing.sm,
       paddingBottom: spacing.xs,
       paddingHorizontal: spacing.xs,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 8,
-      elevation: 1,
+      ...cardShadow,
     },
     calHeader: {
       flexDirection: 'row',
@@ -512,11 +508,7 @@ const createStyles = (colors) =>
       padding: spacing.lg,
       width: '100%',
       maxWidth: 340,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 8,
-      elevation: 1,
+      ...cardShadow,
     },
     modalTitle: {
       color: colors.textPrimary,

@@ -8,7 +8,7 @@ import CurrencyPicker from '../components/CurrencyPicker';
 import EmptyState from '../components/EmptyState';
 import SpendingChart from '../components/SpendingChart';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
-import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE } from '../theme';
+import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthLabel } from '../format';
 
@@ -99,12 +99,15 @@ export default function DashboardScreen({
             {t('dash.greeting', { name: greetingName })}
           </Text>
         ) : (
-          <Pressable onPress={onOpenAccount} accessibilityRole="button">
+          <Pressable onPress={onOpenAccount} accessibilityRole="button" style={styles.greetingPressable}>
             <Text style={styles.greeting} numberOfLines={1}>
               {t('dash.greetingNoName')}
             </Text>
           </Pressable>
         )}
+        <Text style={styles.monthHeading} numberOfLines={1}>
+          {monthLabel(new Date(), language)}
+        </Text>
       </View>
 
       {/* Monthly Spending — total, month-over-month delta, currency picker, trend chart */}
@@ -128,22 +131,27 @@ export default function DashboardScreen({
           )}
         </View>
 
-        <View style={styles.heroSubRow}>
-          <View style={styles.monthPill}>
-            <Text style={styles.monthPillText}>{monthLabel(new Date(), language)}</Text>
-          </View>
-          {hasExpenses && hasLastMonth && (
-            <Text style={styles.vsText}>{t('dash.vsLastMonth')}</Text>
-          )}
-        </View>
-
         {hasExpenses && dailyTotals && (
-          <SpendingChart
-            dailyTotals={dailyTotals}
-            displayCurrency={displayCurrency}
-          />
+          <View style={styles.chartWrap}>
+            <SpendingChart
+              dailyTotals={dailyTotals}
+              displayCurrency={displayCurrency}
+            />
+          </View>
         )}
       </View>
+
+      {hasExpenses && (
+        <CategorySummaryCard
+          months={categoryMonths}
+          monthKey={categoryMonthKey}
+          currentMonthKey={currentMonthKey}
+          displayCurrency={displayCurrency}
+          allCategories={allCategories}
+          onShiftMonth={onShiftCategoryMonth}
+          onMoreDetail={onCategoryDetail}
+        />
+      )}
 
       {splitSummary && (splitSummary.owed > 0.005 || splitSummary.owe > 0.005) && (
         <Pressable
@@ -172,18 +180,6 @@ export default function DashboardScreen({
             </View>
           </View>
         </Pressable>
-      )}
-
-      {hasExpenses && (
-        <CategorySummaryCard
-          months={categoryMonths}
-          monthKey={categoryMonthKey}
-          currentMonthKey={currentMonthKey}
-          displayCurrency={displayCurrency}
-          allCategories={allCategories}
-          onShiftMonth={onShiftCategoryMonth}
-          onMoreDetail={onCategoryDetail}
-        />
       )}
 
       {loaded && !hasExpenses && (
@@ -221,14 +217,6 @@ const DeltaBadge = React.memo(function DeltaBadge({ value, dir, colors, styles }
   );
 });
 
-const CARD_SHADOW = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 1,
-};
-
 const createStyles = (colors) =>
   StyleSheet.create({
     container: {
@@ -241,8 +229,10 @@ const createStyles = (colors) =>
     },
 
     greetingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       minHeight: ACCOUNT_FAB_SIZE,
-      justifyContent: 'center',
       marginTop: spacing.sm,
       marginBottom: spacing.md,
       marginHorizontal: spacing.md,
@@ -253,31 +243,31 @@ const createStyles = (colors) =>
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 22,
+      flexShrink: 1,
+    },
+    greetingPressable: {
+      flexShrink: 1,
+    },
+    // Current-month label, top-right of the greeting row — mirrors the greeting.
+    monthHeading: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 22,
+      marginLeft: spacing.sm,
+      flexShrink: 0,
     },
     spendCard: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
       padding: spacing.lg,
-      ...CARD_SHADOW,
+      ...cardShadow,
     },
     spendTopRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: spacing.sm,
-    },
-    monthPill: {
-      backgroundColor: colors.accent + '18',
-      borderRadius: 20,
-      paddingHorizontal: spacing.sm + 4,
-      paddingVertical: spacing.xs + 1,
-    },
-    monthPillText: {
-      color: colors.textSecondary,
-      fontFamily: fonts.medium,
-      fontSize: 12,
-      letterSpacing: 0.3,
     },
     balanceLabel: {
       color: colors.textMuted,
@@ -299,16 +289,8 @@ const createStyles = (colors) =>
       letterSpacing: -0.5,
       flexShrink: 1,
     },
-    heroSubRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
+    chartWrap: {
       marginTop: spacing.md,
-    },
-    vsText: {
-      color: colors.textMuted,
-      fontFamily: fonts.medium,
-      fontSize: 12,
     },
 
     // Percentage-change pill (filled circle + arrow + percent).
@@ -357,7 +339,7 @@ const createStyles = (colors) =>
       padding: spacing.md,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
-      ...CARD_SHADOW,
+      ...cardShadow,
     },
     splitCardPressed: {
       backgroundColor: colors.cardPressed,

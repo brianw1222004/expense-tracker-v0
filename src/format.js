@@ -33,6 +33,13 @@ export function isValidAmountText(text, decimals) {
   return new RegExp(`^(\\d+(\\.\\d{0,${decimals}})?|\\.\\d{1,${decimals}})$`).test(text);
 }
 
+// Strip everything except digits and the two decimal separators from a money
+// input, for an onChangeText sanitizer (shared by the add forms' amount/share
+// fields). Validation still runs through isValidAmountText before saving.
+export function cleanAmountInput(text) {
+  return text.replace(/[^0-9.,]/g, '');
+}
+
 export function dateKey(timestamp) {
   const d = new Date(timestamp);
   const m = String(d.getMonth() + 1).padStart(2, '0');

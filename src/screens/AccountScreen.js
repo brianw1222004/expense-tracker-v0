@@ -9,7 +9,7 @@ import Sheet from '../components/Sheet';
 // Account view. Presented as a near-full (92%) bottom sheet opened by the
 // floating account button — mirrors BudgetScreen's Modal/backdrop/sheet
 // mechanism (the RN Modal's animationType="slide" provides the slide-up).
-export default function AccountScreen({ visible, settings, onUpdateSettings, accountEmail, onSignOut, onClose }) {
+export default function AccountScreen({ visible, settings, onUpdateSettings, accountEmail, onSignOut, onDeleteAccount, onClose }) {
   const { colors } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -183,6 +183,19 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
               })}
             </View>
 
+            <Text style={styles.sectionHeader}>{t('acct.dangerZone')}</Text>
+            <View style={styles.card}>
+              <Pressable
+                onPress={onDeleteAccount}
+                accessibilityRole="button"
+                accessibilityLabel={t('acct.deleteAccount')}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              >
+                <Text style={styles.deleteAccountText}>{t('acct.deleteAccount')}</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.sectionNote}>{t('acct.deleteNote')}</Text>
+
           </ScrollView>
     </Sheet>
   );
@@ -269,6 +282,11 @@ const createStyles = (colors) =>
       width: 20,
     },
     signOutText: {
+      color: colors.danger,
+      fontSize: 15,
+      fontFamily: fonts.bold,
+    },
+    deleteAccountText: {
       color: colors.danger,
       fontSize: 15,
       fontFamily: fonts.bold,

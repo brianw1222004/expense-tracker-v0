@@ -192,3 +192,21 @@ export async function loadCategoryOrder(userId) {
     return null;
   }
 }
+
+// Wipe every cached key for one user (used by "delete account"). Best-effort,
+// like the rest of this layer — in-memory state is reset separately by the caller.
+export async function clearUserStorage(userId) {
+  const keys = [
+    STORAGE_KEY,
+    INCOME_KEY,
+    SETTINGS_KEY,
+    GROUPS_KEY,
+    SPLITS_KEY,
+    CATEGORY_ORDER_KEY,
+  ].map((base) => scopedKey(base, userId));
+  try {
+    await AsyncStorage.multiRemove(keys);
+  } catch {
+    // Best-effort.
+  }
+}
