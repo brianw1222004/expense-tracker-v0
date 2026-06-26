@@ -240,6 +240,12 @@ describe('computeShares() custom mode', () => {
     expect(shares['a']).toBeCloseTo(33.33, 2);
   });
 
+  it('normalizes comma decimal strings in custom amounts', () => {
+    const shares = computeShares(10, 'custom', ['a', 'b'], { a: '5,25', b: '4,75' });
+    expect(shares['a']).toBeCloseTo(5.25, 2);
+    expect(shares['b']).toBeCloseTo(4.75, 2);
+  });
+
   it('returns empty object for empty participant list', () => {
     expect(computeShares(100, 'custom', [], { x: 50 })).toEqual({});
   });
@@ -278,6 +284,10 @@ describe('customSharesValid()', () => {
 
   it('returns true for a single participant whose share equals total', () => {
     expect(customSharesValid(50, { [YOU]: 50 }, [YOU])).toBe(true);
+  });
+
+  it('returns true when comma decimal custom shares sum to total', () => {
+    expect(customSharesValid(10, { a: '5,25', b: '4,75' }, ['a', 'b'])).toBe(true);
   });
 
   it('treats missing custom entries as 0', () => {

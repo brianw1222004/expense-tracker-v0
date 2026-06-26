@@ -23,6 +23,11 @@ export const PAYMENT_METHODS = [
 
 const FALLBACK_METHOD = PAYMENT_METHODS[0];
 
+function parseCustomAmount(value) {
+  const normalized = typeof value === 'string' ? value.replace(',', '.') : value;
+  return Number(normalized) || 0;
+}
+
 // Unknown/stale method ids fall back to "cash" so old groups still render.
 export function getPaymentMethod(id) {
   return PAYMENT_METHODS.find((m) => m.id === id) ?? FALLBACK_METHOD;
@@ -52,7 +57,7 @@ export function computeShares(amount, mode, participantIds, custom = {}, currenc
 
   if (mode === 'custom') {
     const shares = {};
-    for (const id of ids) shares[id] = roundUnit(Number(custom[id]) || 0);
+    for (const id of ids) shares[id] = roundUnit(parseCustomAmount(custom[id]));
     // Reconcile so the rounded shares sum exactly to the rounded bill amount,
     // but only when they're already meant to (a sub-unit residual ≤ one smallest
     // unit, the same tolerance customSharesValid accepts) — that residual goes to
@@ -90,7 +95,7 @@ export function customSharesValid(amount, custom, participantIds, currency = 'US
   const factor = 10 ** decimals;
   const roundUnit = (n) => Math.round(n * factor) / factor;
   const roundedAmount = Number(amount.toFixed(decimals));
-  const sum = participantIds.reduce((s, id) => s + roundUnit(Number(custom[id]) || 0), 0);
+  const sum = participantIds.reduce((s, id) => s + roundUnit(parseCustomAmount(custom[id])), 0);
   return Math.abs(sum - roundedAmount) < 1 / factor;
 }
 
