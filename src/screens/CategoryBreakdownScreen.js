@@ -1,21 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoneyShort, monthKeyLabel } from '../format';
 import { getCategoryLabel, EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
-import EmptyState from '../components/EmptyState';
-import { TAB_BAR_HEIGHT } from '../components/TabBar';
+import Sheet from '../components/Sheet';
 import { HIcon } from '../icons';
-
-
-const DONUT_SIZE = 132;
-const DONUT_STROKE = 20;
-const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2;
-const DONUT_CX = DONUT_SIZE / 2;
-const DONUT_CY = DONUT_SIZE / 2;
-const DONUT_CIRC = 2 * Math.PI * DONUT_R;
 
 function hslToHex(h, s, l) {
   s /= 100; l /= 100;
@@ -34,17 +26,22 @@ const HUE_STOPS = [
   { offset: '100%', color: '#ff0000' },
 ];
 
-export default function CategoriesScreen({
+// The per-category spending breakdown — a full-height page (Sheet) opened from
+// the Dashboard's category summary card via its "more detail" pill. Holds the
+// draggable per-category grid (each category's month amount + month-over-month
+// delta) and the add/edit-category modal. Month selection is shared with the
+// summary card (driven by App.js), so navigating here or there stays in sync.
+export default function CategoryBreakdownScreen({
+  visible,
+  onClose,
   months,
+  monthKey,
   currentMonthKey,
-  loaded,
-  hasExpenses,
+  onShiftMonth,
   displayCurrency,
   allCategories,
   categoryOrder,
   onReorderCategories,
-  onAddPress,
-  onLoadDemo,
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
@@ -52,36 +49,28 @@ export default function CategoriesScreen({
   const { colors } = useTheme();
   const t = useT();
   const language = useLanguage();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [modalCategory, setModalCategory] = useState(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
 
-  const [viewMonthKey, setViewMonthKey] = useState(currentMonthKey);
-  const effectiveKey = months.some((m) => m.key === viewMonthKey) ? viewMonthKey : currentMonthKey;
-
   const viewMonth = useMemo(
-    () => months.find((m) => m.key === effectiveKey) ?? { key: effectiveKey, total: 0, byCategory: {} },
-    [months, effectiveKey]
+    () => months.find((m) => m.key === monthKey) ?? { key: monthKey, total: 0, byCategory: {} },
+    [months, monthKey]
   );
 
-  const [py, pm] = effectiveKey.split('-').map(Number);
-  const prevD = new Date(py, pm - 2, 1);
-  const prevMonthKey = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}`;
+  const prevMonthKey = useMemo(() => {
+    const [y, m] = monthKey.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }, [monthKey]);
 
   const prevMonth = useMemo(
     () => months.find((m) => m.key === prevMonthKey) ?? { key: prevMonthKey, total: 0, byCategory: {} },
     [months, prevMonthKey]
   );
 
-  const shiftMonth = (dir) => {
-    setViewMonthKey((key) => {
-      const [y, m] = key.split('-').map(Number);
-      const d = new Date(y, m - 1 + dir, 1);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    });
-  };
-
-  const canGoNext = effectiveKey < currentMonthKey;
+  const canGoNext = monthKey < currentMonthKey;
 
   const categoryRows = useMemo(() => {
     const cats = allCategories ?? [];
@@ -94,9 +83,6 @@ export default function CategoriesScreen({
       .filter((row) => row.thisVal > 0 || row.lastVal > 0)
       .sort((a, b) => b.thisVal - a.thisVal || b.lastVal - a.lastVal);
   }, [allCategories, viewMonth, prevMonth]);
-
-
-  const monthLabelText = monthKeyLabel(effectiveKey, language);
 
   const handleSaveCategory = (cat) => {
     if (cat._editing) {
@@ -115,30 +101,37 @@ export default function CategoriesScreen({
     }
   };
 
-  if (!loaded) return <View style={styles.container} />;
-
-  if (!hasExpenses) {
-    return (
-      <EmptyState
-        onAdd={onAddPress}
-        onLoadDemo={onLoadDemo}
-        colors={colors}
-        t={t}
-        hintKey="cats.emptyHint"
-      />
-    );
-  }
-
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.content}
-      scrollEnabled={scrollEnabled}
-    >
-      <Text style={styles.title}>{t('cats.title')}</Text>
+    <Sheet visible={visible} onClose={onClose} showHandle sheetStyle={styles.sheet}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{t('cats.title')}</Text>
+        <Pressable
+          onPress={onClose}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+          style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}
+        >
+          <HIcon name="cancel-01" size={18} color={colors.icon} />
+        </Pressable>
+      </View>
 
-      {/* Add Category at top */}
+      <View style={styles.monthNav}>
+        <Pressable onPress={() => onShiftMonth(-1)} hitSlop={12} accessibilityRole="button">
+          <HIcon name="chevron-left" size={20} color={colors.icon} />
+        </Pressable>
+        <Text style={styles.monthLabel}>{monthKeyLabel(monthKey, language)}</Text>
+        <Pressable
+          onPress={() => onShiftMonth(1)}
+          disabled={!canGoNext}
+          hitSlop={12}
+          accessibilityRole="button"
+          style={!canGoNext ? styles.navDisabled : undefined}
+        >
+          <HIcon name="chevron-right" size={20} color={colors.icon} />
+        </Pressable>
+      </View>
+
       <Pressable
         onPress={() => setModalCategory('new')}
         accessibilityRole="button"
@@ -148,53 +141,32 @@ export default function CategoriesScreen({
         <Text style={styles.addCatText}>{t('cats.addCategory')}</Text>
       </Pressable>
 
-      {/* Month nav + donut + stat widgets */}
-      <View style={styles.donutCard}>
-        <View style={styles.monthNav}>
-          <Pressable onPress={() => shiftMonth(-1)} hitSlop={12} accessibilityRole="button">
-            <HIcon name="chevron-left" size={20} color={colors.icon} />
-          </Pressable>
-          <Text style={styles.monthLabel}>{monthLabelText}</Text>
-          <Pressable
-            onPress={() => shiftMonth(1)}
-            disabled={!canGoNext}
-            hitSlop={12}
-            accessibilityRole="button"
-            style={!canGoNext ? styles.navDisabled : undefined}
-          >
-            <HIcon name="chevron-right" size={20} color={colors.icon} />
-          </Pressable>
-        </View>
-        <CategoryDonut
-          byCategory={viewMonth.byCategory}
-          total={viewMonth.total}
-          displayCurrency={displayCurrency}
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xl + insets.bottom }]}
+        scrollEnabled={scrollEnabled}
+      >
+        <DraggableCatGrid
+          categoryRows={categoryRows}
           allCategories={allCategories}
+          displayCurrency={displayCurrency}
+          order={categoryOrder}
+          onReorder={onReorderCategories}
           colors={colors}
           styles={styles}
           t={t}
+          onEditCategory={setModalCategory}
+          onDragStateChange={setScrollEnabled}
         />
-      </View>
 
-      {/* Category spending grid — draggable */}
-      <DraggableCatGrid
-        categoryRows={categoryRows}
-        allCategories={allCategories}
-        displayCurrency={displayCurrency}
-        order={categoryOrder}
-        onReorder={onReorderCategories}
-        colors={colors}
-        styles={styles}
-        t={t}
-        onEditCategory={setModalCategory}
-        onDragStateChange={setScrollEnabled}
-      />
+        {categoryRows.length === 0 && !(allCategories ?? []).some((c) => c.custom) && (
+          <Text style={styles.noCats}>{t('cats.emptyHint')}</Text>
+        )}
+      </ScrollView>
 
-      {categoryRows.length === 0 && !(allCategories ?? []).some((c) => c.custom) && (
-        <Text style={styles.noCats}>{t('cats.emptyHint')}</Text>
-      )}
-
-      {/* Add/Edit category modal */}
+      {/* Rendered LAST inside the Sheet so this nested Modal's backdrop paints
+          above the parent sheet on react-native-web (DOM render order). */}
       <AddCategoryModal
         visible={modalCategory != null}
         editingCategory={modalCategory !== 'new' ? modalCategory : null}
@@ -204,8 +176,7 @@ export default function CategoriesScreen({
         colors={colors}
         t={t}
       />
-
-    </ScrollView>
+    </Sheet>
   );
 }
 
@@ -354,6 +325,9 @@ function DraggableCatGrid({ categoryRows, allCategories, displayCurrency, order,
             style={[styles.catRow, { backgroundColor: `${category.color}0A`, borderLeftWidth: 3, borderLeftColor: `${category.color}33` }, animStyle]}
             onLayout={(e) => { cellLayouts.current[i] = e.nativeEvent.layout; }}
           >
+            {/* Long-press arms drag-to-reorder. NOTE: onLongPress is emulated
+                unreliably on react-native-web, so reordering is a native-first
+                affordance; tap-to-edit (custom categories) works everywhere. */}
             <Pressable
               onLongPress={() => startDrag(i)}
               onPress={isCustom ? () => onEditCategory(category) : undefined}
@@ -385,7 +359,10 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
   const sliderWidth = useRef(0);
   const customHexColor = useMemo(() => hslToHex(hue, 80, 50), [hue]);
 
-  // Reset form when modal opens/closes or editing target changes
+  // Reset the form each time the modal opens. The `initialized` latch keys off
+  // `visible`, which always cycles between opens (the parent Sheet unmounts this
+  // tree when closed), so reading `initialized`/`isEdit`/`editingCategory` here
+  // without listing them as deps is safe — every reopen re-runs the init branch.
   useEffect(() => {
     if (visible && !initialized) {
       if (isEdit) {
@@ -548,7 +525,6 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
                 onPress={() => {
                   setCustomColorActive((prev) => {
                     if (!prev) {
-                      // Activating: set color to the current custom hex
                       setColor(customHexColor);
                     }
                     return !prev;
@@ -610,7 +586,6 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
                     </Defs>
                     <Rect x="0" y="0" width="100%" height="24" rx="12" fill="url(#hueBarGrad)" />
                   </Svg>
-                  {/* Slider thumb indicator */}
                   <View
                     style={[
                       styles.hueThumb,
@@ -665,192 +640,34 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
   );
 }
 
-// Minimum gap (in SVG units along the circumference) reserved between segments
-// so a 100%-one-category month never renders a seam from a zero-width gap.
-const MIN_GAP = 0.5;
-
-function buildArcs(segments, total) {
-  if (total <= 0 || segments.length === 0) return [];
-  // Reserve MIN_GAP per segment so each arc is visually separated.
-  const totalGap = segments.length * MIN_GAP;
-  const available = Math.max(0, DONUT_CIRC - totalGap);
-  let cursor = 0;
-  return segments.map((seg) => {
-    const dash = (seg.value / total) * available;
-    const offset = DONUT_CIRC * 0.25 - cursor;
-    cursor += dash + MIN_GAP;
-    return {
-      key: seg.category.id,
-      color: seg.category.color,
-      dash: Math.max(dash, 0),
-      offset,
-    };
-  });
-}
-
-function formatPct(pct) {
-  if (pct < 10) return `${pct.toFixed(1)}%`;
-  // Never round a sub-100% share up to "100%" — beside a non-zero "least" card
-  // that reads as a contradiction (the two visibly don't sum).
-  const rounded = Math.round(pct);
-  return `${rounded >= 100 && pct < 100 ? 99 : rounded}%`;
-}
-
-// Modern rounded-segment donut of one month's spending by category. The ring
-// still carries the breakdown of ALL categories; beside it we surface only the
-// extremes — the single most- and least-spent categories — sharing the same
-// `total` denominator so their percentages match the arcs.
-function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colors, styles, t }) {
-  const segments = useMemo(() => {
-    if (total <= 0) return [];
-    return (allCategories ?? [])
-      .map((cat) => ({ category: cat, value: byCategory[cat.id] ?? 0 }))
-      .filter((s) => s.value > 0)
-      .sort((a, b) => b.value - a.value);
-  }, [byCategory, total, allCategories]);
-
-  const arcs = useMemo(() => buildArcs(segments, total), [segments, total]);
-
-  const mostSeg = segments[0] ?? null;
-  const leastSeg = segments.length > 1 ? segments[segments.length - 1] : null;
-
-  return (
-    <View style={styles.donutBody}>
-      <View style={styles.donut}>
-        <Svg width="100%" height="100%" viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}>
-          <Circle
-            cx={DONUT_CX}
-            cy={DONUT_CY}
-            r={DONUT_R}
-            stroke={colors.cardPressed}
-            strokeWidth={DONUT_STROKE}
-            fill="none"
-          />
-          {arcs.map((arc) => (
-            <Circle
-              key={arc.key}
-              cx={DONUT_CX}
-              cy={DONUT_CY}
-              r={DONUT_R}
-              stroke={arc.color}
-              strokeWidth={DONUT_STROKE}
-              fill="none"
-              strokeDasharray={`${arc.dash} ${DONUT_CIRC - arc.dash}`}
-              strokeDashoffset={arc.offset}
-            />
-          ))}
-        </Svg>
-        <View style={[StyleSheet.absoluteFill, styles.donutCenter]}>
-          <Text
-            style={[styles.donutTotal, { color: colors.textPrimary }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            {formatMoneyShort(total, displayCurrency)}
-          </Text>
-          <Text style={styles.donutCaption}>{t('cats.totalCaption')}</Text>
-        </View>
-      </View>
-
-      <View style={styles.statCol}>
-        {mostSeg && (
-          <ExtremeStat
-            label={t('cats.mostSpending')}
-            seg={mostSeg}
-            total={total}
-            displayCurrency={displayCurrency}
-            colors={colors}
-            styles={styles}
-            t={t}
-          />
-        )}
-        {leastSeg && (
-          <ExtremeStat
-            label={t('cats.leastSpending')}
-            seg={leastSeg}
-            total={total}
-            displayCurrency={displayCurrency}
-            colors={colors}
-            styles={styles}
-            t={t}
-          />
-        )}
-      </View>
-    </View>
-  );
-}
-
-// One "most/least spending" card beside the donut: a tinted pill with the
-// category's color, its name + share, and the amount in the display currency.
-function ExtremeStat({ label, seg, total, displayCurrency, colors, styles, t }) {
-  const pct = (seg.value / total) * 100;
-  return (
-    <View style={[styles.statCard, { backgroundColor: `${seg.category.color}14` }]}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <View style={styles.statRow}>
-        <View style={[styles.statDot, { backgroundColor: seg.category.color }]} />
-        <Text style={styles.statName} numberOfLines={1}>
-          {getCategoryLabel(seg.category, t)}
-        </Text>
-        <Text style={[styles.statPct, { color: seg.category.color }]}>{formatPct(pct)}</Text>
-      </View>
-      <Text style={styles.statAmount} numberOfLines={1}>
-        {formatMoneyShort(seg.value, displayCurrency)}
-      </Text>
-    </View>
-  );
-}
-
 const createStyles = (colors) =>
   StyleSheet.create({
-    container: { flex: 1 },
-    content: {
+    sheet: {
+      height: '90%',
       paddingHorizontal: spacing.md,
-      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
-      gap: spacing.xs,
+      paddingTop: spacing.sm,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.sm,
     },
     title: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 26,
-      paddingTop: spacing.md,
-      textAlign: 'center',
+      fontSize: 20,
     },
-
-    addCatButton: {
-      flexDirection: 'row',
+    closeBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: colors.card,
       alignItems: 'center',
-      backgroundColor: colors.card,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm + 2,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderStyle: 'dashed',
+      justifyContent: 'center',
     },
-    addCatButtonPressed: { backgroundColor: colors.cardPressed },
-    addCatPlus: {
-      color: colors.accent,
-      fontFamily: fonts.bold,
-      fontSize: 18,
-      marginRight: spacing.sm,
-    },
-    addCatText: {
-      color: colors.accent,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-    },
+    closeBtnPressed: { backgroundColor: colors.cardPressed },
 
-    donutCard: {
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      padding: spacing.md,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 8,
-      elevation: 1,
-    },
     monthNav: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -866,73 +683,35 @@ const createStyles = (colors) =>
       minWidth: 100,
       textAlign: 'center',
     },
-    donutBody: {
+
+    addCatButton: {
       flexDirection: 'row',
       alignItems: 'center',
-    },
-    donut: { width: DONUT_SIZE, height: DONUT_SIZE },
-    donutCenter: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: DONUT_STROKE + 4,
-    },
-    donutTotal: {
-      fontFamily: fonts.numBold,
-      fontSize: 18,
-      fontVariant: ['tabular-nums'],
-    },
-    donutCaption: {
-      color: colors.textMuted,
-      fontFamily: fonts.medium,
-      fontSize: 10,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
-      marginTop: 1,
-    },
-    statCol: {
-      flex: 1,
-      marginLeft: spacing.md,
-      gap: spacing.sm,
-    },
-    statCard: {
+      backgroundColor: colors.card,
       borderRadius: radius.sm,
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: spacing.sm,
-      gap: 3,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+      marginBottom: spacing.sm,
     },
-    statLabel: {
-      color: colors.textMuted,
-      fontFamily: fonts.medium,
-      fontSize: 10,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
+    addCatButtonPressed: { backgroundColor: colors.cardPressed },
+    addCatPlus: {
+      color: colors.accent,
+      fontFamily: fonts.bold,
+      fontSize: 18,
+      marginRight: spacing.sm,
     },
-    statRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs + 2,
-    },
-    statDot: {
-      width: 9,
-      height: 9,
-      borderRadius: 5,
-    },
-    statName: {
-      flex: 1,
-      color: colors.textPrimary,
+    addCatText: {
+      color: colors.accent,
       fontFamily: fonts.bold,
       fontSize: 13,
     },
-    statPct: {
-      fontFamily: fonts.numBold,
-      fontSize: 13,
-      fontVariant: ['tabular-nums'],
-    },
-    statAmount: {
-      color: colors.textSecondary,
-      fontFamily: fonts.numRegular,
-      fontSize: 12,
-      fontVariant: ['tabular-nums'],
+
+    scroll: { flex: 1 },
+    scrollContent: {
+      gap: spacing.xs,
     },
 
     catGrid: {
@@ -989,7 +768,6 @@ const createStyles = (colors) =>
       textAlign: 'center',
       paddingVertical: spacing.lg,
     },
-
   });
 
 const createModalStyles = (colors) =>

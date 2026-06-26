@@ -48,6 +48,7 @@ import Calendar01Icon from '@hugeicons/core-free-icons/Calendar01Icon';
 import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import PlusSignIcon from '@hugeicons/core-free-icons/PlusSignIcon';
 import Search01Icon from '@hugeicons/core-free-icons/Search01Icon';
+import Analytics01Icon from '@hugeicons/core-free-icons/Analytics01Icon';
 const REGISTRY = {
   'hamburger-01': Hamburger01Icon,
   'shopping-cart-01': ShoppingCart01Icon,
@@ -97,6 +98,7 @@ const REGISTRY = {
   'user-group': UserGroupIcon,
   'plus-sign': PlusSignIcon,
   'search-01': Search01Icon,
+  'analytics-01': Analytics01Icon,
 };
 
 export function HIcon({ name, size = 24, color = '#000', strokeWidth = 1.5, style }) {

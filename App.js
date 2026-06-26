@@ -31,9 +31,9 @@ import {
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddEntryScreen from './src/screens/AddEntryScreen';
 import ExpenseListScreen from './src/screens/ExpenseListScreen';
-import CategoriesScreen from './src/screens/CategoriesScreen';
+import CategoryBreakdownScreen from './src/screens/CategoryBreakdownScreen';
 import AccountScreen from './src/screens/AccountScreen';
-import IncomeBalanceScreen from './src/screens/IncomeBalanceScreen';
+import InsightScreen from './src/screens/InsightScreen';
 import SplitBillsScreen from './src/screens/SplitBillsScreen';
 import GroupDetailScreen from './src/screens/GroupDetailScreen';
 import CreateGroupScreen from './src/screens/CreateGroupScreen';
@@ -96,11 +96,8 @@ const Haptics = Platform.OS === 'web'
   ? { notificationAsync: () => Promise.resolve(), impactAsync: () => Promise.resolve(), NotificationFeedbackType: HapticsModule.NotificationFeedbackType, ImpactFeedbackStyle: HapticsModule.ImpactFeedbackStyle }
   : HapticsModule;
 
-const TAB_INDEX = { dashboard: 0, list: 1, categories: 2, split: 3, balance: 4 };
-const TAB_NAMES = ['dashboard', 'list', 'categories', 'split', 'balance'];
-
-// How far the incoming add/income form slides in when toggling entry type.
-const ADD_MODE_SLIDE = 36;
+const TAB_INDEX = { dashboard: 0, list: 1, split: 2, insight: 3 };
+const TAB_NAMES = ['dashboard', 'list', 'split', 'insight'];
 
 // Entry ids. crypto.randomUUID isn't guaranteed: Hermes (RN) has no global
 // crypto and web only exposes it in a secure context, so a bare call can throw
@@ -156,21 +153,16 @@ function ExpenseTracker() {
   const prevTabRef = useRef('dashboard');
   const swipeDirRef = useRef(0);
   // The budget editor, account, and create-group sheets sit over the active tab.
-  const [overlay, setOverlay] = useState(null); // null | 'budget' | 'account' | 'createGroup'
+  const [overlay, setOverlay] = useState(null); // null | 'budget' | 'account' | 'createGroup' | 'categoryDetail'
   // Split-bills sheets: the open group's id (detail), and the group a new bill
   // is being added to. Both null = closed.
   const [activeGroupId, setActiveGroupId] = useState(null);
   const [addSplitFor, setAddSplitFor] = useState(null);
-  // The add popup sits over whichever tab is active. A header pill toggles it
-  // between adding an expense and adding income; both share this one popup.
+  // Selected month for the Dashboard category card + its breakdown page (shared
+  // so navigating in either place stays in sync).
+  const [catMonthKey, setCatMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
+  // The add popup sits over whichever tab is active (expenses only).
   const [addOpen, setAddOpen] = useState(false);
-  const [addMode, setAddMode] = useState('expense'); // 'expense' | 'income'
-  // Drives the form-swap transition: the incoming form fades + slides into place
-  // (expense from the left, income from the right, matching the toggle layout).
-  // Reset to 0 synchronously in changeAddMode so the new form's first frame is
-  // already off-screen — then the effect below animates it to 1.
-  const addModeAnim = useRef(new Animated.Value(1)).current;
-  const addModeFirst = useRef(true);
   const [editingExpense, setEditingExpense] = useState(null);
   // The edit-income popup (add income now lives in the shared add popup above).
   const [editingIncome, setEditingIncome] = useState(null);
@@ -320,35 +312,10 @@ function ExpenseTracker() {
     if (dataUser && dataUser === userId) saveSettings(dataUser, settings);
   }, [settings, dataUser, userId]);
 
-  // Open the shared add popup in the given mode. Always sets the mode so the
-  // popup never reopens on the type the user last switched to mid-session.
-  const openAdd = useCallback((mode = 'expense') => {
-    addModeAnim.setValue(1); // open fully visible; the modal's own anim plays
-    setAddMode(mode);
+  // Open the shared add popup (expenses only).
+  const openAdd = useCallback(() => {
     setAddOpen(true);
-  }, [addModeAnim]);
-
-  // Toggle entry type from the in-popup pill. Snap the entrance value to 0 first
-  // so the newly-shown form renders off-screen, then the effect animates it in.
-  const changeAddMode = useCallback((next) => {
-    addModeAnim.setValue(0);
-    setAddMode(next);
-  }, [addModeAnim]);
-
-  useEffect(() => {
-    if (addModeFirst.current) {
-      addModeFirst.current = false;
-      return;
-    }
-    const anim = Animated.timing(addModeAnim, {
-      toValue: 1,
-      duration: 240,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [addMode, addModeAnim]);
+  }, []);
 
   const addExpense = ({ amount, currency, note, category, createdAt }) => {
     const expense = {
@@ -382,22 +349,6 @@ function ExpenseTracker() {
     // (no-op when deleting from the list, where editingExpense is already null).
     setEditingExpense(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-  };
-
-  const addIncome = ({ amount, currency, source, note, createdAt }) => {
-    const entry = {
-      id: makeId('i'),
-      amount,
-      currency,
-      source,
-      note,
-      createdAt: createdAt ?? Date.now(),
-    };
-    setIncome((prev) => [entry, ...prev]);
-    enqueueIncomeUpsert(userId, entry);
-    setAddOpen(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    AccessibilityInfo.announceForAccessibility(translate(language, 'income.added'));
   };
 
   const updateIncome = ({ id, amount, currency, source, note, createdAt }) => {
@@ -781,21 +732,20 @@ function ExpenseTracker() {
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
   const addSplitGroup = groups.find((g) => g.id === addSplitFor) ?? null;
 
-  // Per-month and all-time expense totals (display currency) for the Income
-  // screen's balance + chart. Derived from the same `months` aggregate.
-  const { expenseByMonth, totalExpenses } = useMemo(() => {
-    const map = {};
-    let total = 0;
-    for (const m of months) {
-      map[m.key] = m.total;
-      total += m.total;
-    }
-    return { expenseByMonth: map, totalExpenses: total };
-  }, [months]);
-
   const loaded = dataUser != null && dataUser === userId;
   const hasExpenses = expenses.length > 0;
   const currentMonthKey = dayStamp.slice(0, 7);
+
+  // Resolve the category card/breakdown month, falling back to the current month
+  // when the selected month has no spending data (mirrors the old Categories tab).
+  const catEffectiveKey = months.some((m) => m.key === catMonthKey) ? catMonthKey : currentMonthKey;
+  const shiftCatMonth = useCallback((dir) => {
+    setCatMonthKey((key) => {
+      const [y, m] = key.split('-').map(Number);
+      const d = new Date(y, m - 1 + dir, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    });
+  }, []);
 
   let content = null;
   if (isSupabaseConfigured && !session) {
@@ -829,20 +779,20 @@ function ExpenseTracker() {
               monthTotal={monthTotal}
               lastMonthTotal={lastMonthTotal}
               dailyTotals={dailyTotals}
-              totalsByCategory={totalsByCategory}
               userName={settings.firstName}
               displayCurrency={displayCurrency}
-              monthlyBudget={settings.monthlyBudget}
-              categoryBudgets={settings.categoryBudgets}
-              regularCategories={regularCategories}
-              externalCategories={externalCategories}
-              onEditBudgets={() => setOverlay('budget')}
               onOpenAccount={() => setOverlay('account')}
               onChangeCurrency={(code) => updateSettings({ displayCurrency: code })}
-              onAddPress={() => openAdd('expense')}
+              onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
               splitSummary={splitSummary}
               onOpenSplit={() => changeTab('split')}
+              categoryMonths={months}
+              categoryMonthKey={catEffectiveKey}
+              currentMonthKey={currentMonthKey}
+              allCategories={allCategories}
+              onShiftCategoryMonth={shiftCatMonth}
+              onCategoryDetail={() => setOverlay('categoryDetail')}
             />
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('list')]} pointerEvents={tab === 'list' ? 'auto' : 'none'}>
@@ -853,26 +803,9 @@ function ExpenseTracker() {
               displayCurrency={displayCurrency}
               categories={allCategories}
               onDelete={deleteExpense}
-              onAddPress={() => openAdd('expense')}
+              onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
               onEditPress={setEditingExpense}
-            />
-          </Animated.View>
-          <Animated.View style={[styles.screen, screenStyle('categories')]} pointerEvents={tab === 'categories' ? 'auto' : 'none'}>
-            <CategoriesScreen
-              months={months}
-              currentMonthKey={currentMonthKey}
-              loaded={loaded}
-              hasExpenses={hasExpenses}
-              displayCurrency={displayCurrency}
-              allCategories={allCategories}
-              categoryOrder={settings.categoryOrder}
-              onReorderCategories={reorderCategories}
-              onAddPress={() => openAdd('expense')}
-              onLoadDemo={loadDemo}
-              onAddCategory={addCustomCategory}
-              onUpdateCategory={updateCustomCategory}
-              onDeleteCategory={deleteCustomCategory}
             />
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('split')]} pointerEvents={tab === 'split' ? 'auto' : 'none'}>
@@ -885,16 +818,19 @@ function ExpenseTracker() {
               onCreateGroup={() => setOverlay('createGroup')}
             />
           </Animated.View>
-          <Animated.View style={[styles.screen, screenStyle('balance')]} pointerEvents={tab === 'balance' ? 'auto' : 'none'}>
-            <IncomeBalanceScreen
-              income={income}
+          <Animated.View style={[styles.screen, screenStyle('insight')]} pointerEvents={tab === 'insight' ? 'auto' : 'none'}>
+            <InsightScreen
+              loaded={loaded}
+              hasExpenses={hasExpenses}
               displayCurrency={displayCurrency}
-              expenseByMonth={expenseByMonth}
-              totalExpenses={totalExpenses}
-              currentMonthKey={currentMonthKey}
-              onAddIncome={() => openAdd('income')}
-              onEditIncome={setEditingIncome}
-              onDeleteIncome={deleteIncome}
+              monthlyBudget={settings.monthlyBudget}
+              categoryBudgets={settings.categoryBudgets}
+              totalsByCategory={totalsByCategory}
+              regularCategories={regularCategories}
+              externalCategories={externalCategories}
+              onEditBudgets={() => setOverlay('budget')}
+              onAddPress={() => openAdd()}
+              onLoadDemo={loadDemo}
             />
           </Animated.View>
         </View>
@@ -921,7 +857,7 @@ function ExpenseTracker() {
 
         {chromeVisible && (
           <Pressable
-            onPress={() => openAdd('expense')}
+            onPress={() => openAdd()}
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel={translate(language, 'tabs.add')}
@@ -938,48 +874,17 @@ function ExpenseTracker() {
 
         <TabBar tab={tab} onChange={changeTab} />
 
-        {/* Shared add popup. Both forms stay mounted (the hidden one is
-            display:none) so a half-typed entry survives toggling type or
-            dismissing the popup; the header pill switches addMode with a
-            fade + directional slide (changeAddMode + addModeAnim). */}
+        {/* Shared add popup (expenses only). The form stays mounted while the
+            popup is closed (AddExpenseModal hides it with display:none) so a
+            half-typed entry survives dismissing the popup. */}
         <AddExpenseModal visible={addOpen} onClose={() => setAddOpen(false)}>
-          <Animated.View
-            style={[
-              styles.addMode,
-              addMode !== 'expense' && styles.addModeHidden,
-              {
-                opacity: addModeAnim,
-                transform: [{ translateX: addModeAnim.interpolate({ inputRange: [0, 1], outputRange: [-ADD_MODE_SLIDE, 0] }) }],
-              },
-            ]}
-          >
-            <AddEntryScreen
-              mode="expense"
-              displayCurrency={displayCurrency}
-              categories={allCategories}
-              onSubmit={addExpense}
-              onClose={() => setAddOpen(false)}
-              onChangeType={changeAddMode}
-            />
-          </Animated.View>
-          <Animated.View
-            style={[
-              styles.addMode,
-              addMode !== 'income' && styles.addModeHidden,
-              {
-                opacity: addModeAnim,
-                transform: [{ translateX: addModeAnim.interpolate({ inputRange: [0, 1], outputRange: [ADD_MODE_SLIDE, 0] }) }],
-              },
-            ]}
-          >
-            <AddEntryScreen
-              mode="income"
-              displayCurrency={displayCurrency}
-              onSubmit={addIncome}
-              onClose={() => setAddOpen(false)}
-              onChangeType={changeAddMode}
-            />
-          </Animated.View>
+          <AddEntryScreen
+            mode="expense"
+            displayCurrency={displayCurrency}
+            categories={allCategories}
+            onSubmit={addExpense}
+            onClose={() => setAddOpen(false)}
+          />
         </AddExpenseModal>
 
         <AddExpenseModal visible={editingExpense != null} onClose={() => setEditingExpense(null)}>
@@ -1054,6 +959,22 @@ function ExpenseTracker() {
           onClose={() => setAddSplitFor(null)}
         />
 
+        <CategoryBreakdownScreen
+          visible={overlay === 'categoryDetail'}
+          months={months}
+          monthKey={catEffectiveKey}
+          currentMonthKey={currentMonthKey}
+          onShiftMonth={shiftCatMonth}
+          displayCurrency={displayCurrency}
+          allCategories={allCategories}
+          categoryOrder={settings.categoryOrder}
+          onReorderCategories={reorderCategories}
+          onAddCategory={addCustomCategory}
+          onUpdateCategory={updateCustomCategory}
+          onDeleteCategory={deleteCustomCategory}
+          onClose={() => setOverlay(null)}
+        />
+
         <RewardCheck trigger={rewardNonce} />
       </>
     );
@@ -1088,15 +1009,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-  },
-  // Wrappers for the two forms inside the shared add popup. The inactive one is
-  // collapsed with display:none; flexShrink lets the active card respect the
-  // modal's maxHeight so its inner ScrollView can scroll.
-  addMode: {
-    flexShrink: 1,
-  },
-  addModeHidden: {
-    display: 'none',
   },
   // Floating account button — pinned top-left, follows across all tab screens.
   // SafeAreaView already pads the top inset, so a small gap sits it below the

@@ -1,9 +1,8 @@
-import React, { useMemo, useState, useRef, useCallback } from 'react';
-import { Animated, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, UIManager, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
-if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
-import BudgetGauge from '../components/BudgetGauge';
+import CategorySummaryCard from '../components/CategorySummaryCard';
 import CurrencyPill from '../components/CurrencyPill';
 import CurrencyPicker from '../components/CurrencyPicker';
 import EmptyState from '../components/EmptyState';
@@ -12,9 +11,6 @@ import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, monthLabel } from '../format';
-import { getCurrency } from '../currency';
-import { getCategoryLabel } from '../categories';
-import { HIcon } from '../icons';
 
 // Soft iridescent bloom for the hero card's upper-right corner. The two hues
 // (`glowStart` → `glowEnd`) come from the active theme so the wash harmonises
@@ -61,19 +57,19 @@ export default function DashboardScreen({
   monthTotal,
   lastMonthTotal,
   dailyTotals,
-  totalsByCategory,
   displayCurrency,
-  monthlyBudget,
-  categoryBudgets,
-  onEditBudgets,
   onOpenAccount,
   onChangeCurrency,
   onAddPress,
   onLoadDemo,
-  regularCategories,
-  externalCategories,
   splitSummary,
   onOpenSplit,
+  categoryMonths,
+  categoryMonthKey,
+  currentMonthKey,
+  allCategories,
+  onShiftCategoryMonth,
+  onCategoryDetail,
 }) {
   const { colors } = useTheme();
   const t = useT();
@@ -81,58 +77,14 @@ export default function DashboardScreen({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const greetingName = (userName ?? '').trim();
 
-  const budgetedCategories = regularCategories.filter(
-    (category) => (categoryBudgets?.[category.id] ?? 0) > 0
-  );
-  const budgetedExternal = externalCategories.filter(
-    (category) => (categoryBudgets?.[category.id] ?? 0) > 0
-  );
-  const hasBudgets = monthlyBudget > 0 || budgetedCategories.length > 0;
-
-  const regularSpent = regularCategories.reduce(
-    (sum, category) => sum + (totalsByCategory[category.id] ?? 0),
-    0
-  );
-  const externalSpent = externalCategories.reduce(
-    (sum, category) => sum + (totalsByCategory[category.id] ?? 0),
-    0
-  );
-
-  const gaugeBudget =
-    monthlyBudget > 0
-      ? monthlyBudget
-      : budgetedCategories.reduce((sum, category) => sum + (categoryBudgets[category.id] ?? 0), 0);
-  const gaugeSpent =
-    monthlyBudget > 0
-      ? regularSpent
-      : budgetedCategories.reduce(
-          (sum, category) => sum + (totalsByCategory[category.id] ?? 0),
-          0
-        );
-
-  const factor = 10 ** getCurrency(displayCurrency).decimals;
-
   const delta = monthTotal - (lastMonthTotal ?? 0);
   const hasLastMonth = (lastMonthTotal ?? 0) > 0;
   // Spending down = good (green ↓), up = bad (red ↑), flat = neutral — mirrors
-  // the three-way convention in CategoriesScreen so an exact tie isn't shown red.
+  // the three-way convention in the category breakdown so an exact tie isn't shown red.
   const heroDir = delta < 0 ? 'down' : delta > 0 ? 'up' : 'flat';
   const deltaPct = hasLastMonth ? (Math.abs(delta) / lastMonthTotal) * 100 : 0;
 
-  const [budgetOpen, setBudgetOpen] = useState(true);
   const [currencyOpen, setCurrencyOpen] = useState(false);
-  const budgetRotate = useRef(new Animated.Value(0)).current;
-
-  const toggleBudget = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setBudgetOpen((prev) => {
-      const next = !prev;
-      Animated.timing(budgetRotate, { toValue: next ? 0 : 1, duration: 250, useNativeDriver: true }).start();
-      return next;
-    });
-  }, [budgetRotate]);
-
-  const budgetChevronRotate = budgetRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-90deg'] });
 
   return (
     <>
@@ -193,78 +145,6 @@ export default function DashboardScreen({
         )}
       </View>
 
-      {hasExpenses && (
-        <View style={styles.budgetCard}>
-          <View style={styles.budgetHeader}>
-            <Pressable style={styles.budgetTitleRow} onPress={toggleBudget} accessibilityRole="button" accessibilityState={{ expanded: budgetOpen }}>
-              <Animated.Text style={[styles.sectionChevron, { transform: [{ rotate: budgetChevronRotate }] }]}>▾</Animated.Text>
-              <Text style={styles.summaryTitle} numberOfLines={1}>{t('budget.title')}</Text>
-            </Pressable>
-            <Pressable
-              onPress={onEditBudgets}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
-            >
-              <Text style={styles.editPillText}>{t('budget.edit')}</Text>
-            </Pressable>
-          </View>
-
-          {budgetOpen && (
-            <View>
-            <BudgetGauge
-              spent={gaugeSpent}
-              budget={gaugeBudget}
-              displayCurrency={displayCurrency}
-              empty={!hasBudgets}
-            />
-
-            {hasBudgets && budgetedCategories.length > 0 && (
-              <>
-                <View style={styles.divider} />
-                <Text style={styles.sectionTitle}>{t('budget.categoryTitle')}</Text>
-                {budgetedCategories.map((category) => (
-                  <CategoryBar
-                    key={category.id}
-                    category={category}
-                    budget={categoryBudgets[category.id]}
-                    spent={Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor}
-                    displayCurrency={displayCurrency}
-                    styles={styles}
-                    colors={colors}
-                    t={t}
-                  />
-                ))}
-              </>
-            )}
-
-            {externalSpent > 0 && (
-              <>
-                <View style={styles.divider} />
-                <View style={styles.externalRow}>
-                  <Text style={styles.externalLabel}>{t('budget.externalTotal')}</Text>
-                  <Text style={styles.externalAmount}>
-                    {formatMoneyShort(externalSpent, displayCurrency)}
-                  </Text>
-                </View>
-                {budgetedExternal.map((category) => (
-                  <CategoryBar
-                    key={category.id}
-                    category={category}
-                    budget={categoryBudgets[category.id]}
-                    spent={Math.round((totalsByCategory[category.id] ?? 0) * factor) / factor}
-                    displayCurrency={displayCurrency}
-                    styles={styles}
-                    colors={colors}
-                    t={t}
-                  />
-                ))}
-              </>
-            )}
-            </View>
-          )}
-        </View>
-      )}
-
       {splitSummary && (splitSummary.owed > 0.005 || splitSummary.owe > 0.005) && (
         <Pressable
           onPress={onOpenSplit}
@@ -292,6 +172,18 @@ export default function DashboardScreen({
             </View>
           </View>
         </Pressable>
+      )}
+
+      {hasExpenses && (
+        <CategorySummaryCard
+          months={categoryMonths}
+          monthKey={categoryMonthKey}
+          currentMonthKey={currentMonthKey}
+          displayCurrency={displayCurrency}
+          allCategories={allCategories}
+          onShiftMonth={onShiftCategoryMonth}
+          onMoreDetail={onCategoryDetail}
+        />
       )}
 
       {loaded && !hasExpenses && (
@@ -329,37 +221,6 @@ const DeltaBadge = React.memo(function DeltaBadge({ value, dir, colors, styles }
   );
 });
 
-const CategoryBar = React.memo(function CategoryBar({ category, budget, spent, displayCurrency, styles, colors, t }) {
-  const over = spent > budget;
-  return (
-    <View style={styles.categoryRow}>
-      <HIcon name={category.emoji} size={18} color={category.color} />
-      <View style={styles.categoryBarArea}>
-        <View style={styles.categoryLabels}>
-          <Text style={styles.categoryName}>{getCategoryLabel(category, t)}</Text>
-          <Text style={styles.categoryAmount}>
-            {t('budget.spentOf', {
-              spent: formatMoneyShort(spent, displayCurrency),
-              budget: formatMoneyShort(budget, displayCurrency),
-            })}
-          </Text>
-        </View>
-        <View style={styles.categoryTrack}>
-          <View
-            style={[
-              styles.categoryFill,
-              {
-                width: `${budget > 0 ? Math.min(100, (spent / budget) * 100) : 0}%`,
-                backgroundColor: over ? colors.danger : category.color,
-              },
-            ]}
-          />
-        </View>
-      </View>
-    </View>
-  );
-});
-
 const CARD_SHADOW = {
   shadowColor: '#000',
   shadowOffset: { width: 0, height: 1 },
@@ -367,10 +228,6 @@ const CARD_SHADOW = {
   shadowRadius: 8,
   elevation: 1,
 };
-
-// Shared height for the budget-header pills and the matching line-box of the
-// section title/chevron, so the title centers on the pills' vertical midpoint.
-const PILL_HEIGHT = 24;
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -487,125 +344,10 @@ const createStyles = (colors) =>
       fontVariant: ['tabular-nums'],
     },
 
-    sectionChevron: {
-      color: colors.accent,
-      fontSize: 16,
-      marginRight: spacing.xs + 2,
-      lineHeight: PILL_HEIGHT,
-    },
     summaryTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 15,
-      lineHeight: PILL_HEIGHT,
-    },
-    budgetCard: {
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      padding: spacing.md,
-      marginHorizontal: spacing.md,
-      marginTop: spacing.md,
-      ...CARD_SHADOW,
-    },
-    budgetHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: spacing.md,
-    },
-    budgetTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexShrink: 1,
-      marginRight: spacing.sm,
-    },
-    sectionTitle: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 12,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-    },
-    // A bordered pill for the budget-header "Edit budgets" action.
-    editPill: {
-      backgroundColor: colors.background,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      borderRadius: 10,
-      paddingHorizontal: spacing.sm + 2,
-      height: PILL_HEIGHT,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    editPillPressed: {
-      backgroundColor: colors.cardPressed,
-    },
-    editPillText: {
-      color: colors.accent,
-      fontFamily: fonts.bold,
-      fontSize: 12,
-    },
-    divider: {
-      height: StyleSheet.hairlineWidth,
-      backgroundColor: colors.border,
-      marginVertical: spacing.md,
-    },
-    categoryRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: spacing.sm + 4,
-      gap: spacing.sm,
-    },
-    categoryBarArea: {
-      flex: 1,
-    },
-    categoryLabels: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'baseline',
-      marginBottom: 4,
-    },
-    categoryName: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-      flexShrink: 1,
-      marginRight: spacing.sm,
-    },
-    categoryAmount: {
-      color: colors.textSecondary,
-      fontFamily: fonts.numRegular,
-      fontSize: 12,
-      fontVariant: ['tabular-nums'],
-    },
-    categoryTrack: {
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: colors.background,
-      overflow: 'hidden',
-    },
-    categoryFill: {
-      height: '100%',
-      borderRadius: 3,
-    },
-    externalRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: spacing.xs,
-    },
-    externalLabel: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 12,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-    },
-    externalAmount: {
-      color: colors.textSecondary,
-      fontFamily: fonts.numBold,
-      fontSize: 13,
-      fontVariant: ['tabular-nums'],
     },
 
     // Split-balances widget — mirrors the budget card surface.

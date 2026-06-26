@@ -8,15 +8,15 @@ import { HIcon } from '../icons';
 
 export const TAB_BAR_HEIGHT = 72;
 
-// Five tabs since the add "+" moved to a floating button (App.js). `split` sits
-// between Categories and Balance — keep this order in sync with TAB_INDEX/
-// TAB_NAMES in App.js so the slide-transition direction stays correct.
+// Four tabs since the add "+" moved to a floating button (App.js) and the
+// Categories tab was retired (its summary card moved to the Dashboard, its
+// breakdown to a page opened from there). Keep this order in sync with
+// TAB_INDEX/TAB_NAMES in App.js so the slide-transition direction stays correct.
 const TABS = [
   { id: 'dashboard', icon: 'home-01', labelKey: 'tabs.dashboard' },
   { id: 'list', icon: 'receipt-text', labelKey: 'tabs.list' },
-  { id: 'categories', icon: 'grid-view', labelKey: 'tabs.categories' },
   { id: 'split', icon: 'user-group', labelKey: 'tabs.split' },
-  { id: 'balance', icon: 'wallet-01', labelKey: 'tabs.balance' },
+  { id: 'insight', icon: 'analytics-01', labelKey: 'tabs.insight' },
 ];
 
 export default function TabBar({ tab, onChange }) {

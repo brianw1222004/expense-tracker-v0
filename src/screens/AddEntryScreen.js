@@ -18,7 +18,6 @@ import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
 import { INCOME_SOURCES, getIncomeSource, getIncomeSourceLabel } from '../incomeSources';
 import { HIcon } from '../icons';
-import EntryTypeToggle from '../components/EntryTypeToggle';
 import { CURRENCIES, getCurrency } from '../currency';
 import { buildCalendarWeeks, dateKey, dayLabel, isValidAmountText, monthLabel } from '../format';
 
@@ -62,7 +61,6 @@ export default function AddEntryScreen({
   onSubmit,
   onDelete,
   onClose,
-  onChangeType,
 }) {
   const { colors } = useTheme();
   const t = useT();
@@ -279,11 +277,9 @@ export default function AddEntryScreen({
         <View style={styles.header}>
           <View style={styles.headerSide} />
           <View style={styles.headerCenter}>
-            {isEdit ? (
-              <Text style={styles.title}>{t(isExpense ? 'edit.title' : 'income.edit')}</Text>
-            ) : (
-              <EntryTypeToggle mode={mode} onChange={onChangeType} />
-            )}
+            <Text style={styles.title}>
+              {t(isEdit ? (isExpense ? 'edit.title' : 'income.edit') : 'add.title')}
+            </Text>
           </View>
           <Pressable
             onPress={onClose}

@@ -22,6 +22,8 @@ const STRINGS = {
     'tabs.categories': 'Categories',
     'tabs.split': 'Split',
     'tabs.balance': 'Balance',
+    'tabs.insight': 'Insight',
+    'insight.title': 'Insight',
 
     'pay.cash': 'Cash',
     'pay.card': 'Card',
@@ -159,6 +161,7 @@ const STRINGS = {
 
     'add.amountLabel': 'Amount',
     'add.notePlaceholder': 'What was it for?',
+    'add.title': 'New expense',
     'add.save': 'Add expense',
     'add.chooseDate': 'Choose date',
     'add.prevDay': 'Previous day',
@@ -180,6 +183,8 @@ const STRINGS = {
     'cats.mostSpending': 'Most spending',
     'cats.leastSpending': 'Least spending',
     'cats.totalCaption': 'total',
+    'cats.moreDetail': 'More detail',
+    'cats.emptyMonth': 'No spending this month',
     'cats.addCategory': 'Add Category',
     'cats.editCategory': 'Edit Category',
     'cats.categoryName': 'Name',
@@ -260,6 +265,8 @@ const STRINGS = {
     'tabs.categories': '分類',
     'tabs.split': '分帳',
     'tabs.balance': '結餘',
+    'tabs.insight': '洞察',
+    'insight.title': '洞察',
 
     'pay.cash': '現金',
     'pay.card': '信用卡',
@@ -397,6 +404,7 @@ const STRINGS = {
 
     'add.amountLabel': '金額',
     'add.notePlaceholder': '這筆花在哪裡？',
+    'add.title': '新增支出',
     'add.save': '新增支出',
     'add.chooseDate': '選擇日期',
     'add.prevDay': '前一天',
@@ -418,6 +426,8 @@ const STRINGS = {
     'cats.mostSpending': '支出最多',
     'cats.leastSpending': '支出最少',
     'cats.totalCaption': '總計',
+    'cats.moreDetail': '更多明細',
+    'cats.emptyMonth': '本月尚無支出',
     'cats.addCategory': '新增分類',
     'cats.editCategory': '編輯分類',
     'cats.categoryName': '名稱',
@@ -498,6 +508,8 @@ const STRINGS = {
     'tabs.categories': 'Categorías',
     'tabs.split': 'Dividir',
     'tabs.balance': 'Saldo',
+    'tabs.insight': 'Análisis',
+    'insight.title': 'Análisis',
 
     'pay.cash': 'Efectivo',
     'pay.card': 'Tarjeta',
@@ -635,6 +647,7 @@ const STRINGS = {
 
     'add.amountLabel': 'Monto',
     'add.notePlaceholder': '¿En qué fue?',
+    'add.title': 'Nuevo gasto',
     'add.save': 'Añadir gasto',
     'add.chooseDate': 'Elegir fecha',
     'add.prevDay': 'Día anterior',
@@ -656,6 +669,8 @@ const STRINGS = {
     'cats.mostSpending': 'Mayor gasto',
     'cats.leastSpending': 'Menor gasto',
     'cats.totalCaption': 'total',
+    'cats.moreDetail': 'Más detalle',
+    'cats.emptyMonth': 'Sin gastos este mes',
     'cats.addCategory': 'Añadir categoría',
     'cats.editCategory': 'Editar categoría',
     'cats.categoryName': 'Nombre',
