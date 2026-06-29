@@ -1003,7 +1003,6 @@ function ExpenseTracker() {
               onChangeEntryMode={setAddEntryMode}
               lockedGroupId={sharedLockedGroupId}
               groups={groups}
-              allCategories={allCategories}
               displayCurrency={displayCurrency}
               onAdd={addSplitExpense}
               onCreateGroup={() => { setAddOpen(false); setSharedLockedGroupId(null); setOverlay('createGroup'); }}
@@ -1050,7 +1049,6 @@ function ExpenseTracker() {
               editBill={editingSplit}
               lockedGroupId={editingSplit.groupId}
               groups={groups}
-              allCategories={allCategories}
               displayCurrency={displayCurrency}
               onSave={updateSplitExpense}
               onDelete={deleteSplitExpense}

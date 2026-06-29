@@ -211,6 +211,13 @@ export default function GroupDetailScreen({
               {t('split.memberCount', { count: group.members.length })}
             </Text>
           </View>
+          <CurrencyPill
+            value={group.currency}
+            onPress={() => setCurrencyOpen(true)}
+            accessibilityLabel={t('currency.choose')}
+            style={styles.headerPill}
+            textStyle={styles.headerPillText}
+          />
         </View>
         <Pressable
           onPress={onClose}
@@ -237,11 +244,6 @@ export default function GroupDetailScreen({
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tintWash }]} />
             <View style={styles.payHeaderRow}>
               <Text style={styles.settingLabel}>{t('split.paymentMethod')}</Text>
-              <CurrencyPill
-                value={group.currency}
-                onPress={() => setCurrencyOpen(true)}
-                accessibilityLabel={t('currency.choose')}
-              />
             </View>
             <View style={styles.chipRow}>
               {allMethods.map((pm) => {
@@ -492,6 +494,17 @@ const createStyles = (colors) =>
     },
     titleText: {
       flexShrink: 1,
+    },
+    // Currency pill beside the group title — a touch larger than the default pill
+    // and centered against the two-line title/subtitle block.
+    headerPill: {
+      alignSelf: 'center',
+      borderRadius: 13,
+      paddingHorizontal: spacing.sm + 6,
+      paddingVertical: spacing.xs + 2,
+    },
+    headerPillText: {
+      fontSize: 13,
     },
     title: {
       color: colors.textPrimary,

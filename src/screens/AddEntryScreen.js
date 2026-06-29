@@ -18,7 +18,8 @@ import { getCurrency } from '../currency';
 import { dateKey, isValidAmountText, cleanAmountInput } from '../format';
 import CalendarField, { dateForOffset, offsetForDay } from '../components/CalendarField';
 import EntryModeToggle from '../components/EntryModeToggle';
-import CurrencyChipRow from '../components/CurrencyChipRow';
+import CurrencyPill from '../components/CurrencyPill';
+import CurrencyPicker from '../components/CurrencyPicker';
 import { popupChromeStyles } from '../components/popupFormChrome';
 import { confirmDestructive } from '../confirm';
 
@@ -29,7 +30,8 @@ const CATS_PER_PAGE = 8;
 
 // The Personal side of the add popup: add or edit an expense (the Shared side is
 // SharedSplitForm). Rendered inside AddExpenseModal. A paginated category grid,
-// a calendar date picker, always-visible currency chips, amount + note. The
+// a calendar date picker, a tappable currency pill (opens CurrencyPicker), amount
+// + note. The
 // card's border/background tint animate to the selected category color. When
 // `onChangeEntryMode` is provided (the add popup, not the edit popup) the header
 // shows the Personal/Shared toggle; in edit mode it shows the title + a Delete.
@@ -84,6 +86,7 @@ export default function AddEntryScreen({
     const d = new Date(editEntry.createdAt);
     return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
   });
+  const [currencyOpen, setCurrencyOpen] = useState(false);
   // Color transitions interpolate from the previously shown color to the newly
   // picked one; colors can't animate on the native driver.
   const colorAnim = useRef(new Animated.Value(1)).current;
@@ -199,7 +202,15 @@ export default function AddEntryScreen({
 
         <View style={styles.amountArea}>
           <View style={styles.amountRow}>
-            <Text style={styles.currencySymbol} numberOfLines={1}>{currency.symbol}</Text>
+            <View style={styles.currencyTriggerWrap}>
+              <CurrencyPill
+                value={currencyCode}
+                onPress={() => setCurrencyOpen(true)}
+                accessibilityLabel={t('currency.choose')}
+                style={styles.currencyPill}
+                textStyle={styles.currencyPillText}
+              />
+            </View>
             <TextInput
               style={styles.amountInput}
               value={amountText}
@@ -211,13 +222,11 @@ export default function AddEntryScreen({
               maxLength={AMOUNT_MAX_LENGTH}
               accessibilityLabel={t('add.amountLabel')}
             />
-            {/* Empty spacer balancing the 72px currency symbol so the amount
+            {/* Empty spacer balancing the 72px currency pill so the amount
                 stays optically centered. */}
             <View style={styles.amountSpacer} />
           </View>
         </View>
-
-        <CurrencyChipRow value={currencyCode} onSelect={setManualCurrency} />
 
         <View style={styles.noteRow}>
           <TextInput
@@ -328,6 +337,16 @@ export default function AddEntryScreen({
           </Pressable>
         )}
       </ScrollView>
+
+      <CurrencyPicker
+        visible={currencyOpen}
+        value={currencyCode}
+        onSelect={(code) => {
+          setManualCurrency(code);
+          setCurrencyOpen(false);
+        }}
+        onClose={() => setCurrencyOpen(false)}
+      />
     </Animated.View>
   );
 }
@@ -342,13 +361,18 @@ const createStyles = (colors) =>
       flexDirection: 'row',
       alignItems: 'center',
     },
-    currencySymbol: {
-      color: colors.textSecondary,
-      fontFamily: fonts.numBold,
-      fontSize: 30,
+    currencyTriggerWrap: {
       width: 72,
       flexShrink: 0,
-      textAlign: 'left',
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+    },
+    currencyPill: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs + 1,
+    },
+    currencyPillText: {
+      fontSize: 14,
     },
     amountInput: {
       flex: 1,

@@ -5,8 +5,9 @@ import { getCurrency } from '../currency';
 
 // Compact currency trigger — a rounded pill showing the current currency code in
 // the accent color. Tapping opens the shared CurrencyPicker popup. Used anywhere
-// a currency is decided. `style` lets callers tweak placement.
-export default function CurrencyPill({ value, onPress, accessibilityLabel, style }) {
+// a currency is decided. `style` tweaks the pill container; `textStyle` lets a
+// caller scale the code text (e.g. a larger header variant).
+export default function CurrencyPill({ value, onPress, accessibilityLabel, style, textStyle }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const code = getCurrency(value).code;
@@ -18,7 +19,7 @@ export default function CurrencyPill({ value, onPress, accessibilityLabel, style
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [styles.pill, pressed && styles.pillPressed, style]}
     >
-      <Text style={styles.code}>{code}</Text>
+      <Text style={[styles.code, textStyle]}>{code}</Text>
     </Pressable>
   );
 }

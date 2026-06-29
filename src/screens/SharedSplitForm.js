@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
   Pressable,
@@ -11,13 +11,14 @@ import {
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { getCurrency } from '../currency';
-import { getCategoryLabel } from '../categories';
 import { isValidAmountText, formatMoney, cleanAmountInput, dateKey } from '../format';
 import { HIcon } from '../icons';
 import { confirmDestructive } from '../confirm';
 import EntryModeToggle from '../components/EntryModeToggle';
 import CalendarField, { dateForOffset, offsetForDay } from '../components/CalendarField';
-import CurrencyChipRow from '../components/CurrencyChipRow';
+import CurrencyPill from '../components/CurrencyPill';
+import CurrencyPicker from '../components/CurrencyPicker';
+import OptionPicker from '../components/OptionPicker';
 import { popupChromeStyles } from '../components/popupFormChrome';
 import {
   YOU,
@@ -30,6 +31,10 @@ import {
 
 const NOTE_MAX_LENGTH = 60;
 const AMOUNT_MAX_LENGTH = 11;
+// Tax mode reconciles the entered grand total against food + tax + tip. Allow a
+// couple of smallest currency units of slack so rounded tax/tip rates (e.g. 8%)
+// that don't reproduce a receipt total to the exact cent still pass.
+const TAX_TOTAL_TOLERANCE_UNITS = 2;
 
 const MODES = [
   { id: 'equal', labelKey: 'split.equal' },
@@ -52,9 +57,9 @@ function normMap(m, ids) {
 // The Shared side of the add popup: create a split bill. Reuses the popup card
 // chrome (matching AddEntryScreen) so the Personal/Shared toggle swaps between
 // two forms in one widget. Lets you pick the group, who's in, the date, the
-// currency, a category, who paid, and one of four split methods (equal, custom
-// amounts, percentages, or an itemized tax split). On save it computes per-person
-// shares and hands the bill up via onAdd; your share folds into personal spending
+// currency, who paid, and one of four split methods (equal, custom amounts,
+// percentages, or an itemized tax split). On save it computes per-person shares
+// and hands the bill up via onAdd; your share folds into personal spending
 // elsewhere (yourShareAsExpenses).
 //
 // Launched two ways:
@@ -66,7 +71,6 @@ export default function SharedSplitForm({
   lockedGroupId = null,
   editBill = null,
   groups,
-  allCategories,
   displayCurrency,
   onAdd,
   onSave,
@@ -108,12 +112,14 @@ export default function SharedSplitForm({
   const [paidBy, setPaidBy] = useState(isEdit ? editBill.paidBy : YOU);
   const [manualCurrency, setManualCurrency] = useState(isEdit ? editBill.currency : null);
   const [mode, setMode] = useState(seedMode);
-  // Seed the total whenever editing (tax mode ignores amountText — it renders a
-  // computed total and saves computeTaxShares' total — so this is harmless there
-  // and carries the known total if the user switches a tax bill to another mode).
+  // Seed the total whenever editing. Every mode (tax included) now shows the grand
+  // total up top, so for a tax bill this is the saved grand total — the per-person
+  // food prices in `subtotals` must reconcile to it.
   const [amountText, setAmountText] = useState(() => (isEdit ? fmtNum(editBill.amount, editDec) : ''));
   const [description, setDescription] = useState(isEdit ? editBill.description || '' : '');
-  const [category, setCategory] = useState(isEdit ? editBill.category || 'other' : 'other');
+  // Shared bills aren't categorized in the UI; keep an existing bill's category on
+  // edit and default new ones to 'other' so downstream consumers stay happy.
+  const category = isEdit ? editBill.category || 'other' : 'other';
   const [custom, setCustom] = useState(() =>
     isEdit && seedMode === 'custom'
       ? Object.fromEntries(Object.keys(seedShares).map((id) => [id, fmtNum(seedShares[id], editDec)]))
@@ -141,6 +147,10 @@ export default function SharedSplitForm({
     const d = new Date(editBill.createdAt);
     return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
   });
+  // Currency picker + the collapsible Group / Paid by / Split popups. `picker` is
+  // which row's popup is open (one at a time), mirroring the group page's pattern.
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [picker, setPicker] = useState(null); // 'group' | 'payer' | 'split' | null
 
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
   const currencyCode = manualCurrency ?? selectedGroup?.currency ?? displayCurrency;
@@ -150,6 +160,8 @@ export default function SharedSplitForm({
     () => (selectedGroup ? [{ id: YOU, name: t('split.you') }, ...selectedGroup.members] : []),
     [selectedGroup, t]
   );
+  const payerName = people.find((p) => p.id === paidBy)?.name ?? '';
+  const activeMode = MODES.find((m) => m.id === mode) ?? MODES[0];
 
   // Switching groups resets the people-dependent fields (who's in, who paid,
   // per-person inputs) and lets the currency follow the new group again.
@@ -205,14 +217,23 @@ export default function SharedSplitForm({
     [mode, amountValid, amount, participantIds, percentNum, currencyCode, cur.decimals]
   );
 
-  const amountNeeded = mode !== 'tax';
   const customOk = mode !== 'custom' || (amountValid && customSharesValid(amount, customNum, participantIds, currencyCode));
   const percentOk = mode !== 'percentage' || percentageSharesValid(percentNum, participantIds);
-  const taxOk = mode !== 'tax' || taxInputValid(subtotalNum, participantIds);
+  // Tax mode takes the grand total up top like every other mode. Each person's
+  // food price is entered below; food + tax + tip must reconcile to that total
+  // (taxResult.total is the floored/distributed grand total of those subtotals),
+  // within a small tolerance so rounded tax/tip rates still pass.
+  const taxHasInput = taxInputValid(subtotalNum, participantIds);
+  const taxFactor = 10 ** cur.decimals;
+  const taxAddsUp =
+    amountValid &&
+    Math.abs(Math.round(taxResult.total * taxFactor) - Math.round(amount * taxFactor)) <=
+      TAX_TOTAL_TOLERANCE_UNITS;
+  const taxOk = mode !== 'tax' || (taxHasInput && taxAddsUp);
   const canAdd =
     !!selectedGroup &&
     participantIds.length > 0 &&
-    (amountNeeded ? amountValid : true) &&
+    amountValid &&
     customOk &&
     percentOk &&
     taxOk;
@@ -279,6 +300,37 @@ export default function SharedSplitForm({
     if (ok) onDelete(editBill.id);
   };
 
+  // The single OptionPicker is driven by `picker`; its props depend on which row
+  // was tapped. Selecting reuses the same setters the old inline chips used.
+  const pickerProps =
+    picker === 'group'
+      ? {
+          title: t('split.group'),
+          value: selectedGroupId,
+          options: groups.map((g) => ({ id: g.id, label: g.name, icon: 'user-group' })),
+          onSelect: (id) => { selectGroup(id); setPicker(null); },
+        }
+      : picker === 'payer'
+        ? {
+            title: t('split.paidBy'),
+            value: paidBy,
+            options: people.map((p) => ({ id: p.id, label: p.name })),
+            onSelect: (id) => { setPaidBy(id); setPicker(null); },
+          }
+        : picker === 'split'
+          ? {
+              title: t('split.splitMethod'),
+              value: mode,
+              options: MODES.map((m) => ({ id: m.id, label: t(m.labelKey) })),
+              onSelect: (id) => { setMode(id); setPicker(null); },
+            }
+          : null;
+  // Keep the last non-null config so the popup's content stays put while it fades
+  // out (picker flips to null on select/close before the fade finishes).
+  const lastPickerProps = useRef(null);
+  if (pickerProps) lastPickerProps.current = pickerProps;
+  const shownPicker = pickerProps ?? lastPickerProps.current;
+
   return (
     <View style={styles.card}>
       <ScrollView
@@ -323,70 +375,39 @@ export default function SharedSplitForm({
           </View>
         ) : (
           <>
-            {showGroupPicker && (
-              <>
-                <Text style={styles.sectionHeader}>{t('split.group')}</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.chipScroll}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  {groups.map((g) => {
-                    const selected = g.id === selectedGroupId;
-                    return (
-                      <Pressable
-                        key={g.id}
-                        onPress={() => selectGroup(g.id)}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected }}
-                        style={({ pressed }) => [
-                          styles.groupChip,
-                          selected && styles.groupChipSelected,
-                          pressed && !selected && styles.pressedFade,
-                        ]}
-                      >
-                        <HIcon name="user-group" size={15} color={selected ? colors.accent : colors.icon} />
-                        <Text style={[styles.groupChipText, selected && styles.groupChipTextSelected]} numberOfLines={1}>
-                          {g.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              </>
-            )}
-
             <View style={styles.dateWrap}>
               <CalendarField dayOffset={dayOffset} onChange={setDayOffset} />
             </View>
 
-            {mode === 'tax' ? (
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>{t('split.total')}</Text>
-                <Text style={styles.totalValue} numberOfLines={1}>
-                  {formatMoney(taxResult.total, currencyCode)}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.amountRow}>
-                <Text style={styles.currencySymbol} numberOfLines={1}>{cur.symbol}</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  value={amountText}
-                  onChangeText={(text) => setAmountText(cleanAmountInput(text))}
-                  placeholder={cur.decimals === 0 ? '0' : '0.00'}
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType={cur.decimals === 0 ? 'number-pad' : 'decimal-pad'}
-                  keyboardAppearance={colors.keyboardAppearance}
-                  maxLength={AMOUNT_MAX_LENGTH}
-                  accessibilityLabel={t('split.amount')}
+            {/* Grand total — shown for every split method (tax included), so the
+                amount field never jumps around when switching methods. In tax mode
+                this is the food + tax + tip total the per-person prices reconcile to. */}
+            <View style={styles.amountRow}>
+              <View style={styles.currencyTriggerWrap}>
+                <CurrencyPill
+                  value={currencyCode}
+                  onPress={() => setCurrencyOpen(true)}
+                  accessibilityLabel={t('currency.choose')}
+                  style={styles.currencyPill}
+                  textStyle={styles.currencyPillText}
                 />
-                <Text style={styles.amountCode}>{currencyCode}</Text>
               </View>
-            )}
-
-            <CurrencyChipRow value={currencyCode} onSelect={setManualCurrency} />
+              <TextInput
+                style={styles.amountInput}
+                value={amountText}
+                onChangeText={(text) => setAmountText(cleanAmountInput(text))}
+                placeholder={cur.decimals === 0 ? '0' : '0.00'}
+                placeholderTextColor={colors.textMuted}
+                keyboardType={cur.decimals === 0 ? 'number-pad' : 'decimal-pad'}
+                keyboardAppearance={colors.keyboardAppearance}
+                maxLength={AMOUNT_MAX_LENGTH}
+                accessibilityLabel={t('split.amount')}
+              />
+              {/* Empty spacer balancing the fixed-width currency pill so the
+                  amount stays optically centered regardless of currency
+                  (mirrors AddEntryScreen's Personal amount row). */}
+              <View style={styles.amountSpacer} />
+            </View>
 
             <View style={styles.noteRow}>
               <TextInput
@@ -401,78 +422,49 @@ export default function SharedSplitForm({
               />
             </View>
 
-            <Text style={styles.sectionHeader}>{t('split.category')}</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipScroll}
-              keyboardShouldPersistTaps="handled"
-            >
-              {allCategories.map((c) => {
-                const selected = c.id === category;
-                return (
-                  <Pressable
-                    key={c.id}
-                    onPress={() => setCategory(c.id)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    style={({ pressed }) => [
-                      styles.catChip,
-                      selected && { backgroundColor: `${c.color}22`, borderColor: c.color },
-                      pressed && styles.pressedFade,
-                    ]}
-                  >
-                    <HIcon name={c.emoji} size={16} color={c.color} />
-                    <Text style={[styles.catLabel, selected && { color: colors.textPrimary }]} numberOfLines={1}>
-                      {getCategoryLabel(c, t)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <Text style={styles.sectionHeader}>{t('split.paidBy')}</Text>
-            <View style={styles.peopleWrap}>
-              {people.map((p) => {
-                const selected = p.id === paidBy;
-                return (
-                  <Pressable
-                    key={p.id}
-                    onPress={() => setPaidBy(p.id)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    style={({ pressed }) => [
-                      styles.payerChip,
-                      selected && styles.payerChipSelected,
-                      pressed && styles.pressedFade,
-                    ]}
-                  >
-                    <Text style={[styles.payerLabel, selected && styles.payerLabelSelected]} numberOfLines={1}>
-                      {p.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={styles.sectionHeader}>{t('split.splitMethod')}</Text>
-            <View style={styles.methodToggle}>
-              {MODES.map((m) => {
-                const selected = mode === m.id;
-                return (
-                  <Pressable
-                    key={m.id}
-                    onPress={() => setMode(m.id)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    style={[styles.methodChip, selected && styles.methodChipSelected]}
-                  >
-                    <Text style={[styles.methodText, selected && styles.methodTextSelected]} numberOfLines={1}>
-                      {t(m.labelKey)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.selectCard}>
+              {showGroupPicker && (
+                <Pressable
+                  onPress={() => setPicker('group')}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('split.group')}
+                  style={({ pressed }) => [styles.selectRow, pressed && styles.pressedBg]}
+                >
+                  <Text style={styles.selectLabel}>{t('split.group')}</Text>
+                  <View style={styles.selectValueWrap}>
+                    <Text style={styles.selectValue} numberOfLines={1}>{selectedGroup.name}</Text>
+                    <HIcon name="chevron-right" size={18} color={colors.icon} />
+                  </View>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => setPicker('payer')}
+                accessibilityRole="button"
+                accessibilityLabel={t('split.paidBy')}
+                style={({ pressed }) => [
+                  styles.selectRow,
+                  showGroupPicker && styles.selectRowDivider,
+                  pressed && styles.pressedBg,
+                ]}
+              >
+                <Text style={styles.selectLabel}>{t('split.paidBy')}</Text>
+                <View style={styles.selectValueWrap}>
+                  <Text style={styles.selectValue} numberOfLines={1}>{payerName}</Text>
+                  <HIcon name="chevron-right" size={18} color={colors.icon} />
+                </View>
+              </Pressable>
+              <Pressable
+                onPress={() => setPicker('split')}
+                accessibilityRole="button"
+                accessibilityLabel={t('split.splitMethod')}
+                style={({ pressed }) => [styles.selectRow, styles.selectRowDivider, pressed && styles.pressedBg]}
+              >
+                <Text style={styles.selectLabel}>{t('split.splitMethod')}</Text>
+                <View style={styles.selectValueWrap}>
+                  <Text style={styles.selectValue} numberOfLines={1}>{t(activeMode.labelKey)}</Text>
+                  <HIcon name="chevron-right" size={18} color={colors.icon} />
+                </View>
+              </Pressable>
             </View>
 
             {mode === 'tax' && (
@@ -609,8 +601,13 @@ export default function SharedSplitForm({
             {mode === 'percentage' && participantIds.length > 0 && !percentOk && (
               <Text style={styles.warning}>{t('split.percentMismatch')}</Text>
             )}
-            {mode === 'tax' && participantIds.length > 0 && !taxOk && (
+            {mode === 'tax' && participantIds.length > 0 && !taxHasInput && (
               <Text style={styles.warning}>{t('split.taxNeedsSubtotal')}</Text>
+            )}
+            {mode === 'tax' && participantIds.length > 0 && taxHasInput && amountValid && !taxAddsUp && (
+              <Text style={styles.warning}>
+                {t('split.taxMismatch', { total: formatMoney(taxResult.total, currencyCode) })}
+              </Text>
             )}
 
             <Pressable
@@ -639,6 +636,24 @@ export default function SharedSplitForm({
           </>
         )}
       </ScrollView>
+
+      <CurrencyPicker
+        visible={currencyOpen}
+        value={currencyCode}
+        onSelect={(code) => {
+          setManualCurrency(code);
+          setCurrencyOpen(false);
+        }}
+        onClose={() => setCurrencyOpen(false)}
+      />
+      <OptionPicker
+        visible={pickerProps !== null}
+        title={shownPicker?.title}
+        options={shownPicker?.options || []}
+        value={shownPicker?.value}
+        onSelect={shownPicker?.onSelect || (() => {})}
+        onClose={() => setPicker(null)}
+      />
     </View>
   );
 }
@@ -648,9 +663,6 @@ const createStyles = (colors) =>
     ...popupChromeStyles(colors),
     pressedBg: {
       backgroundColor: colors.cardPressed,
-    },
-    pressedFade: {
-      opacity: 0.6,
     },
 
     noGroup: {
@@ -691,42 +703,40 @@ const createStyles = (colors) =>
       fontSize: 15,
     },
 
-    sectionHeader: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 1.2,
-      marginBottom: spacing.sm,
-    },
-    chipScroll: {
-      gap: spacing.sm,
-      paddingVertical: 2,
-      paddingRight: spacing.sm,
+    selectCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      overflow: 'hidden',
       marginBottom: spacing.md,
     },
-    groupChip: {
+    selectRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.md,
+      minHeight: 52,
+    },
+    selectRowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    selectLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.medium,
+      fontSize: 14,
+    },
+    selectValueWrap: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: spacing.sm,
+      flexShrink: 1,
+      marginLeft: spacing.sm,
     },
-    groupChipSelected: {
-      backgroundColor: `${colors.accent}18`,
-      borderColor: colors.accent,
-    },
-    groupChipText: {
-      color: colors.textSecondary,
-      fontFamily: fonts.medium,
-      fontSize: 13,
-      maxWidth: 140,
-    },
-    groupChipTextSelected: {
+    selectValue: {
       color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+      flexShrink: 1,
     },
 
     dateWrap: {
@@ -738,12 +748,18 @@ const createStyles = (colors) =>
       alignItems: 'center',
       marginBottom: spacing.md,
     },
-    currencySymbol: {
-      color: colors.textSecondary,
-      fontFamily: fonts.numBold,
-      fontSize: 26,
-      marginRight: spacing.sm,
+    currencyTriggerWrap: {
+      width: 72,
       flexShrink: 0,
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+    },
+    currencyPill: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs + 1,
+    },
+    currencyPillText: {
+      fontSize: 14,
     },
     amountInput: {
       flex: 1,
@@ -751,39 +767,12 @@ const createStyles = (colors) =>
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
       fontSize: 34,
+      textAlign: 'center',
       fontVariant: ['tabular-nums'],
     },
-    amountCode: {
-      color: colors.textMuted,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-      marginLeft: spacing.sm,
-    },
-
-    totalRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: colors.card,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      marginBottom: spacing.md,
-    },
-    totalLabel: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 1.2,
-    },
-    totalValue: {
-      color: colors.textPrimary,
-      fontFamily: fonts.numBold,
-      fontSize: 26,
-      fontVariant: ['tabular-nums'],
-      flexShrink: 1,
-      textAlign: 'right',
+    amountSpacer: {
+      width: 72,
+      flexShrink: 0,
     },
 
     noteRow: {
@@ -800,75 +789,6 @@ const createStyles = (colors) =>
       paddingVertical: spacing.sm + 4,
       fontFamily: fonts.regular,
       fontSize: 15,
-    },
-
-    catChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: spacing.sm,
-    },
-    catLabel: {
-      color: colors.textSecondary,
-      fontFamily: fonts.medium,
-      fontSize: 13,
-      maxWidth: 90,
-    },
-
-    peopleWrap: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      marginBottom: spacing.md,
-    },
-    payerChip: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-    },
-    payerChipSelected: {
-      backgroundColor: `${colors.accent}18`,
-      borderColor: colors.accent,
-    },
-    payerLabel: {
-      color: colors.textSecondary,
-      fontFamily: fonts.medium,
-      fontSize: 14,
-      maxWidth: 120,
-    },
-    payerLabelSelected: {
-      color: colors.textPrimary,
-    },
-
-    methodToggle: {
-      flexDirection: 'row',
-      backgroundColor: colors.cardPressed,
-      borderRadius: 12,
-      padding: 2,
-      marginBottom: spacing.md,
-    },
-    methodChip: {
-      flex: 1,
-      alignItems: 'center',
-      paddingVertical: spacing.xs + 2,
-      borderRadius: 10,
-    },
-    methodChipSelected: {
-      backgroundColor: colors.card,
-    },
-    methodText: {
-      color: colors.textMuted,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-    },
-    methodTextSelected: {
-      color: colors.accent,
     },
 
     taxRow: {
