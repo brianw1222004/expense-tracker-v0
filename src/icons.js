@@ -49,6 +49,25 @@ import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import PlusSignIcon from '@hugeicons/core-free-icons/PlusSignIcon';
 import Search01Icon from '@hugeicons/core-free-icons/Search01Icon';
 import Analytics01Icon from '@hugeicons/core-free-icons/Analytics01Icon';
+// Payment-method icons (for split-bill payment methods, mirroring categories).
+import Cash01Icon from '@hugeicons/core-free-icons/Cash01Icon';
+import CreditCardIcon from '@hugeicons/core-free-icons/CreditCardIcon';
+import BankIcon from '@hugeicons/core-free-icons/BankIcon';
+import Coins01Icon from '@hugeicons/core-free-icons/Coins01Icon';
+import MoneyBag01Icon from '@hugeicons/core-free-icons/MoneyBag01Icon';
+import BanknoteIcon from '@hugeicons/core-free-icons/BanknoteIcon';
+import DollarCircleIcon from '@hugeicons/core-free-icons/DollarCircleIcon';
+import QrCodeIcon from '@hugeicons/core-free-icons/QrCodeIcon';
+import MoneySend01Icon from '@hugeicons/core-free-icons/MoneySend01Icon';
+import MoneyReceive01Icon from '@hugeicons/core-free-icons/MoneyReceive01Icon';
+// Group-avatar icons (minimal glyphs for split-bill groups, mirroring categories).
+import UserMultipleIcon from '@hugeicons/core-free-icons/UserMultipleIcon';
+import FavouriteIcon from '@hugeicons/core-free-icons/FavouriteIcon';
+import Beach02Icon from '@hugeicons/core-free-icons/Beach02Icon';
+import MountainIcon from '@hugeicons/core-free-icons/MountainIcon';
+import Restaurant01Icon from '@hugeicons/core-free-icons/Restaurant01Icon';
+import BirthdayCakeIcon from '@hugeicons/core-free-icons/BirthdayCakeIcon';
+import FootballIcon from '@hugeicons/core-free-icons/FootballIcon';
 const REGISTRY = {
   'hamburger-01': Hamburger01Icon,
   'shopping-cart-01': ShoppingCart01Icon,
@@ -99,6 +118,25 @@ const REGISTRY = {
   'plus-sign': PlusSignIcon,
   'search-01': Search01Icon,
   'analytics-01': Analytics01Icon,
+
+  'cash-01': Cash01Icon,
+  'credit-card': CreditCardIcon,
+  'bank': BankIcon,
+  'coins-01': Coins01Icon,
+  'money-bag-01': MoneyBag01Icon,
+  'banknote': BanknoteIcon,
+  'dollar-circle': DollarCircleIcon,
+  'qr-code': QrCodeIcon,
+  'money-send-01': MoneySend01Icon,
+  'money-receive-01': MoneyReceive01Icon,
+
+  'user-multiple': UserMultipleIcon,
+  'favourite': FavouriteIcon,
+  'beach-02': Beach02Icon,
+  'mountain': MountainIcon,
+  'restaurant-01': Restaurant01Icon,
+  'birthday-cake': BirthdayCakeIcon,
+  'football': FootballIcon,
 };
 
 export function HIcon({ name, size = 24, color = '#000', strokeWidth = 1.5, style }) {

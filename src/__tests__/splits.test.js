@@ -5,8 +5,14 @@
 const {
   YOU,
   PAYMENT_METHODS,
+  PAYMENT_ICON_OPTIONS,
+  GROUP_ICONS,
+  DEFAULT_GROUP_ICON,
+  getGroupIcon,
   getPaymentMethod,
   getPaymentMethodLabel,
+  getPaymentMethodColor,
+  getAllPaymentMethods,
   computeShares,
   customSharesValid,
   percentageSharesValid,
@@ -106,6 +112,83 @@ describe('getPaymentMethod()', () => {
   it('returns the "cash" fallback for undefined', () => {
     expect(getPaymentMethod(undefined).id).toBe('cash');
   });
+
+  it('every built-in method carries a color and a registered icon', () => {
+    PAYMENT_METHODS.forEach((m) => {
+      expect(typeof m.color).toBe('string');
+      expect(typeof m.icon).toBe('string');
+    });
+  });
+
+  it('guarantees color/icon even for a legacy custom method that lacks them', () => {
+    const customs = [{ id: 'venmo', label: 'Venmo' }];
+    const m = getPaymentMethod('venmo', customs);
+    expect(m.id).toBe('venmo');
+    expect(typeof m.color).toBe('string');
+    expect(typeof m.icon).toBe('string');
+  });
+
+  it('uses a custom method\'s own color/icon when provided', () => {
+    const customs = [{ id: 'venmo', label: 'Venmo', color: '#123456', icon: 'qr-code' }];
+    const m = getPaymentMethod('venmo', customs);
+    expect(m.color).toBe('#123456');
+    expect(m.icon).toBe('qr-code');
+  });
+});
+
+describe('getPaymentMethodColor()', () => {
+  it('returns the built-in color for a known id', () => {
+    expect(getPaymentMethodColor('cash')).toBe(getPaymentMethod('cash').color);
+  });
+
+  it('falls back to the cash color for an unknown id', () => {
+    expect(getPaymentMethodColor('nonexistent')).toBe(getPaymentMethod('cash').color);
+  });
+
+  it('returns a custom method color', () => {
+    const customs = [{ id: 'venmo', label: 'Venmo', color: '#abcdef', icon: 'qr-code' }];
+    expect(getPaymentMethodColor('venmo', customs)).toBe('#abcdef');
+  });
+});
+
+describe('getAllPaymentMethods()', () => {
+  it('merges built-ins with customs', () => {
+    const customs = [{ id: 'venmo', label: 'Venmo' }];
+    const all = getAllPaymentMethods(customs);
+    expect(all.length).toBe(PAYMENT_METHODS.length + 1);
+    expect(all[all.length - 1].id).toBe('venmo');
+  });
+
+  it('tolerates a non-array customs argument', () => {
+    expect(getAllPaymentMethods(undefined).length).toBe(PAYMENT_METHODS.length);
+    expect(getAllPaymentMethods(null).length).toBe(PAYMENT_METHODS.length);
+  });
+});
+
+describe('icon option lists', () => {
+  it('exposes a non-empty group-icon set with the default included', () => {
+    expect(Array.isArray(GROUP_ICONS)).toBe(true);
+    expect(GROUP_ICONS.length).toBeGreaterThan(0);
+    expect(GROUP_ICONS).toContain(DEFAULT_GROUP_ICON);
+  });
+
+  it('exposes a non-empty payment-icon set', () => {
+    expect(Array.isArray(PAYMENT_ICON_OPTIONS)).toBe(true);
+    expect(PAYMENT_ICON_OPTIONS.length).toBeGreaterThan(0);
+  });
+});
+
+describe('getGroupIcon()', () => {
+  it('passes through a known icon key', () => {
+    expect(getGroupIcon(GROUP_ICONS[1])).toBe(GROUP_ICONS[1]);
+  });
+
+  it('falls back to the default for unknown / legacy-emoji / missing values', () => {
+    expect(getGroupIcon('👥')).toBe(DEFAULT_GROUP_ICON);
+    expect(getGroupIcon('not-a-real-icon')).toBe(DEFAULT_GROUP_ICON);
+    expect(getGroupIcon(undefined)).toBe(DEFAULT_GROUP_ICON);
+    expect(getGroupIcon(null)).toBe(DEFAULT_GROUP_ICON);
+  });
 });
 
 describe('getPaymentMethodLabel()', () => {
@@ -116,11 +199,15 @@ describe('getPaymentMethodLabel()', () => {
     expect(captured).toContain('pay.card');
   });
 
-  it('falls back to the cash key for an unknown id', () => {
-    const captured = [];
-    const t = (key) => { captured.push(key); return key; };
-    getPaymentMethodLabel('nonexistent', t);
-    expect(captured).toContain('pay.cash');
+  it('falls back to the cash label for an unknown/deleted method', () => {
+    const t = (key) => key;
+    expect(getPaymentMethodLabel('nonexistent', t)).toBe('pay.cash');
+  });
+
+  it('resolves a custom payment method label', () => {
+    const t = (key) => key;
+    const customs = [{ id: 'venmo', label: 'Venmo' }];
+    expect(getPaymentMethodLabel('venmo', t, customs)).toBe('Venmo');
   });
 });
 

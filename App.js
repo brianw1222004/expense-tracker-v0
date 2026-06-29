@@ -173,6 +173,8 @@ function ExpenseTracker() {
   // the previously locked group).
   const [addNonce, setAddNonce] = useState(0);
   const [editingExpense, setEditingExpense] = useState(null);
+  // The split bill currently open in the editor (re-decide paid-by / split), or null.
+  const [editingSplit, setEditingSplit] = useState(null);
   // Increments on every successful add; RewardCheck animates on each change.
   const [rewardNonce, setRewardNonce] = useState(0);
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
@@ -255,8 +257,27 @@ function ExpenseTracker() {
       if (!active || !result || syncSeqRef.current !== seq) return;
       setExpenses(applyPendingOps(userId, result.expenses));
       if (result.income) setIncome(applyPendingIncomeOps(userId, result.income));
-      if (result.groups) setGroups(applyPendingGroupOps(userId, result.groups));
-      if (result.splits) setSplitExpenses(applyPendingSplitOps(userId, result.splits));
+      // group.icon and bill.meta are DEVICE-LOCAL (not in the Supabase mapping),
+      // so a server reconcile would drop them. Preserve them from in-memory state
+      // by id — same posture as theme/language/categoryBudgets.
+      if (result.groups) {
+        const pulled = applyPendingGroupOps(userId, result.groups);
+        setGroups((prev) => {
+          const byId = new Map(prev.map((g) => [g.id, g]));
+          return pulled.map((g) =>
+            g.icon == null && byId.get(g.id)?.icon != null ? { ...g, icon: byId.get(g.id).icon } : g
+          );
+        });
+      }
+      if (result.splits) {
+        const pulled = applyPendingSplitOps(userId, result.splits);
+        setSplitExpenses((prev) => {
+          const byId = new Map(prev.map((b) => [b.id, b]));
+          return pulled.map((b) =>
+            b.meta == null && byId.get(b.id)?.meta != null ? { ...b, meta: byId.get(b.id).meta } : b
+          );
+        });
+      }
       if (result.settings && settingsVersionRef.current === versionBeforeSync) {
         setSettings((prev) => {
           const merged = { ...prev, ...result.settings };
@@ -287,8 +308,27 @@ function ExpenseTracker() {
       if (!active || !result || syncSeqRef.current !== seq) return;
       setExpenses(applyPendingOps(userId, result.expenses));
       if (result.income) setIncome(applyPendingIncomeOps(userId, result.income));
-      if (result.groups) setGroups(applyPendingGroupOps(userId, result.groups));
-      if (result.splits) setSplitExpenses(applyPendingSplitOps(userId, result.splits));
+      // group.icon and bill.meta are DEVICE-LOCAL (not in the Supabase mapping),
+      // so a server reconcile would drop them. Preserve them from in-memory state
+      // by id — same posture as theme/language/categoryBudgets.
+      if (result.groups) {
+        const pulled = applyPendingGroupOps(userId, result.groups);
+        setGroups((prev) => {
+          const byId = new Map(prev.map((g) => [g.id, g]));
+          return pulled.map((g) =>
+            g.icon == null && byId.get(g.id)?.icon != null ? { ...g, icon: byId.get(g.id).icon } : g
+          );
+        });
+      }
+      if (result.splits) {
+        const pulled = applyPendingSplitOps(userId, result.splits);
+        setSplitExpenses((prev) => {
+          const byId = new Map(prev.map((b) => [b.id, b]));
+          return pulled.map((b) =>
+            b.meta == null && byId.get(b.id)?.meta != null ? { ...b, meta: byId.get(b.id).meta } : b
+          );
+        });
+      }
       if (result.settings && settingsVersionRef.current === versionBeforeSync) {
         setSettings((prev) => ({ ...prev, ...result.settings }));
       }
@@ -382,12 +422,13 @@ function ExpenseTracker() {
   };
 
   // --- Split bills (synced to Supabase via groups + splits lanes) ------------
-  const createGroup = ({ name, currency, members, paymentMethod }) => {
+  const createGroup = ({ name, currency, members, paymentMethod, icon }) => {
     const group = {
       id: makeId('g'),
       name,
       currency,
       paymentMethod,
+      icon: icon || undefined,
       members: members.map((m) => ({ id: makeId('m'), name: m })),
       createdAt: Date.now(),
     };
@@ -416,7 +457,7 @@ function ExpenseTracker() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
-  const addSplitExpense = ({ groupId, description, amount, currency, category, paidBy, mode, shares, createdAt }) => {
+  const addSplitExpense = ({ groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, meta }) => {
     const bill = {
       id: makeId('s'),
       groupId,
@@ -428,6 +469,7 @@ function ExpenseTracker() {
       mode,
       shares,
       createdAt: createdAt ?? Date.now(),
+      ...(meta && { meta }),
     };
     setSplitExpenses((prev) => [bill, ...prev]);
     enqueueSplitUpsert(userId, bill);
@@ -435,9 +477,33 @@ function ExpenseTracker() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
+  // Open the split-bill editor (from a group sheet's bill row). Closes the group
+  // sheet while the editor is up; the editor reopens it on save/delete/close.
+  const openEditSplit = useCallback((bill) => {
+    setActiveGroupId(null);
+    setEditingSplit(bill);
+  }, []);
+
+  const updateSplitExpense = ({ id, groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, meta }) => {
+    const updated = { id, groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, ...(meta ? { meta } : {}) };
+    setSplitExpenses((prev) => prev.map((b) => (b.id === id ? updated : b)));
+    enqueueSplitUpsert(userId, updated);
+    setEditingSplit(null);
+    setActiveGroupId(groupId);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  };
+
   const deleteSplitExpense = (id) => {
     setSplitExpenses((prev) => prev.filter((b) => b.id !== id));
     enqueueSplitDelete(userId, id);
+    // If deleted from the editor, dismiss it and return to the group sheet.
+    setEditingSplit((cur) => {
+      if (cur && cur.id === id) {
+        setActiveGroupId(cur.groupId);
+        return null;
+      }
+      return cur;
+    });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
@@ -747,6 +813,41 @@ function ExpenseTracker() {
     }));
   };
 
+  // A custom payment method carries the same {id,label,color,icon} shape as the
+  // built-ins (so it renders an icon+color chip and themes a group). Accepts a
+  // bare string for back-compat.
+  const addCustomPaymentMethod = (method) => {
+    const id = `pm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const entry =
+      typeof method === 'string'
+        ? { id, label: method }
+        : { id, label: method.label, color: method.color, icon: method.icon };
+    setSettings((prev) => ({
+      ...prev,
+      customPaymentMethods: [...(prev.customPaymentMethods || []), entry],
+    }));
+  };
+
+  const removeCustomPaymentMethod = (id) => {
+    setSettings((prev) => ({
+      ...prev,
+      customPaymentMethods: (prev.customPaymentMethods || []).filter((pm) => pm.id !== id),
+    }));
+    // Reassign any group using the removed method back to cash so no dangling
+    // reference lingers in stored/synced group rows (matches the delete dialog).
+    setGroups((prev) => {
+      let changed = false;
+      const next = prev.map((g) => {
+        if (g.paymentMethod !== id) return g;
+        changed = true;
+        const updated = { ...g, paymentMethod: 'cash' };
+        enqueueGroupUpsert(userId, updated);
+        return updated;
+      });
+      return changed ? next : prev;
+    });
+  };
+
   // Your share of every split bill, as synthetic spending items. These fold into
   // the dashboard/category/budget aggregates (the user chose "your share counts
   // as spending") but never enter the Expenses list — see deriveViewData.
@@ -799,6 +900,7 @@ function ExpenseTracker() {
       overlay == null &&
       !addOpen &&
       editingExpense == null &&
+      editingSplit == null &&
       activeGroupId == null;
     content = (
       <>
@@ -845,6 +947,7 @@ function ExpenseTracker() {
               splitExpenses={splitExpenses}
               displayCurrency={displayCurrency}
               summary={splitSummary}
+              customPaymentMethods={settings.customPaymentMethods}
               onOpenGroup={setActiveGroupId}
               onCreateGroup={() => setOverlay('createGroup')}
             />
@@ -931,6 +1034,35 @@ function ExpenseTracker() {
           )}
         </AddExpenseModal>
 
+        {/* Split-bill editor — re-decide paid-by / split method / shares. Closing
+            returns to the group sheet (mirrors the add-a-bill round-trip). */}
+        <AddExpenseModal
+          visible={editingSplit != null}
+          onClose={() => {
+            const g = editingSplit?.groupId;
+            setEditingSplit(null);
+            if (g) setActiveGroupId(g);
+          }}
+        >
+          {editingSplit && (
+            <SharedSplitForm
+              key={editingSplit.id}
+              editBill={editingSplit}
+              lockedGroupId={editingSplit.groupId}
+              groups={groups}
+              allCategories={allCategories}
+              displayCurrency={displayCurrency}
+              onSave={updateSplitExpense}
+              onDelete={deleteSplitExpense}
+              onClose={() => {
+                const g = editingSplit.groupId;
+                setEditingSplit(null);
+                if (g) setActiveGroupId(g);
+              }}
+            />
+          )}
+        </AddExpenseModal>
+
         <BudgetScreen
           visible={overlay === 'budget'}
           settings={settings}
@@ -953,6 +1085,8 @@ function ExpenseTracker() {
         <CreateGroupScreen
           visible={overlay === 'createGroup'}
           defaultCurrency={displayCurrency}
+          customPaymentMethods={settings.customPaymentMethods}
+          onAddPaymentMethod={addCustomPaymentMethod}
           onCreate={createGroup}
           onClose={() => setOverlay(null)}
         />
@@ -961,7 +1095,11 @@ function ExpenseTracker() {
           visible={activeGroupId != null}
           group={activeGroup}
           splitExpenses={splitExpenses}
+          customPaymentMethods={settings.customPaymentMethods}
+          onAddPaymentMethod={addCustomPaymentMethod}
+          onRemovePaymentMethod={removeCustomPaymentMethod}
           onAddBill={openSharedAddForGroup}
+          onEditBill={openEditSplit}
           onDeleteBill={deleteSplitExpense}
           onSettle={settleUp}
           onUpdateGroup={updateGroup}

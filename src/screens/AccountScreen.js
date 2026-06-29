@@ -66,7 +66,6 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
             <Text style={styles.sectionHeader}>{t('acct.name')}</Text>
             <View style={styles.card}>
               <View style={styles.row}>
-                <HIcon name="user-circle" size={20} color={colors.icon} />
                 <TextInput
                   style={styles.nameInput}
                   value={firstName}
@@ -82,7 +81,6 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
                 />
               </View>
               <View style={[styles.row, styles.rowDivider]}>
-                <View style={styles.nameIconSpacer} />
                 <TextInput
                   style={styles.nameInput}
                   value={lastName}
@@ -183,8 +181,7 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
               })}
             </View>
 
-            <Text style={styles.sectionHeader}>{t('acct.dangerZone')}</Text>
-            <View style={styles.card}>
+            <View style={[styles.card, { marginTop: spacing.lg }]}>
               <Pressable
                 onPress={onDeleteAccount}
                 accessibilityRole="button"
@@ -277,9 +274,6 @@ const createStyles = (colors) =>
       fontSize: 15,
       fontFamily: fonts.regular,
       paddingVertical: 0,
-    },
-    nameIconSpacer: {
-      width: 20,
     },
     signOutText: {
       color: colors.danger,

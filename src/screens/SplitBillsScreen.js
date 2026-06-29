@@ -5,7 +5,7 @@ import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '
 import { useT } from '../i18n';
 import { formatMoney } from '../format';
 import { convert } from '../currency';
-import { groupNet, getPaymentMethodLabel } from '../splits';
+import { groupNet, getPaymentMethodLabel, getPaymentMethodColor, getGroupIcon } from '../splits';
 import { HIcon } from '../icons';
 
 // The Split Bills tab: an overall owed/owe summary, then one card per group with
@@ -17,6 +17,7 @@ export default function SplitBillsScreen({
   splitExpenses,
   displayCurrency,
   summary,
+  customPaymentMethods,
   onOpenGroup,
   onCreateGroup,
 }) {
@@ -95,6 +96,7 @@ export default function SplitBillsScreen({
             group={group}
             splitExpenses={splitExpenses}
             displayCurrency={displayCurrency}
+            customPaymentMethods={customPaymentMethods}
             onOpenGroup={onOpenGroup}
             styles={styles}
             colors={colors}
@@ -119,10 +121,13 @@ export default function SplitBillsScreen({
   );
 }
 
-const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayCurrency, onOpenGroup, styles, colors, t }) {
+const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayCurrency, customPaymentMethods, onOpenGroup, styles, colors, t }) {
   const handlePress = useCallback(() => onOpenGroup(group.id), [onOpenGroup, group.id]);
   const net = convert(groupNet(group, splitExpenses), group.currency, displayCurrency);
   const tone = net > 0 ? colors.success : net < 0 ? colors.danger : colors.textMuted;
+  // The group's surface accents to its payment-method color (matches the themed
+  // group-detail card): a tinted avatar circle + a left edge accent.
+  const pmColor = getPaymentMethodColor(group.paymentMethod, customPaymentMethods);
   const balanceText =
     net > 0
       ? t('split.owesYouShort', { amount: formatMoney(net, displayCurrency) })
@@ -134,15 +139,15 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
     <Pressable
       onPress={handlePress}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.groupCard, pressed && styles.groupCardPressed]}
+      style={({ pressed }) => [styles.groupCard, { borderLeftColor: pmColor }, pressed && styles.groupCardPressed]}
     >
-      <View style={styles.groupIcon}>
-        <HIcon name="user-group" size={22} color={colors.accent} />
+      <View style={[styles.groupIcon, { backgroundColor: `${pmColor}26` }]}>
+        <HIcon name={getGroupIcon(group.icon)} size={22} color={pmColor} />
       </View>
       <View style={styles.groupMiddle}>
         <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
         <Text style={styles.groupMeta} numberOfLines={1}>
-          {t('split.memberCount', { count: group.members.length })} · {getPaymentMethodLabel(group.paymentMethod, t)}
+          {t('split.memberCount', { count: group.members.length })} · {getPaymentMethodLabel(group.paymentMethod, t, customPaymentMethods)}
         </Text>
       </View>
       <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>{balanceText}</Text>
@@ -267,6 +272,7 @@ const createStyles = (colors) =>
       alignItems: 'center',
       backgroundColor: colors.card,
       borderRadius: radius.md,
+      borderLeftWidth: 3,
       padding: spacing.sm + 4,
       marginHorizontal: spacing.md,
       marginBottom: spacing.sm,

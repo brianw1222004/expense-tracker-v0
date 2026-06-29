@@ -118,7 +118,7 @@ export default function InsightScreen({
             )}
 
             {/* External categories (tracked separately from the overall budget) */}
-            {externalSpent > 0 && (
+            {(externalSpent > 0 || budgetedExternal.length > 0) && (
               <View style={styles.card}>
                 <View style={styles.externalRow}>
                   <Text style={styles.externalLabel}>{t('budget.externalTotal')}</Text>

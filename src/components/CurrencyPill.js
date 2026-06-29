@@ -28,9 +28,9 @@ const createStyles = (colors) =>
     pill: {
       alignSelf: 'flex-start',
       backgroundColor: colors.card,
-      borderRadius: 16,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs + 2,
+      borderRadius: 12,
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.xs,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.1,
@@ -43,7 +43,7 @@ const createStyles = (colors) =>
     code: {
       color: colors.accent,
       fontFamily: fonts.bold,
-      fontSize: 13,
-      letterSpacing: 0.5,
+      fontSize: 11.5,
+      letterSpacing: 0.4,
     },
   });

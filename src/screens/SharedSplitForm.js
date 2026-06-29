@@ -12,10 +12,11 @@ import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { getCurrency } from '../currency';
 import { getCategoryLabel } from '../categories';
-import { isValidAmountText, formatMoney, cleanAmountInput } from '../format';
+import { isValidAmountText, formatMoney, cleanAmountInput, dateKey } from '../format';
 import { HIcon } from '../icons';
+import { confirmDestructive } from '../confirm';
 import EntryModeToggle from '../components/EntryModeToggle';
-import CalendarField, { dateForOffset } from '../components/CalendarField';
+import CalendarField, { dateForOffset, offsetForDay } from '../components/CalendarField';
 import CurrencyChipRow from '../components/CurrencyChipRow';
 import { popupChromeStyles } from '../components/popupFormChrome';
 import {
@@ -63,10 +64,13 @@ export default function SharedSplitForm({
   entryMode,
   onChangeEntryMode,
   lockedGroupId = null,
+  editBill = null,
   groups,
   allCategories,
   displayCurrency,
   onAdd,
+  onSave,
+  onDelete,
   onCreateGroup,
   onClose,
 }) {
@@ -74,29 +78,69 @@ export default function SharedSplitForm({
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const showToggle = !lockedGroupId;
-  const showGroupPicker = !lockedGroupId;
+  // Edit mode: prefill from an existing bill and save in place (vs. add a new
+  // one). A bill never moves between groups, so editing locks the group too.
+  const isEdit = editBill != null;
+  const effectiveLockedGroupId = lockedGroupId ?? (isEdit ? editBill.groupId : null);
+  const showToggle = !effectiveLockedGroupId;
+  const showGroupPicker = !effectiveLockedGroupId;
 
-  const initialGroup = lockedGroupId
-    ? groups.find((g) => g.id === lockedGroupId)
+  const initialGroup = effectiveLockedGroupId
+    ? groups.find((g) => g.id === effectiveLockedGroupId)
     : groups[0];
+
+  // Reconstruct the raw split inputs from the stored bill. Bills persist only the
+  // final per-person `shares` (+ an optional `meta` for percentage/tax raw inputs),
+  // so: custom is lossless from shares; percentage uses meta or derives from
+  // shares; tax needs meta (its itemized subtotals can't be recovered) — without
+  // it we fall back to editing as a 'custom' split seeded from the shares.
+  const editDec = isEdit ? getCurrency(editBill.currency).decimals : 2;
+  const fmtNum = (n, dec) => (dec === 0 ? String(Math.round(n)) : Number(n).toFixed(dec));
+  const seedShares = isEdit ? (editBill.shares || {}) : {};
+  const seedMode = isEdit
+    ? (editBill.mode === 'tax' && !editBill.meta ? 'custom' : editBill.mode || 'equal')
+    : 'equal';
 
   const [selectedGroupId, setSelectedGroupId] = useState(initialGroup?.id ?? null);
   const [included, setIncluded] = useState(() =>
-    Object.fromEntries(peopleFor(initialGroup).map((p) => [p.id, true]))
+    Object.fromEntries(peopleFor(initialGroup).map((p) => [p.id, isEdit ? seedShares[p.id] != null : true]))
   );
-  const [paidBy, setPaidBy] = useState(YOU);
-  const [manualCurrency, setManualCurrency] = useState(null);
-  const [mode, setMode] = useState('equal');
-  const [amountText, setAmountText] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('other');
-  const [custom, setCustom] = useState({});
-  const [percent, setPercent] = useState({});
-  const [subtotals, setSubtotals] = useState({});
-  const [taxPct, setTaxPct] = useState('');
-  const [tipPct, setTipPct] = useState('');
-  const [dayOffset, setDayOffset] = useState(0);
+  const [paidBy, setPaidBy] = useState(isEdit ? editBill.paidBy : YOU);
+  const [manualCurrency, setManualCurrency] = useState(isEdit ? editBill.currency : null);
+  const [mode, setMode] = useState(seedMode);
+  // Seed the total whenever editing (tax mode ignores amountText — it renders a
+  // computed total and saves computeTaxShares' total — so this is harmless there
+  // and carries the known total if the user switches a tax bill to another mode).
+  const [amountText, setAmountText] = useState(() => (isEdit ? fmtNum(editBill.amount, editDec) : ''));
+  const [description, setDescription] = useState(isEdit ? editBill.description || '' : '');
+  const [category, setCategory] = useState(isEdit ? editBill.category || 'other' : 'other');
+  const [custom, setCustom] = useState(() =>
+    isEdit && seedMode === 'custom'
+      ? Object.fromEntries(Object.keys(seedShares).map((id) => [id, fmtNum(seedShares[id], editDec)]))
+      : {}
+  );
+  const [percent, setPercent] = useState(() => {
+    if (!isEdit || seedMode !== 'percentage') return {};
+    if (editBill.meta?.percentages) return { ...editBill.meta.percentages };
+    const total = editBill.amount || 0;
+    return Object.fromEntries(
+      Object.keys(seedShares).map((id) => [id, total > 0 ? String(Math.round((seedShares[id] / total) * 1000) / 10) : ''])
+    );
+  });
+  const [subtotals, setSubtotals] = useState(() =>
+    isEdit && editBill.mode === 'tax' && editBill.meta?.subtotals ? { ...editBill.meta.subtotals } : {}
+  );
+  const [taxPct, setTaxPct] = useState(
+    isEdit && editBill.mode === 'tax' && editBill.meta ? String(editBill.meta.taxPct ?? '') : ''
+  );
+  const [tipPct, setTipPct] = useState(
+    isEdit && editBill.mode === 'tax' && editBill.meta ? String(editBill.meta.tipPct ?? '') : ''
+  );
+  const [dayOffset, setDayOffset] = useState(() => {
+    if (!isEdit) return 0;
+    const d = new Date(editBill.createdAt);
+    return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
+  });
 
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
   const currencyCode = manualCurrency ?? selectedGroup?.currency ?? displayCurrency;
@@ -177,19 +221,33 @@ export default function SharedSplitForm({
     if (!canAdd) return;
     let amountToSave;
     let shares;
+    // Persist the raw split inputs (percentages / tax subtotals+rates) alongside
+    // the shares so a later edit can reconstruct them losslessly.
+    let meta;
     if (mode === 'tax') {
       const r = computeTaxShares(subtotalNum, participantIds, taxRate, tipRate, currencyCode);
       amountToSave = r.total;
       shares = r.shares;
+      meta = { subtotals: subtotalNum, taxPct: taxRate, tipPct: tipRate };
     } else {
       // Persist amount and shares on ONE rounded basis so the bill total and the
       // sum of shares can never disagree (computeShares reconciles to it).
       amountToSave = Number(amount.toFixed(cur.decimals));
       const map = mode === 'custom' ? customNum : mode === 'percentage' ? percentNum : {};
       shares = computeShares(amountToSave, mode, participantIds, map, currencyCode);
+      if (mode === 'percentage') meta = { percentages: percentNum };
     }
-    const createdAt = dayOffset === 0 ? Date.now() : dateForOffset(dayOffset).getTime();
-    onAdd({
+    // In edit mode keep the original timestamp when the day is unchanged (mirrors
+    // the personal-expense edit path); otherwise stamp the chosen day.
+    let createdAt;
+    if (isEdit) {
+      const newDay = dateKey(dateForOffset(dayOffset).getTime());
+      const originalDay = dateKey(editBill.createdAt);
+      createdAt = newDay === originalDay ? editBill.createdAt : dateForOffset(dayOffset).getTime();
+    } else {
+      createdAt = dayOffset === 0 ? Date.now() : dateForOffset(dayOffset).getTime();
+    }
+    const payload = {
       groupId: selectedGroup.id,
       description: description.trim(),
       amount: amountToSave,
@@ -199,8 +257,26 @@ export default function SharedSplitForm({
       mode,
       shares,
       createdAt,
-    });
+      meta,
+    };
+    if (isEdit) {
+      payload.id = editBill.id;
+      onSave(payload);
+    } else {
+      onAdd(payload);
+    }
     Keyboard.dismiss();
+  };
+
+  const handleDelete = async () => {
+    if (!isEdit) return;
+    const ok = await confirmDestructive({
+      title: t('split.deleteBill'),
+      body: t('split.deleteBillBody'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+    });
+    if (ok) onDelete(editBill.id);
   };
 
   return (
@@ -217,7 +293,7 @@ export default function SharedSplitForm({
             {showToggle ? (
               <EntryModeToggle value={entryMode} onChange={onChangeEntryMode} />
             ) : (
-              <Text style={styles.title}>{t('split.addBill')}</Text>
+              <Text style={styles.title}>{isEdit ? t('split.editBill') : t('split.addBill')}</Text>
             )}
           </View>
           <Pressable
@@ -548,8 +624,18 @@ export default function SharedSplitForm({
                 pressed && canAdd && styles.saveButtonPressed,
               ]}
             >
-              <Text style={styles.saveButtonText}>{t('split.addBill')}</Text>
+              <Text style={styles.saveButtonText}>{isEdit ? t('split.saveBill') : t('split.addBill')}</Text>
             </Pressable>
+
+            {isEdit && (
+              <Pressable
+                onPress={handleDelete}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.deleteButton, pressed && styles.pressedBg]}
+              >
+                <Text style={styles.deleteButtonText}>{t('split.deleteBill')}</Text>
+              </Pressable>
+            )}
           </>
         )}
       </ScrollView>
@@ -934,5 +1020,16 @@ const createStyles = (colors) =>
       color: colors.onAccent,
       fontFamily: fonts.bold,
       fontSize: 16,
+    },
+    deleteButton: {
+      alignItems: 'center',
+      paddingVertical: spacing.sm + 4,
+      marginTop: spacing.sm,
+      borderRadius: radius.md,
+    },
+    deleteButtonText: {
+      color: colors.danger,
+      fontFamily: fonts.bold,
+      fontSize: 15,
     },
   });

@@ -11,15 +11,56 @@ import { convert, getCurrency } from './currency';
 // The implicit participant id for the app's owner. Members never use this id.
 export const YOU = 'you';
 
-// Payment methods a group settles in. A FIXED set (mirrors incomeSources.js):
-// display names come from i18n (`pay.<id>`); `label` is the English fallback.
-export const PAYMENT_METHODS = [
-  { id: 'cash', label: 'Cash' },
-  { id: 'card', label: 'Card' },
-  { id: 'bank', label: 'Bank transfer' },
-  { id: 'mobile', label: 'Mobile pay' },
-  { id: 'other', label: 'Other' },
+// Minimal hugeicon glyphs a group can pick (chosen from the icon-picker page).
+// Stored as an icon-key string in `group.icon` (rendered via HIcon), the same
+// posture as a payment method's `icon`; DEFAULT_GROUP_ICON when unset. Every key
+// must be registered in icons.js. Curated for common shared-expense scenarios.
+export const GROUP_ICONS = [
+  'user-group', 'user-multiple', 'favourite', 'home-01',
+  'airplane-01', 'car-01', 'beach-02', 'mountain',
+  'restaurant-01', 'coffee-01', 'bottle-wine', 'birthday-cake',
+  'gift', 'shopping-bag-01', 'football', 'game-controller-01',
+  'music-note-01', 'briefcase-01', 'graduation-cap', 'building-01',
 ];
+export const DEFAULT_GROUP_ICON = 'user-group';
+
+// Normalize a stored group icon to a known key, falling back to the default —
+// so legacy caches (which held emoji strings before this was a hugeicon key)
+// render as the default group glyph instead of HIcon's generic grid fallback.
+export function getGroupIcon(icon) {
+  return GROUP_ICONS.includes(icon) ? icon : DEFAULT_GROUP_ICON;
+}
+
+// Payment methods a group settles in. Built-ins are a FIXED set; users can also
+// add custom ones (stored device-local in settings.customPaymentMethods). Each
+// method — like a category — carries a `color` and a hugeicon `icon`, used to
+// render an icon+color chip and to theme a group's surface by its payment
+// method. Display names come from i18n (`pay.<id>`); `label` is the English
+// fallback. Custom methods use their raw `label` (no i18n).
+export const PAYMENT_METHODS = [
+  { id: 'cash', label: 'Cash', color: '#4F9D8F', icon: 'cash-01' },
+  { id: 'card', label: 'Card', color: '#5B7FC4', icon: 'credit-card' },
+  { id: 'bank', label: 'Bank transfer', color: '#9B7FC0', icon: 'bank' },
+  { id: 'mobile', label: 'Mobile pay', color: '#C28A4E', icon: 'smart-phone-01' },
+  { id: 'other', label: 'Other', color: '#8A9AA8', icon: 'wallet-01' },
+];
+
+// Defaults for legacy custom methods cached before color/icon existed, and for
+// the unknown-id fallback, so every caller can always read a color/icon.
+export const DEFAULT_METHOD_COLOR = '#8A9AA8';
+export const DEFAULT_METHOD_ICON = 'wallet-01';
+
+// Curated hugeicon set for the "add payment method" picker (all registered in
+// icons.js — 14 fit one page, mirroring categories' EMOJI_OPTIONS).
+export const PAYMENT_ICON_OPTIONS = [
+  'cash-01', 'credit-card', 'bank', 'smart-phone-01', 'wallet-01',
+  'coins-01', 'money-bag-01', 'banknote', 'dollar-circle', 'qr-code',
+  'money-send-01', 'money-receive-01', 'gift', 'briefcase-01',
+];
+
+export function getAllPaymentMethods(customPaymentMethods = []) {
+  return [...PAYMENT_METHODS, ...(Array.isArray(customPaymentMethods) ? customPaymentMethods : [])];
+}
 
 const FALLBACK_METHOD = PAYMENT_METHODS[0];
 
@@ -28,13 +69,28 @@ function parseCustomAmount(value) {
   return Number(normalized) || 0;
 }
 
-// Unknown/stale method ids fall back to "cash" so old groups still render.
-export function getPaymentMethod(id) {
-  return PAYMENT_METHODS.find((m) => m.id === id) ?? FALLBACK_METHOD;
+// The merged method object (built-in OR custom) with color/icon GUARANTEED.
+// Unknown/stale ids fall back to "cash". The customs arg is optional so existing
+// single-arg callers (and the tests) keep working; legacy customs that lack
+// color/icon get the defaults filled in.
+export function getPaymentMethod(id, customPaymentMethods = []) {
+  const found = getAllPaymentMethods(customPaymentMethods).find((m) => m.id === id);
+  if (!found) return FALLBACK_METHOD;
+  return { color: DEFAULT_METHOD_COLOR, icon: DEFAULT_METHOD_ICON, ...found };
 }
 
-export function getPaymentMethodLabel(id, t) {
-  return t('pay.' + getPaymentMethod(id).id);
+// The themeable color for a payment-method id (built-in or custom).
+export function getPaymentMethodColor(id, customPaymentMethods = []) {
+  return getPaymentMethod(id, customPaymentMethods).color;
+}
+
+export function getPaymentMethodLabel(id, t, customPaymentMethods = []) {
+  const builtIn = PAYMENT_METHODS.find((m) => m.id === id);
+  if (builtIn) return t('pay.' + builtIn.id);
+  const custom = (customPaymentMethods || []).find((m) => m.id === id);
+  // Unknown/deleted id → fall back to "cash", matching getPaymentMethod/
+  // getPaymentMethodColor (never echo the raw internal id into the UI).
+  return custom ? custom.label : t('pay.' + FALLBACK_METHOD.id);
 }
 
 // Reconcile a set of floored integer shares so they sum EXACTLY to the intended

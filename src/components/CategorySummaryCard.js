@@ -232,13 +232,11 @@ const createStyles = (colors) =>
     topRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
       marginBottom: spacing.sm,
       minHeight: 24,
     },
     monthNav: {
-      // flex:1 so the pill (a flexShrink:0 sibling) can never overlap the nav's
-      // tap zone — the centered label sits in the space left of the pill.
-      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -252,32 +250,34 @@ const createStyles = (colors) =>
       minWidth: 100,
       textAlign: 'center',
     },
-    // A flex sibling to the right of the month nav (not absolute — that overlapped
-    // the nav's right-chevron tap zone on narrow screens / long locales).
     moreDetailPill: {
-      flexShrink: 0,
-      marginLeft: spacing.sm,
+      position: 'absolute',
+      right: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 2,
-      backgroundColor: colors.background,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
+      backgroundColor: colors.card,
       borderRadius: 12,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.xs,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
     },
     moreDetailPillPressed: { backgroundColor: colors.cardPressed },
     moreDetailText: {
       color: colors.accent,
       fontFamily: fonts.bold,
-      fontSize: 12,
+      fontSize: 11.5,
+      letterSpacing: 0.4,
     },
     moreDetailChevron: {
       color: colors.accent,
       fontFamily: fonts.bold,
-      fontSize: 14,
-      lineHeight: 16,
+      fontSize: 12,
+      lineHeight: 14,
     },
     donutBody: {
       flexDirection: 'row',

@@ -1,53 +1,79 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { fonts, radius, spacing, useTheme, panelShadow } from '../theme';
-import Sheet from '../components/Sheet';
 import CurrencyPill from '../components/CurrencyPill';
 import CurrencyPicker from '../components/CurrencyPicker';
+import IconPickerSheet from '../components/IconPickerSheet';
+import PaymentMethodModal from '../components/PaymentMethodModal';
 import { useT } from '../i18n';
-import { PAYMENT_METHODS, getPaymentMethodLabel } from '../splits';
+import {
+  getAllPaymentMethods,
+  getPaymentMethodLabel,
+  getPaymentMethodColor,
+  DEFAULT_METHOD_COLOR,
+  DEFAULT_METHOD_ICON,
+  DEFAULT_GROUP_ICON,
+} from '../splits';
 import { HIcon } from '../icons';
 
-// Create-group sheet: name, currency (pill -> Choose currency page), default
-// payment method, and the list of member names (typed names, no accounts).
-// Local draft state resets each time the sheet opens. The owner ("you") is
-// implicit and not listed here.
-export default function CreateGroupScreen({ visible, defaultCurrency, onCreate, onClose }) {
+// Create-group popup — a centered widget-style card (a fading Modal, mirroring
+// CurrencyPicker / the add-expense popup) rather than a bottom sheet. The group
+// avatar is a minimal hugeicon tinted to the chosen payment-method color, tying
+// the form together; tapping it opens the shared IconPickerSheet.
+export default function CreateGroupScreen({
+  visible,
+  defaultCurrency,
+  customPaymentMethods,
+  onAddPaymentMethod,
+  onCreate,
+  onClose,
+}) {
   const { colors } = useTheme();
   const t = useT();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [name, setName] = useState('');
+  const [icon, setIcon] = useState(DEFAULT_GROUP_ICON);
   const [currency, setCurrency] = useState(defaultCurrency);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [currencyOpen, setCurrencyOpen] = useState(false);
-  // Members stored as { id, name } so rows have stable keys when items are removed.
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const nextId = useRef(0);
   const makeMemberId = () => `m${nextId.current++}`;
   const [members, setMembers] = useState(() => [{ id: makeMemberId(), name: '' }]);
 
-  // Reset the draft whenever the sheet (re)opens.
   useEffect(() => {
     if (visible) {
       setName('');
+      setIcon(DEFAULT_GROUP_ICON);
       setCurrency(defaultCurrency);
       setPaymentMethod('cash');
       setMembers([{ id: makeMemberId(), name: '' }]);
+      setPaymentModalOpen(false);
+      setCurrencyOpen(false);
+      setIconPickerOpen(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, defaultCurrency]);
 
+  const allMethods = getAllPaymentMethods(customPaymentMethods);
+  const iconTint = getPaymentMethodColor(paymentMethod, customPaymentMethods);
   const cleanMembers = members.map((m) => m.name.trim()).filter(Boolean);
-  // Two members with the same trimmed name are ambiguous (the settle UI shows
-  // only names). Compare case-insensitively.
   const hasDuplicateNames =
     new Set(cleanMembers.map((n) => n.toLowerCase())).size !== cleanMembers.length;
   const canCreate = name.trim().length > 0 && cleanMembers.length > 0 && !hasDuplicateNames;
 
-  // Ids of members whose trimmed name collides (case-insensitive) with an
-  // earlier member's — these rows get a danger border as inline feedback.
   const duplicateIds = useMemo(() => {
     const seen = new Map();
     const dupes = new Set();
@@ -68,137 +94,178 @@ export default function CreateGroupScreen({ visible, defaultCurrency, onCreate, 
 
   const handleCreate = () => {
     if (!canCreate) return;
-    onCreate({ name: name.trim(), currency, members: cleanMembers, paymentMethod });
+    onCreate({ name: name.trim(), currency, members: cleanMembers, paymentMethod, icon });
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} avoidKeyboard sheetStyle={styles.sheetOverride}>
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>{t('split.newGroup')}</Text>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={styles.root}>
         <Pressable
+          style={[StyleSheet.absoluteFill, styles.backdrop]}
           onPress={onClose}
-          hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={t('common.close')}
-          style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.center}
+          pointerEvents="box-none"
         >
-          <HIcon name="cancel-01" size={20} color={colors.icon} />
-        </Pressable>
-      </View>
-
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.sectionHeader}>{t('split.groupName')}</Text>
         <View style={styles.card}>
-          <TextInput
-            style={styles.nameInput}
-            value={name}
-            onChangeText={setName}
-            placeholder={t('split.groupNamePlaceholder')}
-            placeholderTextColor={colors.textMuted}
-            keyboardAppearance={colors.keyboardAppearance}
-            maxLength={40}
-            accessibilityLabel={t('split.groupName')}
-          />
-        </View>
-
-        <Text style={styles.sectionHeader}>{t('split.currency')}</Text>
-        <View style={styles.card}>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>{t('split.currency')}</Text>
-            <CurrencyPill
-              value={currency}
-              onPress={() => setCurrencyOpen(true)}
-              accessibilityLabel={t('currency.choose')}
-            />
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{t('split.newGroup')}</Text>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+            >
+              <HIcon name="cancel-01" size={18} color={colors.icon} />
+            </Pressable>
           </View>
-        </View>
 
-        <Text style={styles.sectionHeader}>{t('split.paymentMethod')}</Text>
-        <View style={styles.chipRow}>
-          {PAYMENT_METHODS.map((pm) => {
-            const selected = pm.id === paymentMethod;
-            return (
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.sectionHeader}>{t('split.groupName')}</Text>
+            <View style={styles.nameRow}>
               <Pressable
-                key={pm.id}
-                onPress={() => setPaymentMethod(pm.id)}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
+                onPress={() => setIconPickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('split.changeIcon')}
                 style={({ pressed }) => [
-                  styles.chip,
-                  selected && styles.chipSelected,
-                  pressed && styles.chipPressed,
+                  styles.iconButton,
+                  { backgroundColor: `${iconTint}26` },
+                  pressed && styles.iconButtonPressed,
                 ]}
               >
-                <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>
-                  {getPaymentMethodLabel(pm.id, t)}
-                </Text>
+                <HIcon name={icon} size={26} color={iconTint} />
               </Pressable>
-            );
-          })}
-        </View>
+              <View style={[styles.cardShadowWrap, styles.nameCard]}>
+                <View style={styles.fieldCard}>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder={t('split.groupNamePlaceholder')}
+                    placeholderTextColor={colors.textMuted}
+                    keyboardAppearance={colors.keyboardAppearance}
+                    maxLength={40}
+                    accessibilityLabel={t('split.groupName')}
+                  />
+                </View>
+              </View>
+            </View>
 
-        <Text style={styles.sectionHeader}>{t('split.members')}</Text>
-        <View style={styles.card}>
-          {members.map((member, index) => (
-            <View
-              key={member.id}
-              style={[
-                styles.memberRow,
-                index > 0 && styles.rowDivider,
-                duplicateIds.has(member.id) && styles.memberRowDup,
+            <View style={styles.payHeaderRow}>
+              <Text style={styles.sectionHeaderInline}>{t('split.paymentMethod')}</Text>
+              <CurrencyPill
+                value={currency}
+                onPress={() => setCurrencyOpen(true)}
+                accessibilityLabel={t('currency.choose')}
+              />
+            </View>
+            <View style={styles.chipRow}>
+              {allMethods.map((pm) => {
+                const selected = pm.id === paymentMethod;
+                const pColor = pm.color || DEFAULT_METHOD_COLOR;
+                const pIcon = pm.icon || DEFAULT_METHOD_ICON;
+                return (
+                  <Pressable
+                    key={pm.id}
+                    onPress={() => setPaymentMethod(pm.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    style={({ pressed }) => [
+                      styles.chip,
+                      selected && { backgroundColor: `${pColor}1F`, borderColor: pColor },
+                      pressed && styles.chipPressed,
+                    ]}
+                  >
+                    <HIcon name={pIcon} size={15} color={pColor} />
+                    <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]} numberOfLines={1}>
+                      {getPaymentMethodLabel(pm.id, t, customPaymentMethods)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                onPress={() => setPaymentModalOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('split.addPaymentMethod')}
+                style={({ pressed }) => [styles.chip, styles.chipAdd, pressed && styles.chipPressed]}
+              >
+                <HIcon name="plus-sign" size={12} color={colors.accent} />
+                <Text style={[styles.chipLabel, { color: colors.accent }]}>{t('split.addPaymentMethod')}</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.sectionHeader}>{t('split.members')}</Text>
+            <View style={styles.cardShadowWrap}>
+              <View style={styles.fieldCard}>
+              {members.map((member, index) => (
+                <View
+                  key={member.id}
+                  style={[
+                    styles.memberRow,
+                    index > 0 && styles.rowDivider,
+                    duplicateIds.has(member.id) && styles.memberRowDup,
+                  ]}
+                >
+                  <HIcon name="user-circle" size={18} color={colors.icon} />
+                  <TextInput
+                    style={styles.memberInput}
+                    value={member.name}
+                    onChangeText={(v) => setMemberAt(member.id, v)}
+                    placeholder={t('split.memberPlaceholder', { n: index + 1 })}
+                    placeholderTextColor={colors.textMuted}
+                    keyboardAppearance={colors.keyboardAppearance}
+                    maxLength={30}
+                    accessibilityLabel={t('split.memberPlaceholder', { n: index + 1 })}
+                  />
+                  {members.length > 1 && (
+                    <Pressable
+                      onPress={() => removeMember(member.id)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('common.delete')}
+                      style={({ pressed }) => pressed && styles.rowPressed}
+                    >
+                      <HIcon name="cancel-01" size={16} color={colors.textMuted} />
+                    </Pressable>
+                  )}
+                </View>
+              ))}
+              </View>
+            </View>
+            <Pressable
+              onPress={addMember}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.addMemberRow, pressed && styles.addMemberPressed]}
+            >
+              <HIcon name="plus-sign" size={14} color={colors.accent} />
+              <Text style={styles.addMemberText}>{t('split.addMember')}</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleCreate}
+              disabled={!canCreate}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.createButton,
+                !canCreate && styles.createButtonDisabled,
+                pressed && canCreate && styles.createButtonPressed,
               ]}
             >
-              <HIcon name="user-circle" size={18} color={colors.icon} />
-              <TextInput
-                style={styles.memberInput}
-                value={member.name}
-                onChangeText={(v) => setMemberAt(member.id, v)}
-                placeholder={t('split.memberPlaceholder', { n: index + 1 })}
-                placeholderTextColor={colors.textMuted}
-                keyboardAppearance={colors.keyboardAppearance}
-                maxLength={30}
-                accessibilityLabel={t('split.memberPlaceholder', { n: index + 1 })}
-              />
-              {members.length > 1 && (
-                <Pressable
-                  onPress={() => removeMember(member.id)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('common.delete')}
-                  style={({ pressed }) => pressed && styles.rowPressed}
-                >
-                  <HIcon name="cancel-01" size={16} color={colors.textMuted} />
-                </Pressable>
-              )}
-            </View>
-          ))}
+              <Text style={styles.createButtonText}>{t('split.createGroup')}</Text>
+            </Pressable>
+          </ScrollView>
         </View>
-        <Pressable
-          onPress={addMember}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.addMemberRow, pressed && styles.addMemberPressed]}
-        >
-          <HIcon name="plus-sign" size={14} color={colors.accent} />
-          <Text style={styles.addMemberText}>{t('split.addMember')}</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={handleCreate}
-          disabled={!canCreate}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.createButton,
-            !canCreate && styles.createButtonDisabled,
-            pressed && canCreate && styles.createButtonPressed,
-          ]}
-        >
-          <Text style={styles.createButtonText}>{t('split.createGroup')}</Text>
-        </Pressable>
-      </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
 
       <CurrencyPicker
         visible={currencyOpen}
@@ -209,16 +276,55 @@ export default function CreateGroupScreen({ visible, defaultCurrency, onCreate, 
         }}
         onClose={() => setCurrencyOpen(false)}
       />
-    </Sheet>
+      <IconPickerSheet
+        visible={iconPickerOpen}
+        value={icon}
+        onSelect={setIcon}
+        onClose={() => setIconPickerOpen(false)}
+      />
+      <PaymentMethodModal
+        visible={paymentModalOpen}
+        onSave={(method) => {
+          onAddPaymentMethod(method);
+          setPaymentModalOpen(false);
+        }}
+        onClose={() => setPaymentModalOpen(false)}
+      />
+    </Modal>
   );
 }
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    sheetOverride: {
+    root: {
+      flex: 1,
+    },
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    backdrop: {
+      backgroundColor: colors.backdrop,
+    },
+    card: {
+      width: '100%',
+      maxWidth: 440,
+      maxHeight: '88%',
+      backgroundColor: colors.background,
+      borderRadius: radius.lg,
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
-      maxHeight: '88%',
+      paddingBottom: spacing.md,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      elevation: 8,
+    },
+    scrollContent: {
+      paddingBottom: spacing.sm,
     },
     titleRow: {
       flexDirection: 'row',
@@ -235,12 +341,12 @@ const createStyles = (colors) =>
       width: 30,
       height: 30,
       borderRadius: 15,
-      backgroundColor: colors.card,
+      backgroundColor: colors.cardPressed,
       alignItems: 'center',
       justifyContent: 'center',
     },
     closeButtonPressed: {
-      backgroundColor: colors.cardPressed,
+      opacity: 0.6,
     },
     sectionHeader: {
       color: colors.textSecondary,
@@ -251,11 +357,41 @@ const createStyles = (colors) =>
       marginTop: spacing.md,
       marginBottom: spacing.sm,
     },
-    card: {
+    sectionHeaderInline: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 13,
+      textTransform: 'uppercase',
+      letterSpacing: 1.2,
+    },
+    // Shadow on a wrapper without overflow; inner card clips rows. (overflow +
+    // shadow on one node suppresses the iOS drop shadow — see GroupDetailScreen.)
+    cardShadowWrap: {
+      borderRadius: radius.md,
+      ...panelShadow,
+    },
+    fieldCard: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       overflow: 'hidden',
-      ...panelShadow,
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    nameCard: {
+      flex: 1,
+    },
+    iconButton: {
+      width: 52,
+      height: 52,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconButtonPressed: {
+      opacity: 0.6,
     },
     nameInput: {
       color: colors.textPrimary,
@@ -264,17 +400,12 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 4,
     },
-    settingRow: {
+    payHeaderRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm + 2,
-    },
-    settingLabel: {
-      color: colors.textPrimary,
-      fontFamily: fonts.regular,
-      fontSize: 15,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
     },
     chipRow: {
       flexDirection: 'row',
@@ -282,15 +413,15 @@ const createStyles = (colors) =>
       gap: spacing.sm,
     },
     chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.md,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-    },
-    chipSelected: {
-      backgroundColor: `${colors.accent}18`,
-      borderColor: colors.accent,
+      backgroundColor: colors.card,
     },
     chipPressed: {
       opacity: 0.6,
@@ -302,6 +433,9 @@ const createStyles = (colors) =>
     },
     chipLabelSelected: {
       color: colors.textPrimary,
+    },
+    chipAdd: {
+      borderStyle: 'dashed',
     },
     memberRow: {
       flexDirection: 'row',

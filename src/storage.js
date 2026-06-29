@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS = {
   monthlyBudget: 0,
   categoryBudgets: {},
   customCategories: [],
+  customPaymentMethods: [],
   theme: 'neutral',
   language: 'en',
   firstName: '',
@@ -97,6 +98,9 @@ function withDefaults(parsed) {
   }
   if (!Array.isArray(merged.customCategories)) {
     merged.customCategories = [];
+  }
+  if (!Array.isArray(merged.customPaymentMethods)) {
+    merged.customPaymentMethods = [];
   }
   if (!Array.isArray(merged.categoryOrder)) {
     merged.categoryOrder = [];
