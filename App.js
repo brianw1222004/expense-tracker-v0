@@ -87,7 +87,7 @@ import { redenominateBudgets, getCurrency } from './src/currency';
 import { getAllCategories, getRegularAll, getExternalAll } from './src/categories';
 import { dateKey, shiftMonthKey } from './src/format';
 import { deriveViewData } from './src/derive';
-import { overallBalance, yourShareAsExpenses, groupBalances, YOU } from './src/splits';
+import { overallBalance, yourShareAsExpenses, groupBalances, removeMemberFromBill, YOU } from './src/splits';
 import { ThemeProvider, getTheme, spacing, ACCOUNT_FAB_SIZE } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 import { HIcon } from './src/icons';
@@ -446,6 +446,42 @@ function ExpenseTracker() {
       if (group) enqueueGroupUpsert(userId, group);
       return updated;
     });
+  };
+
+  // Remove a member from a group, resolving their bill shares per `strategy`
+  // ('redistribute' | 'unassign' — see removeMemberFromBill in splits.js).
+  // Settlements involving the member are deleted (inert rows once the id is
+  // gone). With 'unassign' and exactly one affected bill, the bill editor opens
+  // on it so the residual can be reassigned immediately; otherwise the group
+  // sheet stays up, where affected rows show their undistributed amount. The
+  // sheet blocks removal of a member who PAID a bill; guarded here too.
+  const removeGroupMember = (groupId, memberId, strategy) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+    if (splitExpenses.some((b) => b.groupId === groupId && !b.settlement && b.paidBy === memberId)) return;
+
+    const rewritten = [];
+    const nextSplits = [];
+    for (const b of splitExpenses) {
+      if (b.groupId !== groupId) {
+        nextSplits.push(b);
+        continue;
+      }
+      if (b.settlement && (b.from === memberId || b.to === memberId)) {
+        enqueueSplitDelete(userId, b.id);
+        continue;
+      }
+      const nb = removeMemberFromBill(b, memberId, strategy);
+      if (nb !== b) rewritten.push(nb);
+      nextSplits.push(nb);
+    }
+    setSplitExpenses(nextSplits);
+    rewritten.forEach((b) => enqueueSplitUpsert(userId, b));
+    const nextGroup = { ...group, members: group.members.filter((m) => m.id !== memberId) };
+    setGroups((prev) => prev.map((g) => (g.id === groupId ? nextGroup : g)));
+    enqueueGroupUpsert(userId, nextGroup);
+    if (strategy === 'unassign' && rewritten.length === 1) openEditSplit(rewritten[0]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
   const deleteGroup = (id) => {
@@ -1101,6 +1137,7 @@ function ExpenseTracker() {
           onDeleteBill={deleteSplitExpense}
           onSettle={settleUp}
           onUpdateGroup={updateGroup}
+          onRemoveMember={removeGroupMember}
           onDeleteGroup={deleteGroup}
           onClose={() => setActiveGroupId(null)}
         />

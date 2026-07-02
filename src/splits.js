@@ -241,6 +241,60 @@ export function billsForGroup(groupId, splitExpenses) {
   return splitExpenses.filter((b) => b.groupId === groupId);
 }
 
+// Rewrite a bill after a member is removed from its group.
+//  - 'redistribute' → the member's share is re-split among the remaining
+//    participants: equal-mode bills stay equal (recomputed over the remainder);
+//    weighted modes scale the remaining shares up proportionally, falling back
+//    to an equal re-split when the remainder held nothing. The result becomes a
+//    plain 'custom' split unless it stayed 'equal'.
+//  - 'unassign' → the member's share key is dropped, leaving the residual
+//    (bill.amount - sum(shares)) undistributed for the user to reassign in the
+//    bill editor (see billUndistributed); mode becomes 'custom' so the editor
+//    opens on per-person amounts.
+// Both strategies drop `meta` (raw percentage/tax inputs no longer describe the
+// shares). Settlements and bills the member isn't part of return unchanged (===).
+export function removeMemberFromBill(bill, memberId, strategy = 'unassign') {
+  if (bill.settlement || !bill.shares || bill.shares[memberId] === undefined) return bill;
+  const base = { ...bill };
+  delete base.meta;
+  const rest = { ...bill.shares };
+  delete rest[memberId];
+  const restIds = Object.keys(rest);
+
+  if (strategy !== 'redistribute' || restIds.length === 0) {
+    return { ...base, mode: 'custom', shares: rest };
+  }
+  if (bill.mode === 'equal') {
+    return { ...base, mode: 'equal', shares: computeShares(bill.amount, 'equal', restIds, {}, bill.currency) };
+  }
+  const restSum = restIds.reduce((s, id) => s + (Number(rest[id]) || 0), 0);
+  if (restSum <= 0) {
+    // The removed member carried the whole bill — nothing to scale, re-split it.
+    return { ...base, mode: 'custom', shares: computeShares(bill.amount, 'equal', restIds, {}, bill.currency) };
+  }
+  // Scale the remaining shares back up to the full amount, preserving their
+  // relative weights — floored to smallest currency units with the leftover
+  // handed out round-robin so they sum EXACTLY to the rounded bill amount.
+  const factor = 10 ** getCurrency(bill.currency).decimals;
+  const totalUnits = Math.round(bill.amount * factor);
+  const unitShares = restIds.map((id) => Math.floor(((Number(rest[id]) || 0) / restSum) * bill.amount * factor));
+  distributeUnits(unitShares, totalUnits - unitShares.reduce((s, u) => s + u, 0));
+  const shares = {};
+  restIds.forEach((id, i) => { shares[id] = unitShares[i] / factor; });
+  return { ...base, mode: 'custom', shares };
+}
+
+// A bill's undistributed residual (amount minus the sum of its shares) in the
+// bill's currency — nonzero after a member was removed with 'unassign', zero for
+// settlements and fully-assigned bills. Sub-unit float noise rounds away.
+export function billUndistributed(bill) {
+  if (bill.settlement) return 0;
+  const factor = 10 ** getCurrency(bill.currency).decimals;
+  const sum = Object.values(bill.shares || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+  const residual = Math.round((bill.amount - sum) * factor) / factor;
+  return residual > 0 ? residual : 0;
+}
+
 // Per-member balance for one group, in the GROUP's currency. Positive = the
 // member owes you; negative = you owe the member. Only debts that involve YOU
 // are tracked (a personal ledger — member-to-member debts are out of scope).

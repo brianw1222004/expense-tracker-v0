@@ -7,8 +7,10 @@ import { HIcon } from '../icons';
 // Generic compact centered picker popup — the same small-widget shape as
 // CurrencyPicker (not a full-height sheet). Renders a titled list of options;
 // tapping a row selects it and closes. Each option is { id, label, icon? }. Used
-// by the Shared add form so Group / Paid by / Split method each collapse to a row.
-export default function OptionPicker({ visible, title, options = [], value, onSelect, onClose }) {
+// by the Shared add form so Group / Paid by / Split method each collapse to a
+// row, and by the group sheet's remove-member choice (which passes `subtitle`
+// for a line of context under the title).
+export default function OptionPicker({ visible, title, subtitle, options = [], value, onSelect, onClose }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -30,6 +32,7 @@ export default function OptionPicker({ visible, title, options = [], value, onSe
               <HIcon name="cancel-01" size={18} color={colors.icon} />
             </Pressable>
           </View>
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
 
           <ScrollView
             keyboardShouldPersistTaps="handled"
@@ -117,6 +120,14 @@ const createStyles = (colors) =>
     },
     closeButtonPressed: {
       opacity: 0.6,
+    },
+    subtitle: {
+      color: colors.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      lineHeight: 19,
+      paddingHorizontal: spacing.xs,
+      marginBottom: spacing.sm,
     },
     listContent: {
       paddingBottom: spacing.xs,

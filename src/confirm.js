@@ -19,3 +19,18 @@ export function confirmDestructive({ title, body, confirmLabel, cancelLabel }) {
     );
   });
 }
+
+// One-button informational alert (native Alert; window.alert on web, where
+// Alert.alert is a no-op). Resolves when dismissed.
+export function alertInfo({ title, body, okLabel }) {
+  if (Platform.OS === 'web') {
+    window.alert(body ? `${title}\n\n${body}` : title);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, body, [{ text: okLabel, onPress: () => resolve() }], {
+      cancelable: true,
+      onDismiss: () => resolve(),
+    });
+  });
+}

@@ -19,6 +19,8 @@ const {
   computeTaxShares,
   taxInputValid,
   billsForGroup,
+  removeMemberFromBill,
+  billUndistributed,
   groupBalances,
   groupNet,
   overallBalance,
@@ -1014,5 +1016,90 @@ describe('yourShareAsExpenses()', () => {
     expect(items).toHaveLength(2);
     expect(items.map((i) => i.id)).toContain('split:b1');
     expect(items.map((i) => i.id)).toContain('split:b2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// removeMemberFromBill / billUndistributed — remove-a-member share handling
+// ---------------------------------------------------------------------------
+
+describe('removeMemberFromBill', () => {
+  const equalBill = {
+    id: 'b1',
+    groupId: 'g1',
+    amount: 2000,
+    currency: 'USD',
+    paidBy: YOU,
+    mode: 'equal',
+    shares: { [YOU]: 500, m1: 500, m2: 500, m3: 500 },
+  };
+
+  test('passes through settlements and bills the member is not part of', () => {
+    const settlement = { id: 's1', settlement: true, amount: 50, currency: 'USD', from: 'm1', to: YOU };
+    expect(removeMemberFromBill(settlement, 'm1', 'redistribute')).toBe(settlement);
+    expect(removeMemberFromBill(equalBill, 'ghost', 'redistribute')).toBe(equalBill);
+  });
+
+  test('redistribute keeps an equal bill equal over the remaining participants', () => {
+    const next = removeMemberFromBill(equalBill, 'm3', 'redistribute');
+    expect(next.mode).toBe('equal');
+    expect(next.shares.m3).toBeUndefined();
+    const values = Object.values(next.shares);
+    expect(values.reduce((s, v) => s + v, 0)).toBeCloseTo(2000, 2);
+    // 2000 / 3 → 666.67 / 666.67 / 666.66 (leftover cents to the first ids).
+    expect(next.shares[YOU]).toBeCloseTo(666.67, 2);
+  });
+
+  test('redistribute scales weighted shares proportionally and sums exactly', () => {
+    const bill = {
+      ...equalBill,
+      id: 'b2',
+      amount: 100,
+      mode: 'custom',
+      shares: { [YOU]: 70, m1: 20, m2: 10 },
+      meta: { percentages: { [YOU]: 70, m1: 20, m2: 10 } },
+    };
+    const next = removeMemberFromBill(bill, 'm2', 'redistribute');
+    expect(next.mode).toBe('custom');
+    expect(next.meta).toBeUndefined();
+    // 70/20 weights over $100 → 77.78 / 22.22.
+    expect(next.shares[YOU]).toBeCloseTo(77.78, 2);
+    expect(next.shares.m1).toBeCloseTo(22.22, 2);
+    expect(next.shares[YOU] + next.shares.m1).toBeCloseTo(100, 2);
+  });
+
+  test('redistribute stays exact for zero-decimal currencies', () => {
+    const bill = { ...equalBill, id: 'b3', amount: 1000, currency: 'JPY', mode: 'custom', shares: { [YOU]: 700, m1: 200, m2: 100 } };
+    const next = removeMemberFromBill(bill, 'm2', 'redistribute');
+    const values = Object.values(next.shares);
+    expect(values.every((v) => Number.isInteger(v))).toBe(true);
+    expect(values.reduce((s, v) => s + v, 0)).toBe(1000);
+  });
+
+  test('redistribute falls back to an equal re-split when the remainder held nothing', () => {
+    const bill = { ...equalBill, id: 'b4', amount: 90, mode: 'custom', shares: { [YOU]: 0, m1: 0, m2: 90 } };
+    const next = removeMemberFromBill(bill, 'm2', 'redistribute');
+    expect(next.shares[YOU]).toBeCloseTo(45, 2);
+    expect(next.shares.m1).toBeCloseTo(45, 2);
+  });
+
+  test('unassign drops the share key, becomes custom, and leaves the residual undistributed', () => {
+    const next = removeMemberFromBill(equalBill, 'm3', 'unassign');
+    expect(next.mode).toBe('custom');
+    expect(next.shares.m3).toBeUndefined();
+    expect(next.shares[YOU]).toBe(500);
+    expect(billUndistributed(next)).toBeCloseTo(500, 2);
+  });
+});
+
+describe('billUndistributed', () => {
+  test('zero for settlements and fully-assigned bills', () => {
+    expect(billUndistributed({ settlement: true, amount: 50, currency: 'USD' })).toBe(0);
+    expect(billUndistributed({ amount: 100, currency: 'USD', shares: { [YOU]: 60, m1: 40 } })).toBe(0);
+  });
+
+  test('rounds away sub-unit float noise and never goes negative', () => {
+    expect(billUndistributed({ amount: 0.3, currency: 'USD', shares: { [YOU]: 0.1, m1: 0.2 } })).toBe(0);
+    expect(billUndistributed({ amount: 100, currency: 'USD', shares: { [YOU]: 120 } })).toBe(0);
   });
 });

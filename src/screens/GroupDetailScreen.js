@@ -7,13 +7,15 @@ import CurrencyPill from '../components/CurrencyPill';
 import CurrencyPicker from '../components/CurrencyPicker';
 import IconPickerSheet from '../components/IconPickerSheet';
 import PaymentMethodModal from '../components/PaymentMethodModal';
+import OptionPicker from '../components/OptionPicker';
 import { useT, useLanguage, translate } from '../i18n';
-import { confirmDestructive } from '../confirm';
-import { getCurrency } from '../currency';
+import { confirmDestructive, alertInfo } from '../confirm';
+import { convert, getCurrency } from '../currency';
 import { formatMoney, dayLabel } from '../format';
 import {
   groupBalances,
   billsForGroup,
+  billUndistributed,
   getAllPaymentMethods,
   getPaymentMethodLabel,
   getPaymentMethodColor,
@@ -44,6 +46,7 @@ export default function GroupDetailScreen({
   onDeleteBill,
   onSettle,
   onUpdateGroup,
+  onRemoveMember,
   onDeleteGroup,
   onClose,
 }) {
@@ -58,6 +61,9 @@ export default function GroupDetailScreen({
   // Local draft of member names so renames don't enqueue a sync op per keystroke;
   // edits commit on blur. Add/remove commit immediately.
   const [memberDraft, setMemberDraft] = useState([]);
+  // The member the remove-choice popup is asking about:
+  // { id, name, count, amount } (amount = their shares in the group currency).
+  const [removing, setRemoving] = useState(null);
 
   // Animated tint of the settings card to the group's payment-method color,
   // mirroring the add-expense category tint. The endpoints live in STATE (not
@@ -95,8 +101,9 @@ export default function GroupDetailScreen({
     [group, splitExpenses]
   );
 
-  // Member ids referenced by ANY bill/settlement — removing one would silently
-  // drop a balance, so removal is blocked for them.
+  // Member ids referenced by ANY bill/settlement — removing one affects the
+  // ledger, so the ×-button routes them through the remove-choice flow
+  // (redistribute / reassign manually) instead of removing outright.
   const usedMemberIds = useMemo(() => {
     const used = new Set();
     if (!group) return used;
@@ -155,9 +162,21 @@ export default function GroupDetailScreen({
     `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
   const commitMembers = (draft) => {
-    const cleaned = draft.map((m) => ({ id: m.id, name: m.name.trim() })).filter((m) => m.name);
+    // Committing a rename never REMOVES anyone: an emptied name reverts to its
+    // last committed value (removal is the ×-button's job, which has its own
+    // bill-aware flow). Brand-new rows left unnamed just drop out of the draft.
+    const cleaned = [];
+    for (const m of draft) {
+      const name = m.name.trim();
+      if (name) cleaned.push({ id: m.id, name });
+      else {
+        const prev = group.members.find((g) => g.id === m.id);
+        if (prev) cleaned.push({ id: m.id, name: prev.name });
+      }
+    }
     const lower = cleaned.map((m) => m.name.toLowerCase());
     if (new Set(lower).size !== lower.length) return;
+    setMemberDraft(cleaned);
     onUpdateGroup(group.id, { members: cleaned });
   };
 
@@ -168,11 +187,40 @@ export default function GroupDetailScreen({
 
   const addMember = () => setMemberDraft((prev) => [...prev, { id: newMemberId(), name: '' }]);
 
+  // The ×-button. Unreferenced members are removed outright; members on the
+  // ledger get a bill-aware flow: a payer can't be removed (their bills have no
+  // meaningful rewrite), a share-holder picks redistribute-vs-reassign in the
+  // remove-choice popup, and a settlements-only member just confirms (their
+  // settlement records are deleted with them).
   const removeMember = (id) => {
-    if (usedMemberIds.has(id)) return;
-    const next = memberDraft.filter((m) => m.id !== id);
-    setMemberDraft(next);
-    commitMembers(next);
+    if (!usedMemberIds.has(id)) {
+      const next = memberDraft.filter((m) => m.id !== id);
+      setMemberDraft(next);
+      commitMembers(next);
+      return;
+    }
+    const name = group.members.find((m) => m.id === id)?.name ?? '';
+    const groupBills = billsForGroup(group.id, splitExpenses).filter((b) => !b.settlement);
+    const paidCount = groupBills.filter((b) => b.paidBy === id).length;
+    if (paidCount > 0) {
+      alertInfo({
+        title: translate(language, 'split.removePayerTitle', { name }),
+        body: translate(language, 'split.removePayerBody', { name, count: paidCount }),
+        okLabel: translate(language, 'common.ok'),
+      });
+      return;
+    }
+    const affected = groupBills.filter((b) => b.shares?.[id] != null);
+    if (affected.length === 0) {
+      confirm(
+        translate(language, 'split.removeMemberTitle', { name }),
+        translate(language, 'split.removeSettledBody'),
+        () => onRemoveMember(group.id, id, 'unassign')
+      );
+      return;
+    }
+    const amount = affected.reduce((s, b) => s + convert(b.shares[id] || 0, b.currency, group.currency), 0);
+    setRemoving({ id, name, count: affected.length, amount });
   };
 
   const cur = getCurrency(group.currency);
@@ -297,7 +345,6 @@ export default function GroupDetailScreen({
                 : bal > 0
                 ? t('split.owesYou', { amount: formatMoney(bal, group.currency) })
                 : t('split.youOweMember', { amount: formatMoney(-bal, group.currency) });
-              const inUse = usedMemberIds.has(member.id);
               return (
                 <View
                   key={member.id}
@@ -343,12 +390,10 @@ export default function GroupDetailScreen({
                   {memberDraft.length > 1 && (
                     <Pressable
                       onPress={() => removeMember(member.id)}
-                      disabled={inUse}
                       hitSlop={10}
                       accessibilityRole="button"
                       accessibilityLabel={t('common.delete')}
-                      accessibilityState={{ disabled: inUse }}
-                      style={({ pressed }) => [inUse && styles.removeDisabled, pressed && !inUse && styles.rowPressed]}
+                      style={({ pressed }) => [pressed && styles.rowPressed]}
                     >
                       <HIcon name="cancel-01" size={16} color={colors.textMuted} />
                     </Pressable>
@@ -385,35 +430,45 @@ export default function GroupDetailScreen({
         ) : (
           <View style={styles.cardShadowWrap}>
             <View style={styles.card}>
-              {bills.map((bill, index) => (
-                <Pressable
-                  key={bill.id}
-                  onPress={() => onEditBill(bill)}
-                  onLongPress={() =>
-                    confirm(
-                      translate(language, 'split.deleteBill'),
-                      translate(language, 'split.deleteBillBody'),
-                      () => onDeleteBill(bill.id)
-                    )
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={bill.description || t('split.bill')}
-                  accessibilityHint={t('split.longPressDelete')}
-                  style={({ pressed }) => [styles.billRow, index > 0 && styles.rowDivider, pressed && styles.rowPressed]}
-                >
-                  <View style={styles.billInfo}>
-                    <Text style={styles.billDesc} numberOfLines={1}>
-                      {bill.description || t('split.bill')}
+              {bills.map((bill, index) => {
+                // Residual left by a remove-member "reassign manually" — shown
+                // until the user opens the bill and distributes it.
+                const undistributed = billUndistributed(bill);
+                return (
+                  <Pressable
+                    key={bill.id}
+                    onPress={() => onEditBill(bill)}
+                    onLongPress={() =>
+                      confirm(
+                        translate(language, 'split.deleteBill'),
+                        translate(language, 'split.deleteBillBody'),
+                        () => onDeleteBill(bill.id)
+                      )
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={bill.description || t('split.bill')}
+                    accessibilityHint={t('split.longPressDelete')}
+                    style={({ pressed }) => [styles.billRow, index > 0 && styles.rowDivider, pressed && styles.rowPressed]}
+                  >
+                    <View style={styles.billInfo}>
+                      <Text style={styles.billDesc} numberOfLines={1}>
+                        {bill.description || t('split.bill')}
+                      </Text>
+                      <Text style={styles.billMeta} numberOfLines={1}>
+                        {t('split.paidByName', { name: nameFor(bill.paidBy, group, t) })} · {dayLabel(bill.createdAt, language)}
+                      </Text>
+                      {undistributed > 0 && (
+                        <Text style={styles.billUndistributed} numberOfLines={1}>
+                          {t('split.undistributed', { amount: formatMoney(undistributed, bill.currency) })}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.billAmount} numberOfLines={1}>
+                      {formatMoney(bill.amount, bill.currency)}
                     </Text>
-                    <Text style={styles.billMeta} numberOfLines={1}>
-                      {t('split.paidByName', { name: nameFor(bill.paidBy, group, t) })} · {dayLabel(bill.createdAt, language)}
-                    </Text>
-                  </View>
-                  <Text style={styles.billAmount} numberOfLines={1}>
-                    {formatMoney(bill.amount, bill.currency)}
-                  </Text>
-                </Pressable>
-              ))}
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         )}
@@ -455,6 +510,33 @@ export default function GroupDetailScreen({
           setPaymentModalOpen(false);
         }}
         onClose={() => setPaymentModalOpen(false)}
+      />
+      {/* Remove-choice popup for a member with bill shares: redistribute their
+          share among the remaining participants, or drop it as an undistributed
+          residual to reassign by hand in the bill editor. */}
+      <OptionPicker
+        visible={removing != null}
+        title={t('split.removeMemberTitle', { name: removing?.name ?? '' })}
+        subtitle={
+          removing
+            ? t('split.removeMemberBody', {
+                name: removing.name,
+                amount: formatMoney(removing.amount, group.currency),
+                count: removing.count,
+              })
+            : ''
+        }
+        options={[
+          { id: 'redistribute', label: t('split.removeRedistribute') },
+          { id: 'unassign', label: t('split.removeManual') },
+        ]}
+        value={null}
+        onSelect={(choice) => {
+          const memberId = removing.id;
+          setRemoving(null);
+          onRemoveMember(group.id, memberId, choice);
+        }}
+        onClose={() => setRemoving(null)}
       />
     </Sheet>
   );
@@ -636,9 +718,6 @@ const createStyles = (colors) =>
       fontVariant: ['tabular-nums'],
       marginTop: 1,
     },
-    removeDisabled: {
-      opacity: 0.3,
-    },
     addMemberRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -727,6 +806,13 @@ const createStyles = (colors) =>
       color: colors.textMuted,
       fontFamily: fonts.regular,
       fontSize: 13,
+      marginTop: 1,
+    },
+    billUndistributed: {
+      color: colors.warning,
+      fontFamily: fonts.numRegular,
+      fontSize: 12.5,
+      fontVariant: ['tabular-nums'],
       marginTop: 1,
     },
     billAmount: {
