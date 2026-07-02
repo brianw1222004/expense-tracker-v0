@@ -1,10 +1,12 @@
+- [Full-team review 2026-07-02](full-team-review-2026-07.md) — MOST CURRENT, supersedes prior verdicts. Verified bugs (H1 blur-delete, H2 sync race, M1 date offset, M2 stranded group, delete-account gap), KEEP rulings, deletion list, rejected recs
+- [Audit: structure verdicts 2026-07-01](audit-structure-2026-07-01.md) — App.js keep+merge-dedup; income layer delete-now; screen-contracts DROP; walked back useSyncedCollection
 - [Audit: expense-tracker codebase 2026-06-16](audit-expense-tracker-2026-06-16.md) — Full codebase audit findings, severity map, and architecture assessment (partly stale: mono palette + dead font deps since resolved)
 - [Audit: perf+UX batch 2026-06-17](audit-perf-ux-batch-2026-06-17.md) — Post-fix review of b509bd6 batch: LayoutAnimation, categories refactor, ErrorBoundary, i18n, a11y
-- [Audit: home-screen rewrite 2026-06-24](audit-home-screen-2026-06-24.md) — Most current. 297 tests pass; dashboard/SpendingChart embedded rewrite; what's resolved vs open; supersedes stale font/categoryOrder notes
+- [Audit: home-screen rewrite 2026-06-24](audit-home-screen-2026-06-24.md) — 297 tests pass; dashboard/SpendingChart embedded rewrite; what's resolved vs open; supersedes stale font/categoryOrder notes
 - [User: Brian](user-brian.md) — project owner; uses lowercase agent persona names; wants file:line + severity tags + strengths
 - [Prior code review (authoritative)](project-prior-code-review.md) — CODE_REVIEW.md 2026-06-23, 242 tests pass; cross-check before re-reporting bugs
 - [Architecture notes](project-architecture-notes.md) — non-obvious structural facts (derive.js location, layering, income asymmetry, firstName device-local)
-- [Audit: sync engine 2026-06-25](audit-sync-engine-2026-06-25.md) — sync.js/supabase/storage/schema deep review; sign-out drops groups/splits queue (HIGH); rest solid
+- [Audit: sync engine 2026-06-25](audit-sync-engine-2026-06-25.md) — sync.js/supabase/storage/schema deep review; sign-out drops groups/splits queue (HIGH, since fixed); rest solid
 - [Audit: components+crosscutting 2026-06-25](audit-components-crosscutting-2026-06-25.md) — theme/i18n/icons clean (218 keys x3, no fontWeight); CurrencyDropdown dead (CODE_REVIEW stale); icons.js style-forward doc drift
-- [Audit: FINAL VERDICT 2026-06-25](audit-final-verdict-2026-06-25.md) — Authoritative synthesis of 9 reports. needs-work. Blockers: signout flush data-loss, resync race, custom-split rounding. 527 tests green
-- [Audit: restructure 2026-06-26](audit-restructure-2026-06-26.md) — MOST CURRENT. All 3 prior blockers FIXED. 612 tests green. Focus: App.js 1122-line god component, dup StyleSheets (AddEntry/SharedSplitForm), CLAUDE.md "+" doc drift
+- [Audit: FINAL VERDICT 2026-06-25](audit-final-verdict-2026-06-25.md) — Synthesis of 9 reports. needs-work. Blockers: signout flush data-loss, resync race, custom-split rounding. 527 tests green
+- [Audit: restructure 2026-06-26](audit-restructure-2026-06-26.md) — All 3 prior blockers FIXED. 612 tests green. App.js god component, dup StyleSheets; "+"-doc-drift + confirm/shadow recs since RESOLVED (see 2026-07-01)
