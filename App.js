@@ -889,7 +889,7 @@ function ExpenseTracker() {
   // as spending") but never enter the Expenses list — see deriveViewData.
   const splitShareItems = useMemo(() => yourShareAsExpenses(splitExpenses), [splitExpenses]);
 
-  const { sections, months, monthTotal, lastMonthTotal, totalsByCategory, dailyTotals } =
+  const { sections, months, monthTotal, lastMonthTotal, totalsByCategory, dailyTotals, hasSpending } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language, settings.customCategories, undefined, splitShareItems),
       // dayStamp is a dep-only trigger: it forces re-derivation at midnight (so
@@ -944,7 +944,7 @@ function ExpenseTracker() {
           <Animated.View style={[styles.screen, screenStyle('dashboard')]} pointerEvents={tab === 'dashboard' ? 'auto' : 'none'}>
             <DashboardScreen
               loaded={loaded}
-              hasExpenses={hasExpenses}
+              hasExpenses={hasSpending}
               monthTotal={monthTotal}
               lastMonthTotal={lastMonthTotal}
               dailyTotals={dailyTotals}
@@ -991,7 +991,7 @@ function ExpenseTracker() {
           <Animated.View style={[styles.screen, screenStyle('insight')]} pointerEvents={tab === 'insight' ? 'auto' : 'none'}>
             <InsightScreen
               loaded={loaded}
-              hasExpenses={hasExpenses}
+              hasExpenses={hasSpending}
               displayCurrency={displayCurrency}
               monthlyBudget={settings.monthlyBudget}
               categoryBudgets={settings.categoryBudgets}

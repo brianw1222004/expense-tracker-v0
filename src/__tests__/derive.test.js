@@ -23,6 +23,7 @@ describe('deriveViewData()', () => {
     expect(v.dailyTotals).toHaveLength(30); // June
     expect(v.dailyTotals.every((n) => n === 0)).toBe(true);
     expect(v.avgPerDay).toBe(0); // 0 / 15
+    expect(v.hasSpending).toBe(false);
   });
 
   it('sums the current month in the display currency across mixed currencies', () => {
@@ -36,6 +37,7 @@ describe('deriveViewData()', () => {
     expect(v.monthCount).toBe(2);
     expect(v.totalsByCategory.food).toBeCloseTo(expected, 6);
     expect(v.avgPerDay).toBeCloseTo(expected / 15, 6);
+    expect(v.hasSpending).toBe(true);
   });
 
   it('buckets today separately from earlier this month', () => {
@@ -118,6 +120,7 @@ describe('deriveViewData() extraSpending arg', () => {
     const extra = [splitItem('b1', 40, 'USD', 'food', ts(2026, 5, 10))];
     const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
     expect(v.monthTotal).toBeCloseTo(40, 5);
+    expect(v.hasSpending).toBe(true);
   });
 
   it('extraSpending folds into totalsByCategory', () => {
