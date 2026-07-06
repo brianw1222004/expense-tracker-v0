@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,9 +15,20 @@ import CurrencyPill from '../components/CurrencyPill';
 import CurrencyPicker from '../components/CurrencyPicker';
 import { useT } from '../i18n';
 import { getCurrency } from '../currency';
-import { isValidAmountText } from '../format';
+import { formatMoney, isValidAmountText } from '../format';
 import { getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
+import {
+  budgetAmountPercent,
+  budgetAmountToRatio,
+  clampCategoryBudgetAmount,
+  fitAllocatedBudgetsToOverall,
+  hasUsableOverallBudget,
+  maxBudgetForCategory,
+  remainingBudget,
+  ratioToBudgetAmount,
+  totalAllocatedBudget,
+} from '../budget';
 
 
 function budgetToText(value, decimals) {
@@ -40,8 +52,8 @@ function AmountField({ value, decimals, onCommit, style, accessibilityLabel }) {
     const parsed = parseFloat(normalized);
     const isValid = isValidAmountText(normalized, decimals) && parsed > 0;
     const committed = isValid ? Number(parsed.toFixed(decimals)) : 0;
-    setText(budgetToText(committed, decimals));
-    onCommit(committed);
+    const saved = onCommit(committed);
+    setText(budgetToText(typeof saved === 'number' ? saved : committed, decimals));
   };
 
   return (
@@ -64,6 +76,129 @@ function AmountField({ value, decimals, onCommit, style, accessibilityLabel }) {
   );
 }
 
+function BudgetSlider({ value, maxValue, color, disabled, onChange, styles, colors, accessibilityLabel }) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const startValueRef = useRef(value);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const maxValueRef = useRef(maxValue);
+  maxValueRef.current = maxValue;
+
+  const clampToMax = (next) => Math.max(0, Math.min(maxValueRef.current, next));
+
+  const setFromLocation = (locationX) => {
+    if (disabled || trackWidth <= 0) return;
+    const next = clampToMax(locationX / trackWidth);
+    startValueRef.current = next;
+    onChange(next);
+  };
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !disabled,
+        onMoveShouldSetPanResponder: () => !disabled,
+        onPanResponderGrant: (event) => {
+          startValueRef.current = valueRef.current;
+          setFromLocation(event.nativeEvent.locationX);
+        },
+        onPanResponderMove: (_event, gesture) => {
+          if (disabled || trackWidth <= 0) return;
+          onChange(clampToMax(startValueRef.current + gesture.dx / trackWidth));
+        },
+      }),
+    [disabled, trackWidth, onChange]
+  );
+
+  return (
+    <View
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      style={[styles.sliderTrack, disabled && styles.sliderTrackDisabled]}
+      onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+      {...panResponder.panHandlers}
+    >
+      <View style={styles.sliderBase} />
+      <View
+        style={[
+          styles.sliderFill,
+          {
+            width: `${Math.round(value * 100)}%`,
+            backgroundColor: disabled ? colors.border : color,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.sliderThumb,
+          {
+            left: `${Math.round(value * 100)}%`,
+            borderColor: disabled ? colors.border : color,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+function CategoryBudgetRow({
+  category,
+  value,
+  overallBudget,
+  currency,
+  onCommit,
+  maxAmount,
+  styles,
+  colors,
+  t,
+}) {
+  const label = getCategoryLabel(category, t);
+  const sliderEnabled = hasUsableOverallBudget(overallBudget);
+  const ratio = budgetAmountToRatio(value, overallBudget);
+  const maxRatio = budgetAmountToRatio(maxAmount, overallBudget);
+  const percent = budgetAmountPercent(value, overallBudget);
+  const percentLabel = percent == null ? '—' : `${Math.round(percent)}%`;
+
+  return (
+    <View style={styles.categoryBudgetRow}>
+      <View style={styles.categoryLeft}>
+        <View style={[styles.categoryIconWrap, { backgroundColor: `${category.color}1F` }]}>
+          <HIcon name={category.emoji} size={18} color={category.color} />
+        </View>
+        <View style={styles.categoryNameWrap}>
+          <Text style={styles.categoryLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={styles.categoryPercent}>{percentLabel}</Text>
+        </View>
+      </View>
+      <BudgetSlider
+        value={ratio}
+        maxValue={maxRatio}
+        color={category.color}
+        disabled={!sliderEnabled}
+        onChange={(nextRatio) => onCommit(ratioToBudgetAmount(nextRatio, overallBudget, currency.decimals))}
+        styles={styles}
+        colors={colors}
+        accessibilityLabel={`${label} budget proportion`}
+      />
+      <View style={styles.categoryAmountWrap}>
+        <Text style={styles.categorySymbol}>{currency.symbol}</Text>
+        <AmountField
+          key={category.id}
+          value={value}
+          decimals={currency.decimals}
+          onCommit={onCommit}
+          style={styles.categoryBudgetInput}
+          accessibilityLabel={label}
+        />
+      </View>
+    </View>
+  );
+}
+
 export default function BudgetScreen({ visible, settings, regularCategories, externalCategories, onUpdateSettings, onClose }) {
   const { colors } = useTheme();
   const t = useT();
@@ -74,11 +209,25 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
   const currency = getCurrency(settings.displayCurrency);
   // Stale caches from before the budget feature may lack categoryBudgets.
   const categoryBudgets = settings.categoryBudgets ?? {};
+  const overallBudget = settings.monthlyBudget ?? 0;
+  const regularCategoryIds = useMemo(() => regularCategories.map((category) => category.id), [regularCategories]);
+  const canAllocate = hasUsableOverallBudget(overallBudget);
+  const allocated = totalAllocatedBudget(categoryBudgets, regularCategoryIds);
+  const remaining = remainingBudget(overallBudget, categoryBudgets, regularCategoryIds, currency.decimals);
 
   const commitOverall = (committed) => {
     if (committed !== (settings.monthlyBudget ?? 0)) {
-      onUpdateSettings({ monthlyBudget: committed });
+      onUpdateSettings({
+        monthlyBudget: committed,
+        categoryBudgets: fitAllocatedBudgetsToOverall(
+          categoryBudgets,
+          regularCategoryIds,
+          committed,
+          currency.decimals
+        ),
+      });
     }
+    return committed;
   };
 
   const commitCategory = (id, committed) => {
@@ -88,6 +237,20 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
     if (committed > 0) next[id] = committed;
     else delete next[id];
     onUpdateSettings({ categoryBudgets: next });
+    return committed;
+  };
+
+  const commitRegularCategory = (id, committed) => {
+    const clamped = clampCategoryBudgetAmount(
+      id,
+      committed,
+      overallBudget,
+      categoryBudgets,
+      regularCategoryIds,
+      currency.decimals
+    );
+    commitCategory(id, clamped);
+    return clamped;
   };
 
   return (
@@ -146,24 +309,38 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
             <Text style={styles.sectionNote}>{t('budget.overallNote')}</Text>
 
             <Text style={styles.sectionHeader}>{t('budget.categorySection')}</Text>
+            {canAllocate && (
+              <View style={styles.allocationSummary}>
+                <Text style={styles.allocationText}>
+                  Allocated: {formatMoney(allocated, settings.displayCurrency)} / {formatMoney(overallBudget, settings.displayCurrency)}
+                </Text>
+                <Text style={[styles.allocationText, remaining === 0 && styles.allocationTextEmpty]}>
+                  Remaining: {formatMoney(remaining, settings.displayCurrency)}
+                </Text>
+              </View>
+            )}
             <View style={styles.card}>
               {regularCategories.map((category, index) => (
                 <View
                   key={category.id}
-                  style={[styles.categoryRow, index > 0 && styles.rowDivider]}
+                  style={[index > 0 && styles.rowDivider]}
                 >
-                  <HIcon name={category.emoji} size={18} color={category.color} />
-                  <Text style={styles.categoryLabel} numberOfLines={1}>
-                    {getCategoryLabel(category, t)}
-                  </Text>
-                  <Text style={styles.categorySymbol}>{currency.symbol}</Text>
-                  <AmountField
-                    key={category.id}
+                  <CategoryBudgetRow
+                    category={category}
                     value={categoryBudgets[category.id] ?? 0}
-                    decimals={currency.decimals}
-                    onCommit={(committed) => commitCategory(category.id, committed)}
-                    style={styles.categoryInput}
-                    accessibilityLabel={getCategoryLabel(category, t)}
+                    overallBudget={overallBudget}
+                    maxAmount={maxBudgetForCategory(
+                      category.id,
+                      overallBudget,
+                      categoryBudgets,
+                      regularCategoryIds,
+                      currency.decimals
+                    )}
+                    currency={currency}
+                    onCommit={(committed) => commitRegularCategory(category.id, committed)}
+                    styles={styles}
+                    colors={colors}
+                    t={t}
                   />
                 </View>
               ))}
@@ -175,7 +352,7 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
               {externalCategories.map((category, index) => (
                 <View
                   key={category.id}
-                  style={[styles.categoryRow, index > 0 && styles.rowDivider]}
+                  style={[styles.externalCategoryRow, index > 0 && styles.rowDivider]}
                 >
                   <HIcon name={category.emoji} size={18} color={category.color} />
                   <Text style={styles.categoryLabel} numberOfLines={1}>
@@ -331,8 +508,65 @@ const createStyles = (colors) =>
       paddingVertical: spacing.sm + 4,
       fontVariant: ['tabular-nums'],
     },
-    // Vertical padding lives on the input so the whole row height is tappable.
-    categoryRow: {
+    allocationSummary: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.xs,
+    },
+    allocationText: {
+      color: colors.textMuted,
+      fontFamily: fonts.numMedium,
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+      flexShrink: 1,
+    },
+    allocationTextEmpty: {
+      color: colors.warning,
+    },
+    categoryBudgetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+      gap: spacing.sm,
+    },
+    categoryLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      flex: 0.9,
+      minWidth: 74,
+      maxWidth: 132,
+    },
+    categoryAmountWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      width: 104,
+      justifyContent: 'flex-end',
+      minWidth: 0,
+    },
+    categoryIconWrap: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    categoryNameWrap: {
+      flex: 1,
+      minWidth: 0,
+    },
+    categoryPercent: {
+      color: colors.textMuted,
+      fontFamily: fonts.numRegular,
+      fontSize: 12,
+      lineHeight: 14,
+      fontVariant: ['tabular-nums'],
+    },
+    externalCategoryRow: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.md,
@@ -349,7 +583,7 @@ const createStyles = (colors) =>
       color: colors.textMuted,
       fontFamily: fonts.numRegular,
       fontSize: 14,
-      marginRight: spacing.xs,
+      marginRight: 2,
       fontVariant: ['tabular-nums'],
     },
     categoryInput: {
@@ -360,5 +594,47 @@ const createStyles = (colors) =>
       textAlign: 'right',
       paddingVertical: spacing.sm + 4,
       fontVariant: ['tabular-nums'],
+    },
+    categoryBudgetInput: {
+      width: 80,
+      color: colors.textPrimary,
+      fontFamily: fonts.numBold,
+      fontSize: 15,
+      textAlign: 'right',
+      paddingVertical: spacing.sm + 2,
+      fontVariant: ['tabular-nums'],
+    },
+    sliderTrack: {
+      flex: 1,
+      minWidth: 36,
+      height: 24,
+      justifyContent: 'center',
+    },
+    sliderTrackDisabled: {
+      opacity: 0.55,
+    },
+    sliderBase: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.border,
+    },
+    sliderFill: {
+      position: 'absolute',
+      left: 0,
+      height: 6,
+      borderRadius: 3,
+    },
+    sliderThumb: {
+      position: 'absolute',
+      width: 18,
+      height: 18,
+      marginLeft: -9,
+      borderRadius: 9,
+      borderWidth: 3,
+      backgroundColor: colors.card,
+      ...panelShadow,
     },
   });
