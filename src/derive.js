@@ -91,5 +91,6 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
     totalsByCategory,
     monthCount,
     dailyTotals,
+    hasSpending: byMonth.size > 0,
   };
 }
