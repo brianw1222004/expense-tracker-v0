@@ -27,7 +27,7 @@ const HUE_STOPS = [
 ];
 
 // The per-category spending breakdown — a full-height page (Sheet) opened from
-// the Dashboard's category summary card via its "more detail" pill. Holds the
+// the Insight page's "More detail" pill. Holds the
 // draggable per-category grid (each category's month amount + month-over-month
 // delta) and the add/edit-category modal. Month selection is shared with the
 // summary card (driven by App.js), so navigating here or there stays in sync.
@@ -529,13 +529,11 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
                 style={[
                   styles.colorCell,
                   customColorActive
-                    ? { backgroundColor: customHexColor, borderColor: colors.textPrimary }
+                    ? [{ backgroundColor: customHexColor }, styles.colorCellSelected]
                     : styles.customColorCellRainbow,
                 ]}
               >
-                {customColorActive ? (
-                  <HIcon name="tick-01" size={16} color="#fff" />
-                ) : (
+                {!customColorActive && (
                   <Svg width={28} height={28} viewBox="0 0 28 28">
                     <Defs>
                       <SvgLinearGradient id="rainbowGrad" x1="0" y1="0" x2="1" y2="1">
@@ -558,9 +556,7 @@ function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete,
                     setColor(c);
                   }}
                   style={[styles.colorCell, { backgroundColor: c }, !customColorActive && color === c && styles.colorCellSelected]}
-                >
-                  {!customColorActive && color === c && <HIcon name="tick-01" size={16} color="#fff" />}
-                </Pressable>
+                />
               ))}
             </View>
 
@@ -862,7 +858,12 @@ const createModalStyles = (colors) =>
       borderColor: 'transparent',
     },
     colorCellSelected: {
-      borderColor: colors.textPrimary,
+      // Floating accent ring with a small gap (no checkmark) — the modern
+      // selection cue. outline adds no layout space so the grid never reflows.
+      outlineColor: colors.accent,
+      outlineStyle: 'solid',
+      outlineWidth: 2,
+      outlineOffset: 2,
     },
     customColorCellRainbow: {
       backgroundColor: colors.card,

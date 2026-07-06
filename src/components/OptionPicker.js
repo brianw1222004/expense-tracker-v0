@@ -59,8 +59,7 @@ export default function OptionPicker({ visible, title, subtitle, options = [], v
                       <HIcon name={opt.icon} size={20} color={colors.icon} />
                     </View>
                   ) : null}
-                  <Text style={styles.label} numberOfLines={1}>{opt.label}</Text>
-                  {selected && <HIcon name="tick-01" size={20} color={colors.accent} />}
+                  <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>{opt.label}</Text>
                 </Pressable>
               );
             })}
@@ -142,7 +141,7 @@ const createStyles = (colors) =>
       marginBottom: 2,
     },
     rowSelected: {
-      backgroundColor: colors.cardPressed,
+      backgroundColor: `${colors.accent}1A`,
     },
     rowPressed: {
       backgroundColor: colors.cardPressed,
@@ -160,5 +159,8 @@ const createStyles = (colors) =>
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 16,
+    },
+    labelSelected: {
+      color: colors.accent,
     },
   });

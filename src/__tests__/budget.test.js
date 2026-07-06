@@ -8,6 +8,7 @@ const {
   maxBudgetForCategory,
   remainingBudget,
   ratioToBudgetAmount,
+  snapRatioToStep,
   totalAllocatedBudget,
 } = require('../budget');
 
@@ -31,6 +32,16 @@ describe('budget slider helpers', () => {
     expect(budgetAmountToRatio(250, 1000)).toBe(0.25);
     expect(budgetAmountToRatio(1200, 1000)).toBe(1);
     expect(budgetAmountToRatio(250, 0)).toBe(0);
+  });
+
+  test('snaps slider ratios to clean 5% steps', () => {
+    expect(snapRatioToStep(0.12, 0.05)).toBe(0.1);
+    expect(snapRatioToStep(0.13, 0.05)).toBe(0.15);
+    expect(snapRatioToStep(0.155, 0.05)).toBe(0.15); // no float dust from 3 * 0.05
+    expect(snapRatioToStep(0.5, 0.05)).toBe(0.5);
+    expect(snapRatioToStep(1.4, 0.05)).toBe(1); // clamped into range
+    expect(snapRatioToStep(-0.2, 0.05)).toBe(0);
+    expect(snapRatioToStep(0.2, 0)).toBe(0.2); // invalid step is a no-op (still clamped)
   });
 
   test('maps slider ratios back to rounded category amounts', () => {

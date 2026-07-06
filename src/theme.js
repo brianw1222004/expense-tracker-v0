@@ -95,13 +95,15 @@ export function getTheme(name) {
   return THEMES[name] ?? THEMES.neutral;
 }
 
+// Unified type: Inter (a neutral grotesque with strong tabular figures) drives
+// BOTH text and numbers, so word labels align with the money/stat figures next
+// to them. The num* slots stay separate (numeric styles also add fontVariant
+// tabular-nums) but resolve to the same Inter faces. Styles must set fontFamily
+// WITHOUT fontWeight — Android mis-resolves when both are present.
 export const fonts = {
-  regular: 'Lora_400Regular',
-  medium: 'Lora_500Medium',
-  bold: 'Lora_700Bold',
-  // Numbers/money use Inter — a neutral grotesque sans with strong tabular
-  // figures, so columns of money stay aligned (paired with the all-text styles
-  // set in fonts.medium for the medium slot).
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  bold: 'Inter_700Bold',
   numRegular: 'Inter_400Regular',
   numMedium: 'Inter_500Medium',
   numBold: 'Inter_700Bold',

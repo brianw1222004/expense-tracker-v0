@@ -57,10 +57,9 @@ export default function CurrencyPicker({ visible, value, onSelect, onClose }) {
                     <Text style={styles.flag} numberOfLines={1}>{entry.flag}</Text>
                   </View>
                   <View style={styles.rowText}>
-                    <Text style={styles.code}>{entry.code}</Text>
+                    <Text style={[styles.code, selected && styles.codeSelected]}>{entry.code}</Text>
                     <Text style={styles.name} numberOfLines={1}>{entry.name}</Text>
                   </View>
-                  {selected && <HIcon name="tick-01" size={20} color={colors.accent} />}
                 </Pressable>
               );
             })}
@@ -133,7 +132,7 @@ const createStyles = (colors) =>
       marginBottom: 2,
     },
     rowSelected: {
-      backgroundColor: colors.cardPressed,
+      backgroundColor: `${colors.accent}1A`,
     },
     rowPressed: {
       backgroundColor: colors.cardPressed,
@@ -157,6 +156,9 @@ const createStyles = (colors) =>
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 16,
+    },
+    codeSelected: {
+      color: colors.accent,
     },
     name: {
       color: colors.textMuted,

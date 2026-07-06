@@ -17,11 +17,6 @@ import { StatusBar } from 'expo-status-bar';
 import * as HapticsModule from 'expo-haptics';
 import {
   useFonts,
-  Lora_400Regular,
-  Lora_500Medium,
-  Lora_700Bold,
-} from '@expo-google-fonts/lora';
-import {
   Inter_400Regular,
   Inter_500Medium,
   Inter_700Bold,
@@ -112,9 +107,6 @@ export default function App() {
   // Block first paint until loaded so no screen ever renders with the fallback
   // face; on a load error render anyway rather than hanging on a blank screen.
   const [fontsLoaded, fontsError] = useFonts({
-    Lora_400Regular,
-    Lora_500Medium,
-    Lora_700Bold,
     Inter_400Regular,
     Inter_500Medium,
     Inter_700Bold,
@@ -961,7 +953,7 @@ function ExpenseTracker() {
               currentMonthKey={currentMonthKey}
               allCategories={allCategories}
               onShiftCategoryMonth={shiftCatMonth}
-              onCategoryDetail={() => setOverlay('categoryDetail')}
+              onCategoryDetail={() => changeTab('insight')}
             />
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('list')]} pointerEvents={tab === 'list' ? 'auto' : 'none'}>
@@ -999,6 +991,7 @@ function ExpenseTracker() {
               regularCategories={regularCategories}
               externalCategories={externalCategories}
               onEditBudgets={() => setOverlay('budget')}
+              onCategoryDetail={() => setOverlay('categoryDetail')}
               onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
             />

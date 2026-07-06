@@ -153,13 +153,11 @@ export default function PaymentMethodModal({ visible, onSave, onClose }) {
                 style={[
                   styles.colorCell,
                   customColorActive
-                    ? { backgroundColor: customHexColor, borderColor: colors.textPrimary }
+                    ? [{ backgroundColor: customHexColor }, styles.colorCellSelected]
                     : styles.customColorCellRainbow,
                 ]}
               >
-                {customColorActive ? (
-                  <HIcon name="tick-01" size={16} color="#fff" />
-                ) : (
+                {!customColorActive && (
                   <Svg width={28} height={28} viewBox="0 0 28 28">
                     <Defs>
                       <SvgLinearGradient id="pmRainbow" x1="0" y1="0" x2="1" y2="1">
@@ -181,9 +179,7 @@ export default function PaymentMethodModal({ visible, onSave, onClose }) {
                     setColor(c);
                   }}
                   style={[styles.colorCell, { backgroundColor: c }, !customColorActive && color === c && styles.colorCellSelected]}
-                >
-                  {!customColorActive && color === c && <HIcon name="tick-01" size={16} color="#fff" />}
-                </Pressable>
+                />
               ))}
             </View>
 
@@ -334,7 +330,12 @@ const createStyles = (colors) =>
       justifyContent: 'center',
     },
     colorCellSelected: {
-      borderColor: colors.textPrimary,
+      // Floating accent ring with a small gap (no checkmark) — the modern
+      // selection cue. outline adds no layout space so the grid never reflows.
+      outlineColor: colors.accent,
+      outlineStyle: 'solid',
+      outlineWidth: 2,
+      outlineOffset: 2,
     },
     customColorCellRainbow: {
       backgroundColor: colors.card,

@@ -24,6 +24,7 @@ export default function InsightScreen({
   regularCategories,
   externalCategories,
   onEditBudgets,
+  onCategoryDetail,
   onAddPress,
   onLoadDemo,
 }) {
@@ -80,15 +81,25 @@ export default function InsightScreen({
             {/* Budget overview — the gauge of spent vs. budget */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{t('budget.title')}</Text>
-                <Pressable
-                  onPress={onEditBudgets}
-                  accessibilityRole="button"
-                  hitSlop={10}
-                  style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
-                >
-                  <Text style={styles.editPillText}>{t('budget.edit')}</Text>
-                </Pressable>
+                <Text style={styles.cardTitle} numberOfLines={1}>{t('budget.title')}</Text>
+                <View style={styles.headerActions}>
+                  <Pressable
+                    onPress={onCategoryDetail}
+                    accessibilityRole="button"
+                    hitSlop={10}
+                    style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
+                  >
+                    <Text style={styles.editPillText}>{t('cats.moreDetail')}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={onEditBudgets}
+                    accessibilityRole="button"
+                    hitSlop={10}
+                    style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
+                  >
+                    <Text style={styles.editPillText}>{t('budget.edit')}</Text>
+                  </Pressable>
+                </View>
               </View>
               <BudgetGauge
                 spent={gaugeSpent}
@@ -213,10 +224,20 @@ const createStyles = (colors) =>
       alignItems: 'center',
       marginBottom: spacing.md,
     },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      // Never let the two action pills shrink; the title ellipsizes instead so a
+      // long translation (e.g. Spanish) can't clip "Edit budgets" off the card.
+      flexShrink: 0,
+    },
     cardTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 15,
+      flexShrink: 1,
+      marginRight: spacing.sm,
     },
     sectionTitle: {
       color: colors.textSecondary,
@@ -226,7 +247,7 @@ const createStyles = (colors) =>
       letterSpacing: 0.8,
       marginBottom: spacing.xs,
     },
-    // A bordered pill for the "Edit budgets" action.
+    // Bordered pill shared by the header actions (More detail / Edit budgets).
     editPill: {
       backgroundColor: colors.background,
       borderWidth: StyleSheet.hairlineWidth,

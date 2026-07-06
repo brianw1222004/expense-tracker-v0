@@ -47,8 +47,8 @@ function formatPct(pct) {
 // The category-spending summary card shown on the Dashboard (moved off the old
 // Categories tab): a month nav, a rounded-segment donut of the month's spending
 // by category with the total in the center, and the single most- / least-spent
-// category beside it. A "more detail" pill (top-right) opens the full
-// per-category breakdown page (CategoryBreakdownScreen).
+// category beside it. A "more detail" pill (top-right) jumps to the Insight tab,
+// which hosts the full per-category breakdown (CategoryBreakdownScreen).
 export default function CategorySummaryCard({
   months,
   monthKey,

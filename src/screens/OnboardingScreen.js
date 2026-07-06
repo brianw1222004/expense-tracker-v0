@@ -80,7 +80,6 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
             returnKeyType="done"
             maxLength={40}
           />
-          <Text style={styles.widgetHint}>{t('onboard.nameHint')}</Text>
         </View>
 
         <View style={styles.widget}>
@@ -98,7 +97,6 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
               returnKeyType="done"
             />
           </View>
-          <Text style={styles.widgetHint}>{t('onboard.budgetHint')}</Text>
         </View>
 
         <View style={styles.widget}>
@@ -120,7 +118,6 @@ export default function OnboardingScreen({ settings, onUpdateSettings }) {
                 <Text style={[styles.langLabel, selected && styles.langLabelSelected]}>
                   {entry.label}
                 </Text>
-                {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
               </Pressable>
             );
           })}
@@ -183,13 +180,6 @@ const createStyles = (colors) =>
       fontSize: 15,
       marginBottom: spacing.sm,
     },
-    widgetHint: {
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      lineHeight: 18,
-      marginTop: spacing.sm,
-    },
     budgetInputRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -231,7 +221,7 @@ const createStyles = (colors) =>
       marginTop: spacing.xs,
     },
     langSelected: {
-      backgroundColor: colors.background,
+      backgroundColor: `${colors.accent}1A`,
     },
     langLabel: {
       color: colors.textPrimary,
@@ -240,6 +230,7 @@ const createStyles = (colors) =>
       flex: 1,
     },
     langLabelSelected: {
+      color: colors.accent,
       fontFamily: fonts.bold,
     },
     button: {

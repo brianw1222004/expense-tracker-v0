@@ -27,9 +27,16 @@ import {
   maxBudgetForCategory,
   remainingBudget,
   ratioToBudgetAmount,
+  snapRatioToStep,
   totalAllocatedBudget,
 } from '../budget';
 
+// The category slider moves in 5% steps of the overall budget — the extra
+// precision wasn't useful and made fine mouse control fiddly on web.
+const SLIDER_STEP = 0.05;
+// Thumb diameter; the thumb's dynamic marginLeft scales with this so it never
+// overhangs the track ends (keep in sync with the sliderThumb width/height).
+const THUMB_SIZE = 18;
 
 function budgetToText(value, decimals) {
   if (!(value > 0)) return '';
@@ -77,38 +84,46 @@ function AmountField({ value, decimals, onCommit, style, accessibilityLabel }) {
 }
 
 function BudgetSlider({ value, maxValue, color, disabled, onChange, styles, colors, accessibilityLabel }) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const startValueRef = useRef(value);
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  // Everything the gesture handlers read lives in refs so the PanResponder can be
+  // created once (empty deps) — mirroring the hue sliders. Recreating it per render
+  // (as before) dropped in-flight mouse drags on web.
+  const trackWidthRef = useRef(0);
   const maxValueRef = useRef(maxValue);
   maxValueRef.current = maxValue;
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const lastEmitRef = useRef(null);
 
-  const clampToMax = (next) => Math.max(0, Math.min(maxValueRef.current, next));
-
+  // Absolute position within the track (like the hue slider), snapped to 5% and
+  // clamped to what's still allocatable. Deduped so a mouse drag that stays inside
+  // one 5% step doesn't spam commits/re-renders.
   const setFromLocation = (locationX) => {
-    if (disabled || trackWidth <= 0) return;
-    const next = clampToMax(locationX / trackWidth);
-    startValueRef.current = next;
-    onChange(next);
+    if (disabledRef.current || trackWidthRef.current <= 0) return;
+    const raw = locationX / trackWidthRef.current;
+    const next = Math.max(0, Math.min(maxValueRef.current, snapRatioToStep(raw, SLIDER_STEP)));
+    if (next === lastEmitRef.current) return;
+    lastEmitRef.current = next;
+    onChangeRef.current(next);
   };
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => !disabled,
-        onMoveShouldSetPanResponder: () => !disabled,
+        onStartShouldSetPanResponder: () => !disabledRef.current,
+        onMoveShouldSetPanResponder: () => !disabledRef.current,
         onPanResponderGrant: (event) => {
-          startValueRef.current = valueRef.current;
+          lastEmitRef.current = null;
           setFromLocation(event.nativeEvent.locationX);
         },
-        onPanResponderMove: (_event, gesture) => {
-          if (disabled || trackWidth <= 0) return;
-          onChange(clampToMax(startValueRef.current + gesture.dx / trackWidth));
-        },
+        onPanResponderMove: (event) => setFromLocation(event.nativeEvent.locationX),
       }),
-    [disabled, trackWidth, onChange]
+    []
   );
+
+  const clamped = Math.max(0, Math.min(1, value));
+  const pct = `${clamped * 100}%`;
 
   return (
     <View
@@ -117,26 +132,26 @@ function BudgetSlider({ value, maxValue, color, disabled, onChange, styles, colo
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       style={[styles.sliderTrack, disabled && styles.sliderTrackDisabled]}
-      onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+      onLayout={(event) => { trackWidthRef.current = event.nativeEvent.layout.width; }}
       {...panResponder.panHandlers}
     >
-      <View style={styles.sliderBase} />
+      {/* pointerEvents none keeps the track the only touch target, so locationX
+          stays track-relative on native (and it blocks drag text-selection on web). */}
+      <View style={styles.sliderBase} pointerEvents="none" />
       <View
+        pointerEvents="none"
         style={[
           styles.sliderFill,
-          {
-            width: `${Math.round(value * 100)}%`,
-            backgroundColor: disabled ? colors.border : color,
-          },
+          { width: pct, backgroundColor: disabled ? colors.border : color },
         ]}
       />
+      {/* marginLeft scales with value so the thumb stays fully inside the track at
+          both ends (0% → its left edge at the start) instead of overhanging the gap. */}
       <View
+        pointerEvents="none"
         style={[
           styles.sliderThumb,
-          {
-            left: `${Math.round(value * 100)}%`,
-            borderColor: disabled ? colors.border : color,
-          },
+          { left: pct, marginLeft: -clamped * THUMB_SIZE, borderColor: disabled ? colors.border : color },
         ]}
       />
     </View>
@@ -278,19 +293,14 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
             contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.sectionHeader}>{t('budget.currencySection')}</Text>
-            <View style={styles.card}>
-              <View style={styles.currencyPickRow}>
-                <Text style={styles.currencyPickSymbol}>{currency.symbol}</Text>
-                <Text style={styles.currencyPickName} numberOfLines={1}>{currency.name}</Text>
-                <CurrencyPill
-                  value={settings.displayCurrency}
-                  onPress={() => setCurrencyOpen(true)}
-                  accessibilityLabel={t('currency.choose')}
-                />
-              </View>
+            <View style={styles.currencyHeaderRow}>
+              <Text style={styles.currencyHeaderLabel}>{t('budget.currencySection')}</Text>
+              <CurrencyPill
+                value={settings.displayCurrency}
+                onPress={() => setCurrencyOpen(true)}
+                accessibilityLabel={t('currency.choose')}
+              />
             </View>
-            <Text style={styles.sectionNote}>{t('budget.currencyNote')}</Text>
 
             <Text style={styles.sectionHeader}>{t('budget.overallSection')}</Text>
             <View style={styles.card}>
@@ -306,7 +316,6 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
                 />
               </View>
             </View>
-            <Text style={styles.sectionNote}>{t('budget.overallNote')}</Text>
 
             <Text style={styles.sectionHeader}>{t('budget.categorySection')}</Text>
             {canAllocate && (
@@ -345,7 +354,6 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
                 </View>
               ))}
             </View>
-            <Text style={styles.sectionNote}>{t('budget.categoryNote')}</Text>
 
             <Text style={styles.sectionHeader}>{t('budget.externalSection')}</Text>
             <View style={styles.card}>
@@ -437,57 +445,26 @@ const createStyles = (colors) =>
       overflow: 'hidden',
       ...panelShadow,
     },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm + 4,
-    },
     rowDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    rowPressed: {
-      backgroundColor: colors.cardPressed,
+    // The currency picker is just a labelled pill now (no card/symbol/name row).
+    // Section spacing lives on the row so the margin-free label and the pill
+    // stay vertically centered together.
+    currencyHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
     },
-    currencySymbol: {
-      color: colors.textPrimary,
-      fontFamily: fonts.numBold,
-      fontSize: 15,
-      width: 48,
-      fontVariant: ['tabular-nums'],
-    },
-    currencyName: {
-      color: colors.textPrimary,
-      fontFamily: fonts.regular,
-      fontSize: 15,
-      flex: 1,
-    },
-    currencyCode: {
-      color: colors.textMuted,
+    currencyHeaderLabel: {
+      color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 13,
-      marginRight: spacing.sm,
-    },
-    currencyPickRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm + 4,
-    },
-    currencyPickSymbol: {
-      color: colors.textPrimary,
-      fontFamily: fonts.numBold,
-      fontSize: 15,
-      width: 44,
-      fontVariant: ['tabular-nums'],
-    },
-    currencyPickName: {
-      color: colors.textPrimary,
-      fontFamily: fonts.regular,
-      fontSize: 15,
-      flex: 1,
+      textTransform: 'uppercase',
+      letterSpacing: 1.2,
     },
     budgetRow: {
       flexDirection: 'row',
@@ -609,9 +586,14 @@ const createStyles = (colors) =>
       minWidth: 36,
       height: 24,
       justifyContent: 'center',
+      // Web affordances (ignored on native): pointer cursor + no accidental
+      // text selection while dragging with a mouse.
+      cursor: 'pointer',
+      userSelect: 'none',
     },
     sliderTrackDisabled: {
       opacity: 0.55,
+      cursor: 'default',
     },
     sliderBase: {
       position: 'absolute',
@@ -629,10 +611,9 @@ const createStyles = (colors) =>
     },
     sliderThumb: {
       position: 'absolute',
-      width: 18,
-      height: 18,
-      marginLeft: -9,
-      borderRadius: 9,
+      width: THUMB_SIZE,
+      height: THUMB_SIZE,
+      borderRadius: THUMB_SIZE / 2,
       borderWidth: 3,
       backgroundColor: colors.card,
       ...panelShadow,

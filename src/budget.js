@@ -14,6 +14,16 @@ export function budgetAmountToRatio(amount, overallBudget) {
   return clampBudgetRatio((Number(amount) || 0) / Number(overallBudget));
 }
 
+// Snap a 0..1 slider ratio to the nearest `step` (default 5%). The slider works
+// in proportions of the overall budget, so a 0.05 step === 5% increments. Float
+// dust from `n * 0.05` is rounded away so results are clean multiples.
+export function snapRatioToStep(ratio, step = 0.05) {
+  const r = clampBudgetRatio(ratio);
+  const s = Number(step);
+  if (!Number.isFinite(s) || s <= 0) return r;
+  return clampBudgetRatio(Math.round(Math.round(r / s) * s * 1e6) / 1e6);
+}
+
 export function ratioToBudgetAmount(ratio, overallBudget, decimals = 2) {
   if (!hasUsableOverallBudget(overallBudget)) return 0;
   const factor = 10 ** decimals;

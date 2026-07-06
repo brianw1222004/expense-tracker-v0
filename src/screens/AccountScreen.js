@@ -96,7 +96,6 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
                 />
               </View>
             </View>
-            <Text style={styles.sectionNote}>{t('acct.nameNote')}</Text>
 
             <Text style={styles.sectionHeader}>{t('acct.section')}</Text>
             {accountEmail ? (
@@ -147,11 +146,11 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
                     style={({ pressed }) => [
                       styles.row,
                       index > 0 && styles.rowDivider,
+                      selected && styles.rowSelected,
                       pressed && styles.rowPressed,
                     ]}
                   >
-                    <Text style={styles.rowLabel}>{entry.label}</Text>
-                    {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
+                    <Text style={[styles.rowLabel, selected && styles.rowLabelSelected]}>{entry.label}</Text>
                   </Pressable>
                 );
               })}
@@ -170,12 +169,12 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
                     style={({ pressed }) => [
                       styles.row,
                       index > 0 && styles.rowDivider,
+                      selected && styles.rowSelected,
                       pressed && styles.rowPressed,
                     ]}
                   >
                     <View style={[styles.themeDot, { backgroundColor: theme.accent }]} />
-                    <Text style={styles.rowLabel}>{t('theme.' + theme.name)}</Text>
-                    {selected && <HIcon name="tick-01" size={16} color={colors.accent} />}
+                    <Text style={[styles.rowLabel, selected && styles.rowLabelSelected]}>{t('theme.' + theme.name)}</Text>
                   </Pressable>
                 );
               })}
@@ -262,11 +261,20 @@ const createStyles = (colors) =>
     rowPressed: {
       backgroundColor: colors.cardPressed,
     },
+    // Selected rows (language/theme) show a soft accent tint + accent-bold label
+    // instead of a trailing checkmark.
+    rowSelected: {
+      backgroundColor: `${colors.accent}1A`,
+    },
     rowLabel: {
       color: colors.textPrimary,
       fontSize: 15,
       fontFamily: fonts.regular,
       flex: 1,
+    },
+    rowLabelSelected: {
+      color: colors.accent,
+      fontFamily: fonts.bold,
     },
     nameInput: {
       flex: 1,
