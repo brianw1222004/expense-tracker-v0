@@ -128,11 +128,18 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
   // The group's surface accents to its payment-method color (matches the themed
   // group-detail card): a tinted avatar circle + a left edge accent.
   const pmColor = getPaymentMethodColor(group.paymentMethod, customPaymentMethods);
+  const amountText = formatMoney(Math.abs(net), displayCurrency);
+  const balanceLabel =
+    net > 0
+      ? t('split.owesYouShort', { amount: '' }).trim()
+      : net < 0
+      ? t('split.youOweShort', { amount: '' }).trim()
+      : '';
   const balanceText =
     net > 0
-      ? t('split.owesYouShort', { amount: formatMoney(net, displayCurrency) })
+      ? t('split.owesYouShort', { amount: amountText })
       : net < 0
-      ? t('split.youOweShort', { amount: formatMoney(-net, displayCurrency) })
+      ? t('split.youOweShort', { amount: amountText })
       : t('split.settled');
 
   return (
@@ -150,7 +157,22 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
           {t('split.memberCount', { count: group.members.length })} · {getPaymentMethodLabel(group.paymentMethod, t, customPaymentMethods)}
         </Text>
       </View>
-      <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>{balanceText}</Text>
+      <View style={styles.groupBalanceBox} accessibilityLabel={balanceText}>
+        {balanceLabel ? (
+          <>
+            <Text style={[styles.groupBalanceLabel, { color: tone }]} numberOfLines={1}>
+              {balanceLabel}
+            </Text>
+            <Text style={[styles.groupBalanceAmount, { color: tone }]} numberOfLines={1} adjustsFontSizeToFit>
+              {amountText}
+            </Text>
+          </>
+        ) : (
+          <Text style={[styles.groupBalanceAmount, { color: tone }]} numberOfLines={1}>
+            {balanceText}
+          </Text>
+        )}
+      </View>
     </Pressable>
   );
 });
@@ -291,6 +313,7 @@ const createStyles = (colors) =>
     },
     groupMiddle: {
       flex: 1,
+      minWidth: 0,
       marginHorizontal: spacing.sm + 4,
     },
     groupName: {
@@ -304,11 +327,21 @@ const createStyles = (colors) =>
       fontSize: 13,
       marginTop: 1,
     },
-    groupBalance: {
+    groupBalanceBox: {
+      maxWidth: 126,
+      alignItems: 'flex-end',
+      flexShrink: 0,
+    },
+    groupBalanceLabel: {
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      lineHeight: 14,
+      textAlign: 'right',
+    },
+    groupBalanceAmount: {
       fontFamily: fonts.numBold,
       fontSize: 13,
       fontVariant: ['tabular-nums'],
-      maxWidth: 120,
       textAlign: 'right',
     },
     empty: {
