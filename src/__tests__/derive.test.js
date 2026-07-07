@@ -68,6 +68,28 @@ describe('deriveViewData()', () => {
     expect(v.dailyTotals[0]).toBe(0);
   });
 
+  it('derives selected-month dashboard totals separately from the current month', () => {
+    const julyNow = new Date(2026, 6, 15, 12, 0, 0);
+    const expenses = [
+      make('may', 20, 'USD', 'food', ts(2026, 4, 20)),
+      make('jun-a', 40, 'USD', 'food', ts(2026, 5, 10)),
+      make('jun-b', 15, 'USD', 'transport', ts(2026, 5, 12)),
+      make('jul', 100, 'USD', 'shopping', ts(2026, 6, 2)),
+    ];
+    const v = deriveViewData(expenses, 'USD', 'en', [], julyNow, [], '2026-06');
+
+    expect(v.monthTotal).toBe(100);
+    expect(v.selectedMonthKey).toBe('2026-06');
+    expect(v.selectedMonthTotal).toBe(55);
+    expect(v.selectedLastMonthTotal).toBe(20);
+    expect(v.selectedTotalsByCategory.food).toBe(40);
+    expect(v.selectedTotalsByCategory.transport).toBe(15);
+    expect(v.selectedDailyTotals).toHaveLength(30);
+    expect(v.selectedDailyTotals[9]).toBe(40);
+    expect(v.selectedDailyTotals[11]).toBe(15);
+    expect(v.selectedDailyTotals[1]).toBe(0);
+  });
+
   it('folds stale/unknown category ids into "other"', () => {
     const v = deriveViewData([make('a', 10, 'USD', 'no-such-cat', ts(2026, 5, 9))], 'USD', 'en', [], NOW);
     expect(v.totalsByCategory.other).toBe(10);

@@ -10,7 +10,7 @@ import SpendingChart from '../components/SpendingChart';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
 import { useT, useLanguage } from '../i18n';
-import { formatMoney, formatMoneyShort, monthLabel } from '../format';
+import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
 
 // Soft iridescent bloom for the hero card's upper-right corner. The two hues
 // (`glowStart` → `glowEnd`) come from the active theme so the wash harmonises
@@ -66,6 +66,7 @@ export default function DashboardScreen({
   onOpenSplit,
   categoryMonths,
   categoryMonthKey,
+  selectedMonthKey,
   currentMonthKey,
   allCategories,
   onShiftCategoryMonth,
@@ -106,7 +107,7 @@ export default function DashboardScreen({
           </Pressable>
         )}
         <Text style={styles.monthHeading} numberOfLines={1}>
-          {monthLabel(new Date(), language)}
+          {monthKeyLabel(selectedMonthKey, language)}
         </Text>
       </View>
 
@@ -136,6 +137,7 @@ export default function DashboardScreen({
             <SpendingChart
               dailyTotals={dailyTotals}
               displayCurrency={displayCurrency}
+              isCurrentMonth={selectedMonthKey === currentMonthKey}
             />
           </View>
         )}
