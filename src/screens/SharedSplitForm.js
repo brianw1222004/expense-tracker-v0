@@ -793,11 +793,14 @@ const createStyles = (colors) =>
 
     taxRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: spacing.md,
       marginBottom: spacing.sm,
     },
     taxField: {
       flex: 1,
+      flexBasis: 0,
+      minWidth: 120,
     },
     taxFieldLabel: {
       color: colors.textSecondary,
@@ -814,17 +817,21 @@ const createStyles = (colors) =>
     },
     taxInput: {
       flex: 1,
+      minWidth: 0,
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
       fontSize: 16,
       paddingVertical: spacing.sm + 2,
+      paddingRight: spacing.xs,
       fontVariant: ['tabular-nums'],
     },
     taxPctSign: {
       color: colors.textMuted,
       fontFamily: fonts.numBold,
       fontSize: 15,
-      marginLeft: spacing.xs,
+      minWidth: 14,
+      flexShrink: 0,
+      textAlign: 'center',
     },
     hint: {
       color: colors.textMuted,
