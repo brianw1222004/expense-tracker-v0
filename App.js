@@ -150,9 +150,9 @@ function ExpenseTracker() {
   // Split-bills: the open group's id (detail sheet). New bills are added through
   // the shared add popup (addEntryMode='shared'), not a separate sheet.
   const [activeGroupId, setActiveGroupId] = useState(null);
-  // Selected month for the Dashboard category card + its breakdown page (shared
-  // so navigating in either place stays in sync).
-  const [catMonthKey, setCatMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
+  // Selected month for Home stats + the category breakdown page (shared so
+  // navigating in either place keeps the dashboard's month-dependent cards in sync).
+  const [homeMonthKey, setHomeMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
   // The add popup sits over whichever tab is active. `addEntryMode` toggles its
   // two forms (personal expense vs. shared split bill). `sharedLockedGroupId`,
   // when set, locks the shared form to one group (launched from a group's "Add a
@@ -881,13 +881,29 @@ function ExpenseTracker() {
   // as spending") but never enter the Expenses list — see deriveViewData.
   const splitShareItems = useMemo(() => yourShareAsExpenses(splitExpenses), [splitExpenses]);
 
-  const { sections, months, monthTotal, lastMonthTotal, totalsByCategory, dailyTotals, hasSpending } =
+  const {
+    sections,
+    months,
+    totalsByCategory,
+    selectedMonthTotal,
+    selectedLastMonthTotal,
+    selectedDailyTotals,
+    hasSpending,
+  } =
     useMemo(
-      () => deriveViewData(expenses, displayCurrency, language, settings.customCategories, undefined, splitShareItems),
+      () => deriveViewData(
+        expenses,
+        displayCurrency,
+        language,
+        settings.customCategories,
+        undefined,
+        splitShareItems,
+        homeMonthKey
+      ),
       // dayStamp is a dep-only trigger: it forces re-derivation at midnight (so
       // month/today stats roll over) but is intentionally NOT passed into
       // deriveViewData (which reads `now` itself). Do not remove it as "unused".
-      [expenses, displayCurrency, language, dayStamp, settings.customCategories, splitShareItems]
+      [expenses, displayCurrency, language, dayStamp, settings.customCategories, splitShareItems, homeMonthKey]
     );
 
   // Overall owed/owe across groups (display currency) for the Split tab + the
@@ -902,11 +918,8 @@ function ExpenseTracker() {
   const hasExpenses = expenses.length > 0;
   const currentMonthKey = dayStamp.slice(0, 7);
 
-  // Resolve the category card/breakdown month, falling back to the current month
-  // when the selected month has no spending data (mirrors the old Categories tab).
-  const catEffectiveKey = months.some((m) => m.key === catMonthKey) ? catMonthKey : currentMonthKey;
-  const shiftCatMonth = useCallback((dir) => {
-    setCatMonthKey((key) => shiftMonthKey(key, dir));
+  const shiftHomeMonth = useCallback((dir) => {
+    setHomeMonthKey((key) => shiftMonthKey(key, dir));
   }, []);
 
   let content = null;
@@ -937,9 +950,10 @@ function ExpenseTracker() {
             <DashboardScreen
               loaded={loaded}
               hasExpenses={hasSpending}
-              monthTotal={monthTotal}
-              lastMonthTotal={lastMonthTotal}
-              dailyTotals={dailyTotals}
+              monthTotal={selectedMonthTotal}
+              lastMonthTotal={selectedLastMonthTotal}
+              dailyTotals={selectedDailyTotals}
+              selectedMonthKey={homeMonthKey}
               userName={settings.firstName}
               displayCurrency={displayCurrency}
               onOpenAccount={() => setOverlay('account')}
@@ -949,10 +963,10 @@ function ExpenseTracker() {
               splitSummary={splitSummary}
               onOpenSplit={() => changeTab('split')}
               categoryMonths={months}
-              categoryMonthKey={catEffectiveKey}
+              categoryMonthKey={homeMonthKey}
               currentMonthKey={currentMonthKey}
               allCategories={allCategories}
-              onShiftCategoryMonth={shiftCatMonth}
+              onShiftCategoryMonth={shiftHomeMonth}
               onCategoryDetail={() => changeTab('insight')}
             />
           </Animated.View>
@@ -1138,9 +1152,9 @@ function ExpenseTracker() {
         <CategoryBreakdownScreen
           visible={overlay === 'categoryDetail'}
           months={months}
-          monthKey={catEffectiveKey}
+          monthKey={homeMonthKey}
           currentMonthKey={currentMonthKey}
-          onShiftMonth={shiftCatMonth}
+          onShiftMonth={shiftHomeMonth}
           displayCurrency={displayCurrency}
           allCategories={allCategories}
           categoryOrder={settings.categoryOrder}

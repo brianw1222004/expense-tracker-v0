@@ -25,9 +25,9 @@ function gridSteps(maxVal) {
 }
 
 // A bare daily-spending line chart, rendered inside the dashboard hero card.
-// `dailyTotals` holds one entry per day of the current month; only days up to
-// today are plotted, but the x-axis spans the whole month.
-export default function SpendingChart({ dailyTotals, displayCurrency }) {
+// `dailyTotals` holds one entry per day of the selected month. The current
+// month plots only through today; completed months plot the full month.
+export default function SpendingChart({ dailyTotals, displayCurrency, isCurrentMonth = true }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
@@ -44,8 +44,8 @@ export default function SpendingChart({ dailyTotals, displayCurrency }) {
     const daysInMonth = dailyTotals.length;
     // getDate() is the day-of-month (1..31); clamp so it can never index past
     // the array near a month boundary.
-    const today = Math.min(new Date().getDate(), daysInMonth);
-    const totalsUpToToday = dailyTotals.slice(0, today);
+    const visibleDays = isCurrentMonth ? Math.min(new Date().getDate(), daysInMonth) : daysInMonth;
+    const totalsUpToToday = dailyTotals.slice(0, visibleDays);
     const maxVal = Math.max(...totalsUpToToday, 1);
 
     const drawWidth = chartWidth - PADDING_LEFT - PADDING_RIGHT;
@@ -92,7 +92,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency }) {
       daysInMonth, totalsUpToToday, drawWidth, baselineY,
       points, linePath, areaPath, xLabels, peakIndex, peakPoint, peakVal, lastPoint, gridLines,
     };
-  }, [dailyTotals, chartWidth]);
+  }, [dailyTotals, chartWidth, isCurrentMonth]);
 
   const {
     daysInMonth, totalsUpToToday, drawWidth, baselineY,

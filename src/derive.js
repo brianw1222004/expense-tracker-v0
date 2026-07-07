@@ -9,9 +9,18 @@ import { getCategory } from './categories';
 // (`language` is a cache-key dependency, not used directly here). `now` is
 // injectable so the date-sensitive math (today/this-month/last-month) is
 // deterministic in tests; it defaults to the real clock in the app.
-export function deriveViewData(expenses, displayCurrency, language, customCategories = [], now = new Date(), extraSpending = []) {
+export function deriveViewData(
+  expenses,
+  displayCurrency,
+  language,
+  customCategories = [],
+  now = new Date(),
+  extraSpending = [],
+  selectedMonthKey = null
+) {
   const todayKey = dateKey(now.getTime());
   const monthPrefix = todayKey.slice(0, 7); // YYYY-MM
+  const dashboardMonthKey = selectedMonthKey ?? monthPrefix;
 
   let monthTotal = 0;
   let todayTotal = 0;
@@ -70,16 +79,30 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
   // is not a direct expense, so it never enters `byDay`/`sections`.
   for (const item of extraSpending) accrue(item);
 
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const dailyTotals = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dk = `${monthPrefix}-${String(d).padStart(2, '0')}`;
-    dailyTotals.push(spendByDay.get(dk) ?? 0);
+  const dailyTotalsForMonth = (mKey) => {
+    const [year, month] = mKey.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const totals = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dk = `${mKey}-${String(d).padStart(2, '0')}`;
+      totals.push(spendByDay.get(dk) ?? 0);
+    }
+    return totals;
+  };
+
+  const previousMonthKey = (mKey) => {
+    const [year, month] = mKey.split('-').map(Number);
+    const prev = new Date(year, month - 2, 1);
+    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
   }
 
+  const dailyTotals = dailyTotalsForMonth(monthPrefix);
   const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevMonthKey = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
   const lastMonthTotal = byMonth.has(prevMonthKey) ? byMonth.get(prevMonthKey).total : 0;
+  const selectedMonth = byMonth.get(dashboardMonthKey);
+  const selectedPrevMonthKey = previousMonthKey(dashboardMonthKey);
+  const selectedLastMonthTotal = byMonth.has(selectedPrevMonthKey) ? byMonth.get(selectedPrevMonthKey).total : 0;
 
   return {
     sections: [...byDay.values()],
@@ -91,6 +114,11 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
     totalsByCategory,
     monthCount,
     dailyTotals,
+    selectedMonthKey: dashboardMonthKey,
+    selectedMonthTotal: selectedMonth?.total ?? 0,
+    selectedLastMonthTotal,
+    selectedTotalsByCategory: selectedMonth ? { ...selectedMonth.byCategory } : {},
+    selectedDailyTotals: dailyTotalsForMonth(dashboardMonthKey),
     hasSpending: byMonth.size > 0,
   };
 }
