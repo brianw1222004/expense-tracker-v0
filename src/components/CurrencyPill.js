@@ -26,20 +26,17 @@ export default function CurrencyPill({ value, onPress, accessibilityLabel, style
 
 const createStyles = (colors) =>
   StyleSheet.create({
+    // Soft accent-tinted fill, fully rounded, no shadow — the "New group" pill
+    // family shared by every card-header pill across the app.
     pill: {
       alignSelf: 'flex-start',
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      paddingHorizontal: spacing.sm + 4,
-      paddingVertical: spacing.xs,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 2,
+      backgroundColor: `${colors.accent}15`,
+      borderRadius: 14,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: spacing.xs + 1,
     },
     pillPressed: {
-      backgroundColor: colors.cardPressed,
+      opacity: 0.6,
     },
     code: {
       color: colors.accent,

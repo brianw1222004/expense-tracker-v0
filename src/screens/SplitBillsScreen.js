@@ -8,10 +8,12 @@ import { convert } from '../currency';
 import { groupNet, getPaymentMethodLabel, getPaymentMethodColor, getGroupIcon } from '../splits';
 import { HIcon } from '../icons';
 
-// The Split Bills tab: an overall owed/owe summary, then one card per group with
-// its net balance. Tapping a group opens its detail sheet; the "+" opens the
-// create-group sheet. Balances are shown in the DISPLAY currency (each group's
-// net is converted from its own currency) so the summary and the rows agree.
+// The Split Bills tab: an overall owed/owe summary, then a two-column grid of
+// square rounded group widget tiles (avatar, name, members · method, net
+// balance), each accented by its payment-method color along the top edge.
+// Tapping a tile opens the group's detail sheet; the "+" opens the create-group
+// sheet. Balances are shown in the DISPLAY currency (each group's net is
+// converted from its own currency) so the summary and the tiles agree.
 export default function SplitBillsScreen({
   groups,
   splitExpenses,
@@ -90,19 +92,21 @@ export default function SplitBillsScreen({
       </View>
 
       {hasGroups ? (
-        groups.map((group) => (
-          <GroupCard
-            key={group.id}
-            group={group}
-            splitExpenses={splitExpenses}
-            displayCurrency={displayCurrency}
-            customPaymentMethods={customPaymentMethods}
-            onOpenGroup={onOpenGroup}
-            styles={styles}
-            colors={colors}
-            t={t}
-          />
-        ))
+        <View style={styles.groupGrid}>
+          {groups.map((group) => (
+            <GroupCard
+              key={group.id}
+              group={group}
+              splitExpenses={splitExpenses}
+              displayCurrency={displayCurrency}
+              customPaymentMethods={customPaymentMethods}
+              onOpenGroup={onOpenGroup}
+              styles={styles}
+              colors={colors}
+              t={t}
+            />
+          ))}
+        </View>
       ) : (
         <View style={styles.empty}>
           <HIcon name="user-group" size={40} color={colors.icon} />
@@ -125,8 +129,8 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
   const handlePress = useCallback(() => onOpenGroup(group.id), [onOpenGroup, group.id]);
   const net = convert(groupNet(group, splitExpenses), group.currency, displayCurrency);
   const tone = net > 0 ? colors.success : net < 0 ? colors.danger : colors.textMuted;
-  // The group's surface accents to its payment-method color (matches the themed
-  // group-detail card): a tinted avatar circle + a left edge accent.
+  // The tile accents to its payment-method color (matches the themed
+  // group-detail card): a tinted avatar circle + a top edge accent.
   const pmColor = getPaymentMethodColor(group.paymentMethod, customPaymentMethods);
   const balanceText =
     net > 0
@@ -139,17 +143,15 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
     <Pressable
       onPress={handlePress}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.groupCard, { borderLeftColor: pmColor }, pressed && styles.groupCardPressed]}
+      style={({ pressed }) => [styles.groupTile, { borderTopColor: pmColor }, pressed && styles.groupTilePressed]}
     >
       <View style={[styles.groupIcon, { backgroundColor: `${pmColor}26` }]}>
-        <HIcon name={getGroupIcon(group.icon)} size={22} color={pmColor} />
+        <HIcon name={getGroupIcon(group.icon)} size={24} color={pmColor} />
       </View>
-      <View style={styles.groupMiddle}>
-        <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
-        <Text style={styles.groupMeta} numberOfLines={1}>
-          {t('split.memberCount', { count: group.members.length })} · {getPaymentMethodLabel(group.paymentMethod, t, customPaymentMethods)}
-        </Text>
-      </View>
+      <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
+      <Text style={styles.groupMeta} numberOfLines={1}>
+        {t('split.memberCount', { count: group.members.length })} · {getPaymentMethodLabel(group.paymentMethod, t, customPaymentMethods)}
+      </Text>
       <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>{balanceText}</Text>
     </Pressable>
   );
@@ -267,49 +269,54 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 13,
     },
-    groupCard: {
+    // Two-column grid of square rounded group widget tiles.
+    groupGrid: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginHorizontal: spacing.md,
+    },
+    groupTile: {
+      width: '48.4%',
       alignItems: 'center',
       backgroundColor: colors.card,
       borderRadius: radius.md,
-      borderLeftWidth: 3,
-      padding: spacing.sm + 4,
-      marginHorizontal: spacing.md,
-      marginBottom: spacing.sm,
+      borderTopWidth: 3,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.sm + 2,
       ...cardShadow,
     },
-    groupCardPressed: {
+    groupTilePressed: {
       backgroundColor: colors.cardPressed,
     },
     groupIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
       backgroundColor: `${colors.accent}18`,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    groupMiddle: {
-      flex: 1,
-      marginHorizontal: spacing.sm + 4,
     },
     groupName: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 15,
+      textAlign: 'center',
+      marginTop: spacing.sm,
     },
     groupMeta: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
-      fontSize: 13,
-      marginTop: 1,
+      fontSize: 12,
+      textAlign: 'center',
+      marginTop: 2,
     },
     groupBalance: {
       fontFamily: fonts.numBold,
       fontSize: 13,
       fontVariant: ['tabular-nums'],
-      maxWidth: 120,
-      textAlign: 'right',
+      textAlign: 'center',
+      marginTop: spacing.sm,
     },
     empty: {
       alignItems: 'center',

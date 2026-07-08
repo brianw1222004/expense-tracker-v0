@@ -1,10 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
 import CategorySummaryCard from '../components/CategorySummaryCard';
-import CurrencyPill from '../components/CurrencyPill';
-import CurrencyPicker from '../components/CurrencyPicker';
 import EmptyState from '../components/EmptyState';
 import SpendingChart from '../components/SpendingChart';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
@@ -59,7 +57,6 @@ export default function DashboardScreen({
   dailyTotals,
   displayCurrency,
   onOpenAccount,
-  onChangeCurrency,
   onAddPress,
   onLoadDemo,
   splitSummary,
@@ -83,8 +80,6 @@ export default function DashboardScreen({
   // the three-way convention in the category breakdown so an exact tie isn't shown red.
   const heroDir = delta < 0 ? 'down' : delta > 0 ? 'up' : 'flat';
   const deltaPct = hasLastMonth ? (Math.abs(delta) / lastMonthTotal) * 100 : 0;
-
-  const [currencyOpen, setCurrencyOpen] = useState(false);
 
   return (
     <>
@@ -110,16 +105,12 @@ export default function DashboardScreen({
         </Text>
       </View>
 
-      {/* Monthly Spending — total, month-over-month delta, currency picker, trend chart */}
+      {/* Monthly Spending — total, month-over-month delta, trend chart. The
+          display-currency pill moved to the Insight page's Budget card. */}
       <View style={styles.spendCard}>
         <CardGlow colors={colors} />
         <View style={styles.spendTopRow}>
           <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
-          <CurrencyPill
-            value={displayCurrency}
-            onPress={() => setCurrencyOpen(true)}
-            accessibilityLabel={t('currency.choose')}
-          />
         </View>
 
         <View style={styles.heroNumberRow}>
@@ -186,15 +177,6 @@ export default function DashboardScreen({
         <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />
       )}
     </ScrollView>
-    <CurrencyPicker
-      visible={currencyOpen}
-      value={displayCurrency}
-      onSelect={(code) => {
-        onChangeCurrency(code);
-        setCurrencyOpen(false);
-      }}
-      onClose={() => setCurrencyOpen(false)}
-    />
     </>
   );
 }

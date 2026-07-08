@@ -25,7 +25,6 @@ import {
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddEntryScreen from './src/screens/AddEntryScreen';
 import ExpenseListScreen from './src/screens/ExpenseListScreen';
-import CategoryBreakdownScreen from './src/screens/CategoryBreakdownScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import InsightScreen from './src/screens/InsightScreen';
 import SplitBillsScreen from './src/screens/SplitBillsScreen';
@@ -146,12 +145,11 @@ function ExpenseTracker() {
   const prevTabRef = useRef('dashboard');
   const swipeDirRef = useRef(0);
   // The budget editor, account, and create-group sheets sit over the active tab.
-  const [overlay, setOverlay] = useState(null); // null | 'budget' | 'account' | 'createGroup' | 'categoryDetail'
+  const [overlay, setOverlay] = useState(null); // null | 'budget' | 'account' | 'createGroup'
   // Split-bills: the open group's id (detail sheet). New bills are added through
   // the shared add popup (addEntryMode='shared'), not a separate sheet.
   const [activeGroupId, setActiveGroupId] = useState(null);
-  // Selected month for the Dashboard category card + its breakdown page (shared
-  // so navigating in either place stays in sync).
+  // Selected month for the Dashboard category summary card.
   const [catMonthKey, setCatMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
   // The add popup sits over whichever tab is active. `addEntryMode` toggles its
   // two forms (personal expense vs. shared split bill). `sharedLockedGroupId`,
@@ -596,9 +594,9 @@ function ExpenseTracker() {
           next.monthlyBudget !== cur.monthlyBudget
         ) {
           // Only the server-synced fields (displayCurrency/monthlyBudget) bump
-          // the guard. Device-local-only patches (e.g. categoryOrder from
-          // reorderCategories) must NOT bump it, or a concurrent server settings
-          // merge from an in-flight sync would be dropped for no reason.
+          // the guard. Device-local-only patches (e.g. customCategories edits)
+          // must NOT bump it, or a concurrent server settings merge from an
+          // in-flight sync would be dropped for no reason.
           settingsVersionRef.current += 1;
           enqueueSettingsPush(userId, { displayCurrency: next.displayCurrency, monthlyBudget: next.monthlyBudget });
         }
@@ -606,11 +604,6 @@ function ExpenseTracker() {
       });
     },
     [userId]
-  );
-
-  const reorderCategories = useCallback(
-    (ids) => updateSettings({ categoryOrder: ids }),
-    [updateSettings]
   );
 
   const changeTab = useCallback(
@@ -943,7 +936,6 @@ function ExpenseTracker() {
               userName={settings.firstName}
               displayCurrency={displayCurrency}
               onOpenAccount={() => setOverlay('account')}
-              onChangeCurrency={(code) => updateSettings({ displayCurrency: code })}
               onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
               splitSummary={splitSummary}
@@ -990,8 +982,13 @@ function ExpenseTracker() {
               totalsByCategory={totalsByCategory}
               regularCategories={regularCategories}
               externalCategories={externalCategories}
+              months={months}
+              currentMonthKey={currentMonthKey}
               onEditBudgets={() => setOverlay('budget')}
-              onCategoryDetail={() => setOverlay('categoryDetail')}
+              onChangeCurrency={(code) => updateSettings({ displayCurrency: code })}
+              onAddCategory={addCustomCategory}
+              onUpdateCategory={updateCustomCategory}
+              onDeleteCategory={deleteCustomCategory}
               onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
             />
@@ -1133,22 +1130,6 @@ function ExpenseTracker() {
           onRemoveMember={removeGroupMember}
           onDeleteGroup={deleteGroup}
           onClose={() => setActiveGroupId(null)}
-        />
-
-        <CategoryBreakdownScreen
-          visible={overlay === 'categoryDetail'}
-          months={months}
-          monthKey={catEffectiveKey}
-          currentMonthKey={currentMonthKey}
-          onShiftMonth={shiftCatMonth}
-          displayCurrency={displayCurrency}
-          allCategories={allCategories}
-          categoryOrder={settings.categoryOrder}
-          onReorderCategories={reorderCategories}
-          onAddCategory={addCustomCategory}
-          onUpdateCategory={updateCustomCategory}
-          onDeleteCategory={deleteCustomCategory}
-          onClose={() => setOverlay(null)}
         />
 
         <RewardCheck trigger={rewardNonce} />

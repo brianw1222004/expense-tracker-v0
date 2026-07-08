@@ -48,7 +48,7 @@ function formatPct(pct) {
 // Categories tab): a month nav, a rounded-segment donut of the month's spending
 // by category with the total in the center, and the single most- / least-spent
 // category beside it. A "more detail" pill (top-right) jumps to the Insight tab,
-// which hosts the full per-category breakdown (CategoryBreakdownScreen).
+// which hosts the full per-category tile grid on its Categories card.
 export default function CategorySummaryCard({
   months,
   monthKey,
@@ -250,23 +250,19 @@ const createStyles = (colors) =>
       minWidth: 100,
       textAlign: 'center',
     },
+    // Soft accent-tinted fill, fully rounded — the shared card-header pill family.
     moreDetailPill: {
       position: 'absolute',
       right: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 2,
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      paddingHorizontal: spacing.sm + 4,
-      paddingVertical: spacing.xs,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 2,
+      backgroundColor: `${colors.accent}15`,
+      borderRadius: 14,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: spacing.xs + 1,
     },
-    moreDetailPillPressed: { backgroundColor: colors.cardPressed },
+    moreDetailPillPressed: { opacity: 0.6 },
     moreDetailText: {
       color: colors.accent,
       fontFamily: fonts.bold,

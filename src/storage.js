@@ -32,7 +32,6 @@ export const DEFAULT_SETTINGS = {
   language: 'en',
   firstName: '',
   lastName: '',
-  categoryOrder: [],
   onboardingDone: false,
 };
 
@@ -102,9 +101,6 @@ function withDefaults(parsed) {
   if (!Array.isArray(merged.customPaymentMethods)) {
     merged.customPaymentMethods = [];
   }
-  if (!Array.isArray(merged.categoryOrder)) {
-    merged.categoryOrder = [];
-  }
   if (parsed && typeof parsed === 'object' && parsed.onboardingDone === undefined) {
     merged.onboardingDone = true;
   }
@@ -115,13 +111,6 @@ export async function loadSettings(userId) {
   try {
     const raw = await AsyncStorage.getItem(scopedKey(SETTINGS_KEY, userId));
     const merged = withDefaults(raw ? JSON.parse(raw) : null);
-    // One-time migration: older builds stored the category drag-order under a
-    // standalone key. Fold it into settings so it lives under the same
-    // dataUser-gated lifecycle as the rest of the settings.
-    if (merged.categoryOrder.length === 0) {
-      const legacy = await loadCategoryOrder(userId);
-      if (Array.isArray(legacy) && legacy.length) merged.categoryOrder = legacy;
-    }
     return merged;
   } catch {
     return withDefaults(null);
@@ -186,16 +175,9 @@ export async function saveSplitExpenses(userId, splits) {
   }
 }
 
+// Legacy key from the retired category drag-reorder feature — kept only so
+// clearUserStorage still wipes it from old installs.
 const CATEGORY_ORDER_KEY = '@expense-tracker/category-order';
-
-export async function loadCategoryOrder(userId) {
-  try {
-    const raw = await AsyncStorage.getItem(scopedKey(CATEGORY_ORDER_KEY, userId));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
 
 // Wipe every cached key for one user (used by "delete account"). Best-effort,
 // like the rest of this layer — in-memory state is reset separately by the caller.

@@ -11,8 +11,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme, panelShadow } from '../theme';
 import Sheet from '../components/Sheet';
-import CurrencyPill from '../components/CurrencyPill';
-import CurrencyPicker from '../components/CurrencyPicker';
 import { useT } from '../i18n';
 import { getCurrency } from '../currency';
 import { formatMoney, isValidAmountText } from '../format';
@@ -219,8 +217,10 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
   const t = useT();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [currencyOpen, setCurrencyOpen] = useState(false);
 
+  // The display currency is chosen on the Insight page's Budget card header
+  // (the sheet no longer has a currency section); it still drives the symbols
+  // and decimal precision of every input here.
   const currency = getCurrency(settings.displayCurrency);
   // Stale caches from before the budget feature may lack categoryBudgets.
   const categoryBudgets = settings.categoryBudgets ?? {};
@@ -293,15 +293,6 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
             contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.currencyHeaderRow}>
-              <Text style={styles.currencyHeaderLabel}>{t('budget.currencySection')}</Text>
-              <CurrencyPill
-                value={settings.displayCurrency}
-                onPress={() => setCurrencyOpen(true)}
-                accessibilityLabel={t('currency.choose')}
-              />
-            </View>
-
             <Text style={styles.sectionHeader}>{t('budget.overallSection')}</Text>
             <View style={styles.card}>
               <View style={styles.budgetRow}>
@@ -380,16 +371,6 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
             </View>
             <Text style={styles.sectionNote}>{t('budget.externalNote')}</Text>
           </ScrollView>
-
-          <CurrencyPicker
-            visible={currencyOpen}
-            value={settings.displayCurrency}
-            onSelect={(code) => {
-              onUpdateSettings({ displayCurrency: code });
-              setCurrencyOpen(false);
-            }}
-            onClose={() => setCurrencyOpen(false)}
-          />
     </Sheet>
   );
 }
@@ -448,23 +429,6 @@ const createStyles = (colors) =>
     rowDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
-    },
-    // The currency picker is just a labelled pill now (no card/symbol/name row).
-    // Section spacing lives on the row so the margin-free label and the pill
-    // stay vertically centered together.
-    currencyHeaderRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginTop: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    currencyHeaderLabel: {
-      color: colors.textSecondary,
-      fontFamily: fonts.bold,
-      fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 1.2,
     },
     budgetRow: {
       flexDirection: 'row',
