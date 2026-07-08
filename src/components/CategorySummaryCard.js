@@ -94,7 +94,7 @@ export default function CategorySummaryCard({
           style={({ pressed }) => [styles.moreDetailPill, pressed && styles.moreDetailPillPressed]}
         >
           <Text style={styles.moreDetailText}>{t('cats.moreDetail')}</Text>
-          <Text style={styles.moreDetailChevron}>›</Text>
+          <HIcon name="chevron-right" size={13} color={colors.accent} strokeWidth={2} />
         </Pressable>
       </View>
 
@@ -268,12 +268,6 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 11.5,
       letterSpacing: 0.4,
-    },
-    moreDetailChevron: {
-      color: colors.accent,
-      fontFamily: fonts.bold,
-      fontSize: 12,
-      lineHeight: 14,
     },
     donutBody: {
       flexDirection: 'row',

@@ -41,7 +41,9 @@ const createStyles = (colors) =>
     code: {
       color: colors.accent,
       fontFamily: fonts.bold,
-      fontSize: 11.5,
+      // Matches the 13px text of the sibling header pills (e.g. the Insight
+      // card's "Edit budgets") so the pills read as one aligned row.
+      fontSize: 13,
       letterSpacing: 0.4,
     },
   });

@@ -77,6 +77,19 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
     dailyTotals.push(spendByDay.get(dk) ?? 0);
   }
 
+  // Each month entry also carries its own per-day array (indexed day-1, one
+  // slot per day of THAT month) so the dashboard chart can render any selected
+  // month, not just the current one. spendByDay already spans all months.
+  for (const month of byMonth.values()) {
+    const [y, m] = month.key.split('-').map(Number);
+    const days = new Date(y, m, 0).getDate();
+    const daily = [];
+    for (let d = 1; d <= days; d++) {
+      daily.push(spendByDay.get(`${month.key}-${String(d).padStart(2, '0')}`) ?? 0);
+    }
+    month.dailyTotals = daily;
+  }
+
   const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevMonthKey = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
   const lastMonthTotal = byMonth.has(prevMonthKey) ? byMonth.get(prevMonthKey).total : 0;

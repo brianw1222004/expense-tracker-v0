@@ -5,10 +5,11 @@ import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 import CategorySummaryCard from '../components/CategorySummaryCard';
 import EmptyState from '../components/EmptyState';
 import SpendingChart from '../components/SpendingChart';
+import { HIcon } from '../icons';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
 import { useT, useLanguage } from '../i18n';
-import { formatMoney, formatMoneyShort, monthLabel } from '../format';
+import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
 
 // Soft iridescent bloom for the hero card's upper-right corner. The two hues
 // (`glowStart` → `glowEnd`) come from the active theme so the wash harmonises
@@ -55,6 +56,8 @@ export default function DashboardScreen({
   monthTotal,
   lastMonthTotal,
   dailyTotals,
+  heroMonthKey,
+  onShiftHeroMonth,
   displayCurrency,
   onOpenAccount,
   onAddPress,
@@ -73,6 +76,8 @@ export default function DashboardScreen({
   const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const greetingName = (userName ?? '').trim();
+  const isCurrentMonth = heroMonthKey === currentMonthKey;
+  const canGoNext = heroMonthKey < currentMonthKey;
 
   const delta = monthTotal - (lastMonthTotal ?? 0);
   const hasLastMonth = (lastMonthTotal ?? 0) > 0;
@@ -100,9 +105,26 @@ export default function DashboardScreen({
             </Text>
           </Pressable>
         )}
-        <Text style={styles.monthHeading} numberOfLines={1}>
-          {monthLabel(new Date(), language)}
-        </Text>
+        {/* The month heading doubles as the hero card's month selector — the
+            chevrons step the Monthly Spending total/delta/chart through past
+            months (capped at the current month, like the category card nav). */}
+        <View style={styles.monthNav}>
+          <Pressable onPress={() => onShiftHeroMonth(-1)} hitSlop={10} accessibilityRole="button">
+            <HIcon name="chevron-left" size={20} color={colors.icon} />
+          </Pressable>
+          <Text style={styles.monthHeading} numberOfLines={1}>
+            {monthKeyLabel(heroMonthKey, language)}
+          </Text>
+          <Pressable
+            onPress={() => onShiftHeroMonth(1)}
+            disabled={!canGoNext}
+            hitSlop={10}
+            accessibilityRole="button"
+            style={!canGoNext ? styles.navDisabled : undefined}
+          >
+            <HIcon name="chevron-right" size={20} color={colors.icon} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Monthly Spending — total, month-over-month delta, trend chart. The
@@ -127,6 +149,7 @@ export default function DashboardScreen({
             <SpendingChart
               dailyTotals={dailyTotals}
               displayCurrency={displayCurrency}
+              endDay={isCurrentMonth ? undefined : dailyTotals.length}
             />
           </View>
         )}
@@ -153,7 +176,7 @@ export default function DashboardScreen({
         >
           <View style={styles.splitHeader}>
             <Text style={styles.summaryTitle}>{t('split.dashTitle')}</Text>
-            <Text style={styles.splitChevron}>›</Text>
+            <HIcon name="chevron-right" size={18} color={colors.textMuted} strokeWidth={2} />
           </View>
           <View style={styles.splitRow}>
             <View style={styles.splitCol}>
@@ -230,13 +253,22 @@ const createStyles = (colors) =>
     greetingPressable: {
       flexShrink: 1,
     },
-    // Current-month label, top-right of the greeting row — mirrors the greeting.
+    // Month selector, top-right of the greeting row — label mirrors the
+    // greeting; the chevrons drive the hero card's month.
+    monthNav: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginLeft: spacing.sm,
+      flexShrink: 0,
+    },
     monthHeading: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 22,
-      marginLeft: spacing.sm,
-      flexShrink: 0,
+    },
+    navDisabled: {
+      opacity: 0.3,
     },
     spendCard: {
       backgroundColor: colors.card,
@@ -331,12 +363,6 @@ const createStyles = (colors) =>
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: spacing.sm,
-    },
-    splitChevron: {
-      color: colors.textMuted,
-      fontFamily: fonts.bold,
-      fontSize: 20,
-      lineHeight: 20,
     },
     splitRow: {
       flexDirection: 'row',

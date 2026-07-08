@@ -10,7 +10,10 @@ const PADDING_RIGHT = 12;
 const PADDING_TOP = 24;
 const PADDING_BOTTOM = 28;
 
-const X_TICKS = [1, 5, 10, 15, 20, 25, 30, 31];
+// Fixed ticks plus the month's actual last day (appended at render). Listing
+// 30 AND 31 here made both render one day apart in 31-day months — they
+// overlapped into "3031" at the chart's right edge.
+const X_TICKS = [1, 5, 10, 15, 20, 25];
 
 function gridSteps(maxVal) {
   if (maxVal <= 0) return [];
@@ -27,7 +30,10 @@ function gridSteps(maxVal) {
 // A bare daily-spending line chart, rendered inside the dashboard hero card.
 // `dailyTotals` holds one entry per day of the current month; only days up to
 // today are plotted, but the x-axis spans the whole month.
-export default function SpendingChart({ dailyTotals, displayCurrency }) {
+// `endDay` caps how many days are plotted (1-based, inclusive). Omitted, it
+// defaults to today — the current-month behavior. Pass `dailyTotals.length`
+// when rendering a fully elapsed (past) month so the whole month plots.
+export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
@@ -44,7 +50,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency }) {
     const daysInMonth = dailyTotals.length;
     // getDate() is the day-of-month (1..31); clamp so it can never index past
     // the array near a month boundary.
-    const today = Math.min(new Date().getDate(), daysInMonth);
+    const today = Math.min(endDay ?? new Date().getDate(), daysInMonth);
     const totalsUpToToday = dailyTotals.slice(0, today);
     const maxVal = Math.max(...totalsUpToToday, 1);
 
@@ -76,7 +82,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency }) {
       ? `${linePath} L${points[points.length - 1].x},${baselineY} L${points[0].x},${baselineY} Z`
       : '';
 
-    const xLabels = X_TICKS.filter((d) => d <= daysInMonth).map((d) => ({ day: d, x: getX(d - 1) }));
+    const xLabels = [...X_TICKS.filter((d) => d < daysInMonth), daysInMonth].map((d) => ({ day: d, x: getX(d - 1) }));
 
     const peakIndex = totalsUpToToday.reduce(
       (best, val, i) => (val > totalsUpToToday[best] ? i : best),
@@ -92,7 +98,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency }) {
       daysInMonth, totalsUpToToday, drawWidth, baselineY,
       points, linePath, areaPath, xLabels, peakIndex, peakPoint, peakVal, lastPoint, gridLines,
     };
-  }, [dailyTotals, chartWidth]);
+  }, [dailyTotals, chartWidth, endDay]);
 
   const {
     daysInMonth, totalsUpToToday, drawWidth, baselineY,

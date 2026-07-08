@@ -3,6 +3,7 @@ import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, T
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { fonts, spacing, radius } from '../theme';
 import { EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
+import { formatMoney, cleanAmountInput } from '../format';
 import { HIcon } from '../icons';
 
 function hslToHex(h, s, l) {
@@ -22,13 +23,28 @@ const HUE_STOPS = [
   { offset: '100%', color: '#ff0000' },
 ];
 
-// The add/edit-custom-category modal (name, paginated icon grid, preset colors
-// plus a hue-slider custom color, external switch). Formerly nested inside
-// CategoryBreakdownScreen; now opened from the Insight page's Categories card.
-export default function AddCategoryModal({ visible, editingCategory, onClose, onSave, onDelete, colors, t }) {
+// The add/edit-custom-category modal (name, monthly budget, paginated icon
+// grid, preset colors plus a hue-slider custom color, external switch).
+// Formerly nested inside CategoryBreakdownScreen; now opened from the Insight
+// page's Categories card. A budget is REQUIRED: at least 5% of the overall
+// monthly budget (any positive amount when no overall budget is set), so every
+// category tile always has a spending-vs-budget bar to track.
+export default function AddCategoryModal({
+  visible,
+  editingCategory,
+  initialBudget = 0,
+  displayCurrency,
+  monthlyBudget = 0,
+  onClose,
+  onSave,
+  onDelete,
+  colors,
+  t,
+}) {
   const styles = useMemo(() => createModalStyles(colors), [colors]);
   const isEdit = editingCategory != null;
   const [name, setName] = useState('');
+  const [budgetText, setBudgetText] = useState('');
   const [emoji, setEmoji] = useState(EMOJI_OPTIONS[0]);
   const [color, setColor] = useState(COLOR_OPTIONS[0]);
   const [external, setExternal] = useState(false);
@@ -48,6 +64,7 @@ export default function AddCategoryModal({ visible, editingCategory, onClose, on
     if (visible && !initialized) {
       if (isEdit) {
         setName(editingCategory.label);
+        setBudgetText(initialBudget > 0 ? String(initialBudget) : '');
         setEmoji(editingCategory.emoji);
         setColor(editingCategory.color);
         setExternal(editingCategory.external);
@@ -55,6 +72,7 @@ export default function AddCategoryModal({ visible, editingCategory, onClose, on
         setCustomColorActive(!isPreset);
       } else {
         setName('');
+        setBudgetText('');
         setEmoji(EMOJI_OPTIONS[0]);
         setColor(COLOR_OPTIONS[0]);
         setExternal(false);
@@ -111,7 +129,14 @@ export default function AddCategoryModal({ visible, editingCategory, onClose, on
     },
   }), []);
 
-  const canSave = name.trim().length > 0;
+  // Budget is required. Minimum is 5% of the overall monthly budget; with no
+  // overall budget set there is no base to take 5% of, so any positive amount
+  // passes.
+  const minBudget = monthlyBudget > 0 ? monthlyBudget * 0.05 : 0;
+  const budgetValue = parseFloat(budgetText.replace(',', '.')) || 0;
+  const budgetOk = budgetValue > 0 && budgetValue >= minBudget;
+  const budgetInvalid = budgetText.length > 0 && !budgetOk;
+  const canSave = name.trim().length > 0 && budgetOk;
 
   const handleSave = () => {
     if (!canSave) return;
@@ -122,6 +147,7 @@ export default function AddCategoryModal({ visible, editingCategory, onClose, on
       color,
       external,
       custom: true,
+      budget: budgetValue,
     };
     if (isEdit) cat._editing = true;
     onSave(cat);
@@ -158,6 +184,26 @@ export default function AddCategoryModal({ visible, editingCategory, onClose, on
               keyboardAppearance={colors.keyboardAppearance}
               autoFocus={!isEdit}
             />
+
+            <Text style={styles.label}>{t('cats.budgetLabel')}</Text>
+            <View style={[styles.budgetRow, budgetInvalid && { borderColor: colors.danger }]}>
+              <TextInput
+                style={styles.budgetInput}
+                value={budgetText}
+                onChangeText={(v) => setBudgetText(cleanAmountInput(v))}
+                placeholder="0"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="decimal-pad"
+                keyboardAppearance={colors.keyboardAppearance}
+                maxLength={12}
+              />
+              <Text style={styles.budgetCurrency}>{displayCurrency}</Text>
+            </View>
+            <Text style={[styles.budgetHint, budgetInvalid && { color: colors.danger }]}>
+              {minBudget > 0
+                ? t('cats.budgetMinHint', { amount: formatMoney(minBudget, displayCurrency) })
+                : t('cats.budgetAnyHint')}
+            </Text>
 
             <Text style={styles.label}>{t('cats.pickIcon')}</Text>
             <View onLayout={onIconGridLayout} style={styles.iconGridWrapper}>
@@ -371,6 +417,38 @@ const createModalStyles = (colors) =>
       paddingVertical: spacing.sm + 4,
       fontFamily: fonts.regular,
       fontSize: 15,
+      marginBottom: spacing.xs,
+    },
+    // Required monthly budget for the category (min 5% of the overall budget);
+    // the row's border turns danger-red while the entered amount is below it.
+    budgetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderRadius: radius.sm,
+      borderWidth: 1.5,
+      borderColor: 'transparent',
+      paddingHorizontal: spacing.md,
+    },
+    budgetInput: {
+      flex: 1,
+      color: colors.textPrimary,
+      paddingVertical: spacing.sm + 4,
+      fontFamily: fonts.numRegular,
+      fontSize: 15,
+      fontVariant: ['tabular-nums'],
+    },
+    budgetCurrency: {
+      color: colors.textMuted,
+      fontFamily: fonts.bold,
+      fontSize: 12,
+      marginLeft: spacing.sm,
+    },
+    budgetHint: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      marginTop: spacing.xs,
       marginBottom: spacing.xs,
     },
     iconGridWrapper: {

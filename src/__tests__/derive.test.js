@@ -96,6 +96,22 @@ describe('deriveViewData()', () => {
     const v = deriveViewData(expenses, 'USD', 'en', [], NOW);
     expect(v.months.map((m) => m.key)).toEqual(['2026-06', '2026-05', '2026-04']);
   });
+
+  it('each month entry carries dailyTotals sized to that month, indexed day-1', () => {
+    const expenses = [
+      make('a', 25, 'USD', 'food', ts(2026, 4, 20)), // 20 May (31 days)
+      make('b', 40, 'USD', 'food', ts(2026, 5, 3)),  // 3 Jun (30 days)
+    ];
+    const v = deriveViewData(expenses, 'USD', 'en', [], NOW);
+    const may = v.months.find((m) => m.key === '2026-05');
+    const jun = v.months.find((m) => m.key === '2026-06');
+    expect(may.dailyTotals).toHaveLength(31);
+    expect(may.dailyTotals[19]).toBe(25); // day 20 -> index 19
+    expect(jun.dailyTotals).toHaveLength(30);
+    expect(jun.dailyTotals[2]).toBe(40); // day 3 -> index 2
+    // the current month's entry matches the top-level series
+    expect(jun.dailyTotals).toEqual(v.dailyTotals);
+  });
 });
 
 // ---------------------------------------------------------------------------

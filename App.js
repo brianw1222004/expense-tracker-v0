@@ -151,6 +151,9 @@ function ExpenseTracker() {
   const [activeGroupId, setActiveGroupId] = useState(null);
   // Selected month for the Dashboard category summary card.
   const [catMonthKey, setCatMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
+  // Selected month for the Dashboard's Monthly Spending hero card (the ‹ month ›
+  // nav in the greeting row). Independent of the category card's selection.
+  const [heroMonthKey, setHeroMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
   // The add popup sits over whichever tab is active. `addEntryMode` toggles its
   // two forms (personal expense vs. shared split bill). `sharedLockedGroupId`,
   // when set, locks the shared form to one group (launched from a group's "Add a
@@ -731,7 +734,12 @@ function ExpenseTracker() {
 
   const screenStyle = (screenTab) => {
     if (prevTab === tab) {
-      return screenTab === tab ? { opacity: 1 } : { opacity: 0, zIndex: 0 };
+      // The active screen must also win the stacking order, not just be
+      // visible: on react-native-web pointerEvents="none" on a hidden screen's
+      // container doesn't block its Pressable descendants (they carry an
+      // explicit pointer-events:auto), so a later-in-DOM hidden screen (e.g.
+      // Insight, mounted last) would swallow taps aimed at the screen below.
+      return screenTab === tab ? { opacity: 1, zIndex: 2 } : { opacity: 0, zIndex: 0 };
     }
     const dir = slideDirRef.current;
     if (screenTab === tab) {
@@ -838,10 +846,15 @@ function ExpenseTracker() {
   const regularCategories = getRegularAll(settings.customCategories);
   const externalCategories = getExternalAll(settings.customCategories);
 
+  // The add/edit-category modal returns the category plus its required monthly
+  // `budget`; the budget lives in settings.categoryBudgets (not on the category
+  // object), so split it off before storing either.
   const addCustomCategory = (category) => {
+    const { budget, ...cat } = category;
     setSettings((prev) => ({
       ...prev,
-      customCategories: [...(prev.customCategories || []), category],
+      customCategories: [...(prev.customCategories || []), cat],
+      ...(budget > 0 ? { categoryBudgets: { ...prev.categoryBudgets, [cat.id]: budget } } : {}),
     }));
   };
 
@@ -853,11 +866,13 @@ function ExpenseTracker() {
   };
 
   const updateCustomCategory = (updated) => {
+    const { budget, ...cat } = updated;
     setSettings((prev) => ({
       ...prev,
       customCategories: (prev.customCategories || []).map((c) =>
-        c.id === updated.id ? updated : c
+        c.id === cat.id ? cat : c
       ),
+      ...(budget > 0 ? { categoryBudgets: { ...prev.categoryBudgets, [cat.id]: budget } } : {}),
     }));
   };
 
@@ -901,7 +916,7 @@ function ExpenseTracker() {
   // as spending") but never enter the Expenses list — see deriveViewData.
   const splitShareItems = useMemo(() => yourShareAsExpenses(splitExpenses), [splitExpenses]);
 
-  const { sections, months, monthTotal, lastMonthTotal, totalsByCategory, dailyTotals, hasSpending } =
+  const { sections, months, totalsByCategory, hasSpending } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language, settings.customCategories, undefined, splitShareItems),
       // dayStamp is a dep-only trigger: it forces re-derivation at midnight (so
@@ -928,6 +943,24 @@ function ExpenseTracker() {
   const shiftCatMonth = useCallback((dir) => {
     setCatMonthKey((key) => shiftMonthKey(key, dir));
   }, []);
+
+  const shiftHeroMonth = useCallback((dir) => {
+    setHeroMonthKey((key) => shiftMonthKey(key, dir));
+  }, []);
+  // The hero card's view of the selected month: total, previous-month total
+  // (for the delta badge) and the per-day chart series. Months with no data
+  // render honestly as $0 with a flat chart (no fallback to the current month).
+  const heroView = useMemo(() => {
+    const selected = months.find((m) => m.key === heroMonthKey);
+    const prev = months.find((m) => m.key === shiftMonthKey(heroMonthKey, -1));
+    const [y, mo] = heroMonthKey.split('-').map(Number);
+    const daysInMonth = new Date(y, mo, 0).getDate();
+    return {
+      total: selected?.total ?? 0,
+      prevTotal: prev?.total ?? 0,
+      dailyTotals: selected?.dailyTotals ?? new Array(daysInMonth).fill(0),
+    };
+  }, [months, heroMonthKey]);
 
   let content = null;
   if (isSupabaseConfigured && !session) {
@@ -957,9 +990,11 @@ function ExpenseTracker() {
             <DashboardScreen
               loaded={loaded}
               hasExpenses={hasSpending}
-              monthTotal={monthTotal}
-              lastMonthTotal={lastMonthTotal}
-              dailyTotals={dailyTotals}
+              monthTotal={heroView.total}
+              lastMonthTotal={heroView.prevTotal}
+              dailyTotals={heroView.dailyTotals}
+              heroMonthKey={heroMonthKey}
+              onShiftHeroMonth={shiftHeroMonth}
               userName={settings.firstName}
               displayCurrency={displayCurrency}
               onOpenAccount={() => setOverlay('account')}
@@ -1014,6 +1049,8 @@ function ExpenseTracker() {
               externalCategories={externalCategories}
               months={months}
               currentMonthKey={currentMonthKey}
+              categoryOrder={settings.categoryOrder}
+              onReorderCategories={(ids) => updateSettings({ categoryOrder: ids })}
               onEditBudgets={() => setOverlay('budget')}
               onChangeCurrency={(code) => updateSettings({ displayCurrency: code })}
               onAddCategory={addCustomCategory}

@@ -26,6 +26,9 @@ export const DEFAULT_SETTINGS = {
   displayCurrency: DEFAULT_CURRENCY,
   monthlyBudget: 0,
   categoryBudgets: {},
+  // Manual tile order on the Insight Categories grid (drag-to-reorder);
+  // null = spend-sorted. Device-local, like the other extra fields.
+  categoryOrder: null,
   customCategories: [],
   customPaymentMethods: [],
   theme: 'neutral',
