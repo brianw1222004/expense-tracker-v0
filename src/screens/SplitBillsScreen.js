@@ -132,11 +132,22 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
   // The tile accents to its payment-method color (matches the themed
   // group-detail card): a tinted avatar circle + a top edge accent.
   const pmColor = getPaymentMethodColor(group.paymentMethod, customPaymentMethods);
+  // Long balances (e.g. "owes you NT$10,837" — TWD renders 0 decimals) overflow
+  // the narrow tile on one line, so split the label and the amount onto two
+  // centered lines. The amount then gets the tile's full inner width to itself.
+  // `balanceText` is kept as the full accessible/settled string.
+  const amountText = formatMoney(Math.abs(net), displayCurrency);
+  const balanceLabel =
+    net > 0
+      ? t('split.owesYouShort', { amount: '' }).trim()
+      : net < 0
+      ? t('split.youOweShort', { amount: '' }).trim()
+      : '';
   const balanceText =
     net > 0
-      ? t('split.owesYouShort', { amount: formatMoney(net, displayCurrency) })
+      ? t('split.owesYouShort', { amount: amountText })
       : net < 0
-      ? t('split.youOweShort', { amount: formatMoney(-net, displayCurrency) })
+      ? t('split.youOweShort', { amount: amountText })
       : t('split.settled');
 
   return (
@@ -152,7 +163,27 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
       <Text style={styles.groupMeta} numberOfLines={1}>
         {t('split.memberCount', { count: group.members.length })} · {getPaymentMethodLabel(group.paymentMethod, t, customPaymentMethods)}
       </Text>
-      <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>{balanceText}</Text>
+      <View style={styles.groupBalanceBox} accessibilityLabel={balanceText}>
+        {balanceLabel ? (
+          <>
+            <Text style={[styles.groupBalanceLabel, { color: tone }]} numberOfLines={1}>
+              {balanceLabel}
+            </Text>
+            <Text
+              style={[styles.groupBalance, { color: tone }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+            >
+              {amountText}
+            </Text>
+          </>
+        ) : (
+          <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>
+            {balanceText}
+          </Text>
+        )}
+      </View>
     </Pressable>
   );
 });
@@ -311,12 +342,23 @@ const createStyles = (colors) =>
       textAlign: 'center',
       marginTop: 2,
     },
+    groupBalanceBox: {
+      marginTop: spacing.sm,
+      alignSelf: 'stretch',
+      alignItems: 'center',
+    },
+    groupBalanceLabel: {
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      lineHeight: 14,
+      textAlign: 'center',
+      marginBottom: 1,
+    },
     groupBalance: {
       fontFamily: fonts.numBold,
       fontSize: 13,
       fontVariant: ['tabular-nums'],
       textAlign: 'center',
-      marginTop: spacing.sm,
     },
     empty: {
       alignItems: 'center',
