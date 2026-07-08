@@ -35,6 +35,7 @@ const AMOUNT_MAX_LENGTH = 11;
 // couple of smallest currency units of slack so rounded tax/tip rates (e.g. 8%)
 // that don't reproduce a receipt total to the exact cent still pass.
 const TAX_TOTAL_TOLERANCE_UNITS = 2;
+const NEW_GROUP_OPTION_ID = '__new_group__';
 
 const MODES = [
   { id: 'equal', labelKey: 'split.equal' },
@@ -69,6 +70,7 @@ export default function SharedSplitForm({
   entryMode,
   onChangeEntryMode,
   lockedGroupId = null,
+  initialGroupId = null,
   editBill = null,
   groups,
   displayCurrency,
@@ -91,7 +93,7 @@ export default function SharedSplitForm({
 
   const initialGroup = effectiveLockedGroupId
     ? groups.find((g) => g.id === effectiveLockedGroupId)
-    : groups[0];
+    : groups.find((g) => g.id === initialGroupId) ?? groups[0];
 
   // Reconstruct the raw split inputs from the stored bill. Bills persist only the
   // final per-person `shares` (+ an optional `meta` for percentage/tax raw inputs),
@@ -307,8 +309,18 @@ export default function SharedSplitForm({
       ? {
           title: t('split.group'),
           value: selectedGroupId,
-          options: groups.map((g) => ({ id: g.id, label: g.name, icon: 'user-group' })),
-          onSelect: (id) => { selectGroup(id); setPicker(null); },
+          options: [
+            ...groups.map((g) => ({ id: g.id, label: g.name, icon: 'user-group' })),
+            { id: NEW_GROUP_OPTION_ID, label: `+ ${t('split.newGroup')}`, icon: 'plus-sign' },
+          ],
+          onSelect: (id) => {
+            setPicker(null);
+            if (id === NEW_GROUP_OPTION_ID) {
+              onCreateGroup();
+              return;
+            }
+            selectGroup(id);
+          },
         }
       : picker === 'payer'
         ? {

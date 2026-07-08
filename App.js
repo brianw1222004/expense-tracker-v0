@@ -158,6 +158,8 @@ function ExpenseTracker() {
   const [addOpen, setAddOpen] = useState(false);
   const [addEntryMode, setAddEntryMode] = useState('personal');
   const [sharedLockedGroupId, setSharedLockedGroupId] = useState(null);
+  const [sharedInitialGroupId, setSharedInitialGroupId] = useState(null);
+  const [returnToSharedAddAfterCreateGroup, setReturnToSharedAddAfterCreateGroup] = useState(false);
   // Bumped on every popup open so the shared form remounts fresh each time (it's
   // kept mounted while closed, so without this a reopen would show stale state /
   // the previously locked group).
@@ -353,6 +355,7 @@ function ExpenseTracker() {
   const openAdd = useCallback(() => {
     setAddEntryMode('personal');
     setSharedLockedGroupId(null);
+    setSharedInitialGroupId(null);
     setAddNonce((n) => n + 1);
     setAddOpen(true);
   }, []);
@@ -372,7 +375,26 @@ function ExpenseTracker() {
   const openSharedAddForGroup = useCallback((groupId) => {
     setActiveGroupId(null);
     setSharedLockedGroupId(groupId);
+    setSharedInitialGroupId(null);
     setAddEntryMode('shared');
+    setAddNonce((n) => n + 1);
+    setAddOpen(true);
+  }, []);
+
+  const openCreateGroupFromSharedAdd = useCallback(() => {
+    setReturnToSharedAddAfterCreateGroup(true);
+    setAddOpen(false);
+    setSharedLockedGroupId(null);
+    setSharedInitialGroupId(null);
+    setActiveGroupId(null);
+    setOverlay('createGroup');
+  }, []);
+
+  const reopenSharedAdd = useCallback((initialGroupId = null) => {
+    setReturnToSharedAddAfterCreateGroup(false);
+    setAddEntryMode('shared');
+    setSharedLockedGroupId(null);
+    setSharedInitialGroupId(initialGroupId);
     setAddNonce((n) => n + 1);
     setAddOpen(true);
   }, []);
@@ -425,7 +447,12 @@ function ExpenseTracker() {
     setGroups((prev) => [group, ...prev]);
     enqueueGroupUpsert(userId, group);
     setOverlay(null);
-    setActiveGroupId(group.id);
+    if (returnToSharedAddAfterCreateGroup) {
+      setActiveGroupId(null);
+      reopenSharedAdd(group.id);
+    } else {
+      setActiveGroupId(group.id);
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
@@ -969,7 +996,10 @@ function ExpenseTracker() {
               summary={splitSummary}
               customPaymentMethods={settings.customPaymentMethods}
               onOpenGroup={setActiveGroupId}
-              onCreateGroup={() => setOverlay('createGroup')}
+              onCreateGroup={() => {
+                setReturnToSharedAddAfterCreateGroup(false);
+                setOverlay('createGroup');
+              }}
             />
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('insight')]} pointerEvents={tab === 'insight' ? 'auto' : 'none'}>
@@ -1028,10 +1058,11 @@ function ExpenseTracker() {
               entryMode={addEntryMode}
               onChangeEntryMode={setAddEntryMode}
               lockedGroupId={sharedLockedGroupId}
+              initialGroupId={sharedInitialGroupId}
               groups={groups}
               displayCurrency={displayCurrency}
               onAdd={addSplitExpense}
-              onCreateGroup={() => { setAddOpen(false); setSharedLockedGroupId(null); setOverlay('createGroup'); }}
+              onCreateGroup={openCreateGroupFromSharedAdd}
               onClose={closeAdd}
             />
           ) : (
@@ -1112,7 +1143,10 @@ function ExpenseTracker() {
           customPaymentMethods={settings.customPaymentMethods}
           onAddPaymentMethod={addCustomPaymentMethod}
           onCreate={createGroup}
-          onClose={() => setOverlay(null)}
+          onClose={() => {
+            setOverlay(null);
+            if (returnToSharedAddAfterCreateGroup) reopenSharedAdd();
+          }}
         />
 
         <GroupDetailScreen
