@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,6 +22,12 @@ import CurrencyPicker from '../components/CurrencyPicker';
 import OptionPicker from '../components/OptionPicker';
 import { popupChromeStyles } from '../components/popupFormChrome';
 import {
+  equalPercentShares,
+  estimatedPercentAmount,
+  getPercentTotal,
+  redistributePercentShares,
+} from '../percentSplit';
+import {
   YOU,
   computeShares,
   customSharesValid,
@@ -36,6 +43,7 @@ const AMOUNT_MAX_LENGTH = 11;
 // that don't reproduce a receipt total to the exact cent still pass.
 const TAX_TOTAL_TOLERANCE_UNITS = 2;
 const NEW_GROUP_OPTION_ID = '__new_group__';
+const PERCENT_SLIDER_THUMB_SIZE = 14;
 
 const MODES = [
   { id: 'equal', labelKey: 'split.equal' },
@@ -53,6 +61,75 @@ function peopleFor(group) {
 // domain helpers parses locale decimals.
 function normMap(m, ids) {
   return Object.fromEntries(ids.map((id) => [id, String(m[id] ?? '').replace(',', '.')]));
+}
+
+function formatPercentLabel(value) {
+  const rounded = Math.round(Math.abs(value) * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function PercentSlider({ value, disabled, onChange, styles, colors, accessibilityLabel }) {
+  const trackWidthRef = useRef(0);
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const lastEmitRef = useRef(null);
+
+  const setFromLocation = (locationX) => {
+    if (disabledRef.current || trackWidthRef.current <= 0) return;
+    const ratio = Math.max(0, Math.min(1, locationX / trackWidthRef.current));
+    const next = Math.round(ratio * 100);
+    if (next === lastEmitRef.current) return;
+    lastEmitRef.current = next;
+    onChangeRef.current(next);
+  };
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !disabledRef.current,
+        onMoveShouldSetPanResponder: () => !disabledRef.current,
+        onPanResponderGrant: (event) => {
+          lastEmitRef.current = null;
+          setFromLocation(event.nativeEvent.locationX);
+        },
+        onPanResponderMove: (event) => setFromLocation(event.nativeEvent.locationX),
+      }),
+    []
+  );
+
+  const clamped = Math.max(0, Math.min(1, Number(value) || 0));
+  const pct = `${clamped * 100}%`;
+
+  return (
+    <View
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      style={[styles.percentSliderTrack, disabled && styles.percentSliderDisabled]}
+      onLayout={(event) => { trackWidthRef.current = event.nativeEvent.layout.width; }}
+      {...panResponder.panHandlers}
+    >
+      <View style={styles.percentSliderBase} pointerEvents="none" />
+      <View
+        pointerEvents="none"
+        style={[styles.percentSliderFill, { width: pct, backgroundColor: disabled ? colors.border : colors.accent }]}
+      />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.percentSliderThumb,
+          {
+            left: pct,
+            marginLeft: -clamped * PERCENT_SLIDER_THUMB_SIZE,
+            borderColor: disabled ? colors.border : colors.accent,
+          },
+        ]}
+      />
+    </View>
+  );
 }
 
 // The Shared side of the add popup: create a split bill. Reuses the popup card
@@ -135,6 +212,7 @@ export default function SharedSplitForm({
       Object.keys(seedShares).map((id) => [id, total > 0 ? String(Math.round((seedShares[id] / total) * 1000) / 10) : ''])
     );
   });
+  const [percentLocked, setPercentLocked] = useState({});
   const [subtotals, setSubtotals] = useState(() =>
     isEdit && editBill.mode === 'tax' && editBill.meta?.subtotals ? { ...editBill.meta.subtotals } : {}
   );
@@ -185,6 +263,22 @@ export default function SharedSplitForm({
     () => people.filter((p) => included[p.id]).map((p) => p.id),
     [people, included]
   );
+  const participantKey = participantIds.join('|');
+  const prevPercentModeRef = useRef(mode);
+  const prevPercentParticipantKeyRef = useRef(participantKey);
+
+  useEffect(() => {
+    if (mode === 'percentage') {
+      const enteredPercentage = prevPercentModeRef.current !== 'percentage';
+      const participantsChanged = prevPercentParticipantKeyRef.current !== participantKey;
+      if ((enteredPercentage || participantsChanged) && participantIds.length > 0) {
+        setPercent(equalPercentShares(participantIds));
+        setPercentLocked({});
+      }
+    }
+    prevPercentModeRef.current = mode;
+    prevPercentParticipantKeyRef.current = participantKey;
+  }, [mode, participantKey, participantIds]);
 
   // Comma-normalized { id: value } maps (over the included ids) for the domain
   // helpers, which parse with Number(). Memoized so typing in one field doesn't
@@ -209,18 +303,16 @@ export default function SharedSplitForm({
         : { total: 0, shares: {} },
     [mode, participantIds, subtotalNum, taxRate, tipRate, currencyCode]
   );
-  // Preview the SAME shares that will be persisted (floored + reconciled), not a
-  // raw amount*pct/100, so the rows can't disagree with the saved bill.
-  const percentPreview = useMemo(
-    () =>
-      mode === 'percentage' && amountValid && participantIds.length > 0
-        ? computeShares(Number(amount.toFixed(cur.decimals)), 'percentage', participantIds, percentNum, currencyCode)
-        : null,
-    [mode, amountValid, amount, participantIds, percentNum, currencyCode, cur.decimals]
-  );
-
   const customOk = mode !== 'custom' || (amountValid && customSharesValid(amount, customNum, participantIds, currencyCode));
   const percentOk = mode !== 'percentage' || percentageSharesValid(percentNum, participantIds);
+  const percentTotal = useMemo(() => getPercentTotal(percentNum, participantIds), [percentNum, participantIds]);
+  const percentRemaining = Math.round((100 - percentTotal) * 100) / 100;
+  const percentSummary =
+    Math.abs(percentRemaining) < 0.005
+      ? 'Allocated 100%'
+      : percentRemaining > 0
+        ? `Remaining ${formatPercentLabel(percentRemaining)}%`
+        : `Over ${formatPercentLabel(percentRemaining)}%`;
   // Tax mode takes the grand total up top like every other mode. Each person's
   // food price is entered below; food + tax + tip must reconcile to that total
   // (taxResult.total is the floored/distributed grand total of those subtotals),
@@ -239,6 +331,25 @@ export default function SharedSplitForm({
     customOk &&
     percentOk &&
     taxOk;
+
+  const resetPercentEqual = () => {
+    setPercent(equalPercentShares(participantIds));
+    setPercentLocked({});
+  };
+
+  const commitPercent = (id, value) => {
+    if (percentLocked[id]) return;
+    setPercent((prev) => redistributePercentShares(id, value, prev, percentLocked, participantIds));
+  };
+
+  const updatePercentDraft = (id, value) => {
+    if (percentLocked[id]) return;
+    setPercent((prev) => ({ ...prev, [id]: cleanAmountInput(value) }));
+  };
+
+  const togglePercentLock = (id) => {
+    setPercentLocked((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const handleAdd = () => {
     if (!canAdd) return;
@@ -334,7 +445,14 @@ export default function SharedSplitForm({
               title: t('split.splitMethod'),
               value: mode,
               options: MODES.map((m) => ({ id: m.id, label: t(m.labelKey) })),
-              onSelect: (id) => { setMode(id); setPicker(null); },
+              onSelect: (id) => {
+                setMode(id);
+                if (id === 'percentage') {
+                  setPercent(equalPercentShares(participantIds));
+                  setPercentLocked({});
+                }
+                setPicker(null);
+              },
             }
           : null;
   // Keep the last non-null config so the popup's content stays put while it fades
@@ -525,6 +643,8 @@ export default function SharedSplitForm({
               {people.map((p, index) => {
                 const on = !!included[p.id];
                 const pct = parseFloat(String(percent[p.id] ?? '').replace(',', '.')) || 0;
+                const percentIsLocked = !!percentLocked[p.id];
+                const percentEstimate = amountValid ? estimatedPercentAmount(amount, pct) : 0;
                 return (
                   <View key={p.id} style={[styles.personRow, index > 0 && styles.rowDivider]}>
                     <Pressable
@@ -532,7 +652,7 @@ export default function SharedSplitForm({
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: on }}
                       accessibilityLabel={p.name}
-                      style={styles.personToggle}
+                      style={[styles.personToggle, mode === 'percentage' && styles.percentPersonToggle]}
                     >
                       <View style={[styles.checkbox, on && styles.checkboxOn]}>
                         {on && <HIcon name="tick-01" size={13} color={colors.onAccent} />}
@@ -562,24 +682,58 @@ export default function SharedSplitForm({
                     )}
 
                     {on && mode === 'percentage' && (
-                      <View style={styles.inlineAmount}>
-                        {percentPreview?.[p.id] != null && pct > 0 && (
-                          <Text style={styles.sharePreviewMuted}>
-                            {formatMoney(percentPreview[p.id], currencyCode)}
-                          </Text>
-                        )}
-                        <TextInput
-                          style={styles.pctInput}
-                          value={percent[p.id] ?? ''}
-                          onChangeText={(v) => setPercent((prev) => ({ ...prev, [p.id]: cleanAmountInput(v) }))}
-                          placeholder="0"
-                          placeholderTextColor={colors.textMuted}
-                          keyboardType="decimal-pad"
-                          keyboardAppearance={colors.keyboardAppearance}
-                          maxLength={6}
+                      <View style={styles.percentControls}>
+                        <Pressable
+                          onPress={() => togglePercentLock(p.id)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${percentIsLocked ? 'Unlock' : 'Lock'} ${p.name}`}
+                          accessibilityState={{ selected: percentIsLocked }}
+                          style={({ pressed }) => [
+                            styles.percentLockButton,
+                            percentIsLocked && styles.percentLockButtonOn,
+                            pressed && styles.pressedBg,
+                          ]}
+                        >
+                          <HIcon
+                            name={percentIsLocked ? 'lock' : 'circle-unlock-01'}
+                            size={14}
+                            color={percentIsLocked ? colors.accent : colors.textMuted}
+                            strokeWidth={1.8}
+                          />
+                        </Pressable>
+                        <PercentSlider
+                          value={pct / 100}
+                          disabled={percentIsLocked}
+                          onChange={(next) => commitPercent(p.id, next)}
+                          styles={styles}
+                          colors={colors}
                           accessibilityLabel={`${p.name} %`}
                         />
-                        <Text style={styles.inlineSymbol}>%</Text>
+                        <View style={[styles.percentValueWrap, percentIsLocked && styles.percentValueWrapLocked]}>
+                          <View style={styles.percentInputLine}>
+                            <TextInput
+                              style={[styles.pctInput, percentIsLocked && styles.pctInputLocked]}
+                              value={percent[p.id] ?? ''}
+                              onChangeText={(v) => updatePercentDraft(p.id, v)}
+                              onBlur={() => commitPercent(p.id, percent[p.id] ?? 0)}
+                              onSubmitEditing={() => commitPercent(p.id, percent[p.id] ?? 0)}
+                              editable={!percentIsLocked}
+                              placeholder="0"
+                              placeholderTextColor={colors.textMuted}
+                              keyboardType="decimal-pad"
+                              keyboardAppearance={colors.keyboardAppearance}
+                              maxLength={6}
+                              accessibilityLabel={`${p.name} %`}
+                            />
+                            <Text style={styles.inlineSymbol}>%</Text>
+                          </View>
+                          {amountValid && (
+                            <Text style={styles.percentEstimateText} numberOfLines={1}>
+                              est. {formatMoney(percentEstimate, currencyCode)}
+                            </Text>
+                          )}
+                        </View>
                       </View>
                     )}
 
@@ -606,6 +760,21 @@ export default function SharedSplitForm({
                 );
               })}
             </View>
+
+            {mode === 'percentage' && participantIds.length > 0 && (
+              <View style={styles.percentSummaryRow}>
+                <Text style={[styles.percentSummaryText, !percentOk && styles.percentSummaryTextWarning]}>
+                  {percentSummary}
+                </Text>
+                <Pressable
+                  onPress={resetPercentEqual}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.resetPercentButton, pressed && styles.pressedBg]}
+                >
+                  <Text style={styles.resetPercentText}>Reset equal</Text>
+                </Pressable>
+              </View>
+            )}
 
             {mode === 'custom' && amountValid && !customOk && (
               <Text style={styles.warning}>{t('split.customMismatch')}</Text>
@@ -876,6 +1045,11 @@ const createStyles = (colors) =>
       flex: 1,
       paddingVertical: spacing.sm,
     },
+    percentPersonToggle: {
+      flex: 0.9,
+      minWidth: 92,
+      paddingRight: spacing.xs,
+    },
     checkbox: {
       width: 22,
       height: 22,
@@ -927,13 +1101,118 @@ const createStyles = (colors) =>
       fontVariant: ['tabular-nums'],
     },
     pctInput: {
-      width: 52,
+      width: 42,
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
       fontSize: 15,
       textAlign: 'right',
       paddingVertical: spacing.sm,
       fontVariant: ['tabular-nums'],
+    },
+    pctInputLocked: {
+      color: colors.textMuted,
+    },
+    percentControls: {
+      flex: 1.35,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.xs,
+    },
+    percentLockButton: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    percentLockButtonOn: {
+      backgroundColor: `${colors.accent}14`,
+    },
+    percentSliderTrack: {
+      flex: 1,
+      minWidth: 44,
+      height: 24,
+      justifyContent: 'center',
+      cursor: 'pointer',
+      userSelect: 'none',
+    },
+    percentSliderDisabled: {
+      opacity: 0.55,
+      cursor: 'default',
+    },
+    percentSliderBase: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      height: 5,
+      borderRadius: 3,
+      backgroundColor: colors.border,
+    },
+    percentSliderFill: {
+      position: 'absolute',
+      left: 0,
+      height: 5,
+      borderRadius: 3,
+    },
+    percentSliderThumb: {
+      position: 'absolute',
+      width: PERCENT_SLIDER_THUMB_SIZE,
+      height: PERCENT_SLIDER_THUMB_SIZE,
+      borderRadius: PERCENT_SLIDER_THUMB_SIZE / 2,
+      borderWidth: 2.5,
+      backgroundColor: colors.card,
+    },
+    percentValueWrap: {
+      width: 76,
+      flexShrink: 0,
+      alignItems: 'flex-end',
+      justifyContent: 'flex-end',
+    },
+    percentValueWrapLocked: {
+      opacity: 0.8,
+    },
+    percentInputLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+    },
+    percentEstimateText: {
+      color: colors.textMuted,
+      fontFamily: fonts.numRegular,
+      fontSize: 10,
+      lineHeight: 12,
+      marginTop: -2,
+      fontVariant: ['tabular-nums'],
+    },
+    percentSummaryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    percentSummaryText: {
+      color: colors.textMuted,
+      fontFamily: fonts.numMedium,
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+      flexShrink: 1,
+    },
+    percentSummaryTextWarning: {
+      color: colors.warning,
+    },
+    resetPercentButton: {
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    resetPercentText: {
+      color: colors.accent,
+      fontFamily: fonts.medium,
+      fontSize: 12,
     },
     warning: {
       color: colors.danger,
