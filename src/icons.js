@@ -43,7 +43,9 @@ import Tick01Icon from '@hugeicons/core-free-icons/Tick01Icon';
 import ChevronLeftIcon from '@hugeicons/core-free-icons/ChevronLeftIcon';
 import ChevronRightIcon from '@hugeicons/core-free-icons/ChevronRightIcon';
 import CircleDashedIcon from '@hugeicons/core-free-icons/CircleDashedIcon';
+import CircleUnlock01Icon from '@hugeicons/core-free-icons/CircleUnlock01Icon';
 import Settings01Icon from '@hugeicons/core-free-icons/Settings01Icon';
+import LockIcon from '@hugeicons/core-free-icons/LockIcon';
 import Calendar01Icon from '@hugeicons/core-free-icons/Calendar01Icon';
 import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import PlusSignIcon from '@hugeicons/core-free-icons/PlusSignIcon';
@@ -112,7 +114,9 @@ const REGISTRY = {
   'chevron-left': ChevronLeftIcon,
   'chevron-right': ChevronRightIcon,
   'circle-dashed': CircleDashedIcon,
+  'circle-unlock-01': CircleUnlock01Icon,
   'settings-01': Settings01Icon,
+  'lock': LockIcon,
   'calendar-01': Calendar01Icon,
   'user-group': UserGroupIcon,
   'plus-sign': PlusSignIcon,
