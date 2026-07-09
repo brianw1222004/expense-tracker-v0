@@ -3,9 +3,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Circle, G, Line, Text as SvgText } from 'react-native-svg';
 import { fonts, spacing, useTheme } from '../theme';
 import { formatMoneyShort } from '../format';
+import { yAxisLabelPadding } from '../chartLayout';
 
 const CHART_HEIGHT = 150;
-const PADDING_LEFT = 40;
 const PADDING_RIGHT = 12;
 const PADDING_TOP = 24;
 const PADDING_BOTTOM = 28;
@@ -53,13 +53,18 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
     const today = Math.min(endDay ?? new Date().getDate(), daysInMonth);
     const totalsUpToToday = dailyTotals.slice(0, today);
     const maxVal = Math.max(...totalsUpToToday, 1);
+    const gridLineValues = gridSteps(maxVal).map((v) => ({
+      value: v,
+      label: formatMoneyShort(v, displayCurrency),
+    }));
+    const paddingLeft = yAxisLabelPadding(gridLineValues.map((g) => g.label));
 
-    const drawWidth = chartWidth - PADDING_LEFT - PADDING_RIGHT;
+    const drawWidth = chartWidth - paddingLeft - PADDING_RIGHT;
     const drawHeight = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
     const baselineY = PADDING_TOP + drawHeight;
 
     const getX = (dayIndex) =>
-      daysInMonth <= 1 ? PADDING_LEFT + drawWidth / 2 : PADDING_LEFT + (dayIndex / (daysInMonth - 1)) * drawWidth;
+      daysInMonth <= 1 ? paddingLeft + drawWidth / 2 : paddingLeft + (dayIndex / (daysInMonth - 1)) * drawWidth;
     const getY = (value) => PADDING_TOP + drawHeight - (value / maxVal) * drawHeight;
 
     const points = totalsUpToToday.map((val, i) => ({ x: getX(i), y: getY(val) }));
@@ -91,17 +96,16 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
     const peakPoint = points.length > 0 ? points[peakIndex] : null;
     const peakVal = totalsUpToToday[peakIndex] ?? 0;
     const lastPoint = points.length > 0 ? points[points.length - 1] : null;
-
-    const gridLines = gridSteps(maxVal).map((v) => ({ value: v, y: getY(v) }));
+    const gridLines = gridLineValues.map((g) => ({ ...g, y: getY(g.value) }));
 
     return {
-      daysInMonth, totalsUpToToday, drawWidth, baselineY,
+      daysInMonth, totalsUpToToday, paddingLeft, drawWidth, baselineY,
       points, linePath, areaPath, xLabels, peakIndex, peakPoint, peakVal, lastPoint, gridLines,
     };
-  }, [dailyTotals, chartWidth, endDay]);
+  }, [dailyTotals, chartWidth, displayCurrency, endDay]);
 
   const {
-    daysInMonth, totalsUpToToday, drawWidth, baselineY,
+    daysInMonth, totalsUpToToday, paddingLeft, drawWidth, baselineY,
     points, linePath, areaPath, xLabels, peakIndex, peakPoint, peakVal, lastPoint, gridLines,
   } = geom;
 
@@ -111,7 +115,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
       setActiveIndex(null);
       return;
     }
-    const ratio = (localX - PADDING_LEFT) / drawWidth;
+    const ratio = (localX - paddingLeft) / drawWidth;
     // Snap to the nearest plotted day, capped at today — so the whole chart
     // width is interactive instead of going dead past the last point.
     const idx = Math.max(0, Math.min(Math.round(ratio * (daysInMonth - 1)), totalsUpToToday.length - 1));
@@ -140,31 +144,31 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
             {gridLines.map((g) => (
               <G key={g.value}>
                 <Line
-                  x1={PADDING_LEFT}
+                  x1={paddingLeft}
                   y1={g.y}
-                  x2={PADDING_LEFT + drawWidth}
+                  x2={paddingLeft + drawWidth}
                   y2={g.y}
                   stroke={colors.border}
                   strokeWidth={StyleSheet.hairlineWidth}
                   strokeDasharray="4,4"
                 />
                 <SvgText
-                  x={PADDING_LEFT - 6}
+                  x={paddingLeft - 6}
                   y={g.y + 3}
                   textAnchor="end"
                   fontSize={9}
                   fontFamily={fonts.numRegular}
                   fill={colors.textMuted}
                 >
-                  {formatMoneyShort(g.value, displayCurrency)}
+                  {g.label}
                 </SvgText>
               </G>
             ))}
 
             <Line
-              x1={PADDING_LEFT}
+              x1={paddingLeft}
               y1={baselineY}
-              x2={PADDING_LEFT + drawWidth}
+              x2={paddingLeft + drawWidth}
               y2={baselineY}
               stroke={colors.border}
               strokeWidth={StyleSheet.hairlineWidth * 2}
