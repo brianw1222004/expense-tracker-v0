@@ -3,7 +3,9 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, THEMES, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
+import { getCurrency } from '../currency';
 import { HIcon } from '../icons';
+import CurrencyPicker from '../components/CurrencyPicker';
 import Sheet from '../components/Sheet';
 
 // Account view. Presented as a near-full (92%) bottom sheet opened by the
@@ -17,6 +19,8 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
 
   const [firstName, setFirstName] = useState(settings.firstName ?? '');
   const [lastName, setLastName] = useState(settings.lastName ?? '');
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  const displayCurrency = getCurrency(settings.displayCurrency);
 
   // Re-seed the inputs whenever the sheet opens so they reflect the latest
   // saved name (set during onboarding, or on another sign-in).
@@ -24,6 +28,8 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
     if (visible) {
       setFirstName(settings.firstName ?? '');
       setLastName(settings.lastName ?? '');
+    } else {
+      setCurrencyOpen(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -40,12 +46,13 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
   };
 
   return (
-    <Sheet
-      visible={visible}
-      onClose={onClose}
-      showHandle
-      sheetStyle={styles.sheetOverride}
-    >
+    <>
+      <Sheet
+        visible={visible}
+        onClose={onClose}
+        showHandle
+        sheetStyle={styles.sheetOverride}
+      >
           <View style={styles.titleRow}>
             <Text style={styles.title}>{t('acct.title')}</Text>
             <Pressable
@@ -130,6 +137,36 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
               </>
             )}
 
+            <Text style={styles.sectionHeader}>DISPLAY CURRENCY</Text>
+            <View style={styles.card}>
+              <Pressable
+                onPress={() => setCurrencyOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Display currency, ${displayCurrency.name}`}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              >
+                <View style={styles.currencyIcon}>
+                  <Text
+                    style={styles.currencySymbol}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                  >
+                    {displayCurrency.symbol || displayCurrency.code}
+                  </Text>
+                </View>
+                <Text style={styles.currencyName} numberOfLines={1}>
+                  {displayCurrency.name}
+                </Text>
+                <View style={styles.currencyCodePill}>
+                  <Text style={styles.currencyCode}>{displayCurrency.code}</Text>
+                </View>
+                <View style={styles.rowChevron}>
+                  <HIcon name="chevron-right" size={18} color={colors.icon} />
+                </View>
+              </Pressable>
+            </View>
+
             <Text style={styles.sectionHeader}>{t('acct.language')}</Text>
             <View style={styles.card}>
               {LANGUAGES.map((entry, index) => {
@@ -193,7 +230,17 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
             <Text style={styles.sectionNote}>{t('acct.deleteNote')}</Text>
 
           </ScrollView>
-    </Sheet>
+      </Sheet>
+      <CurrencyPicker
+        visible={currencyOpen}
+        value={settings.displayCurrency}
+        onSelect={(code) => {
+          onUpdateSettings({ displayCurrency: code });
+          setCurrencyOpen(false);
+        }}
+        onClose={() => setCurrencyOpen(false)}
+      />
+    </>
   );
 }
 
@@ -275,6 +322,46 @@ const createStyles = (colors) =>
     rowLabelSelected: {
       color: colors.accent,
       fontFamily: fonts.bold,
+    },
+    currencyIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.cardPressed,
+      flexShrink: 0,
+    },
+    currencySymbol: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontFamily: fonts.bold,
+      maxWidth: 26,
+    },
+    currencyName: {
+      color: colors.textPrimary,
+      fontSize: 15,
+      fontFamily: fonts.regular,
+      flex: 1,
+      minWidth: 0,
+    },
+    currencyCodePill: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+      borderRadius: 999,
+      backgroundColor: `${colors.accent}14`,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: `${colors.accent}33`,
+      flexShrink: 0,
+    },
+    currencyCode: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontFamily: fonts.bold,
+    },
+    rowChevron: {
+      marginLeft: spacing.xs,
+      flexShrink: 0,
     },
     nameInput: {
       flex: 1,
