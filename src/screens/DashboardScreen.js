@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 
 import CategorySummaryCard from '../components/CategorySummaryCard';
 import EmptyState from '../components/EmptyState';
+import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import SpendingChart from '../components/SpendingChart';
 import { HIcon } from '../icons';
@@ -11,43 +11,6 @@ import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
 import { useT } from '../i18n';
 import { formatMoney, formatMoneyShort } from '../format';
-
-// Copilot-style page wash: the hero card's old corner bloom, promoted to the
-// Dashboard's background. A two-hue vertical fade (`glowStart` → `glowEnd` →
-// transparent, hues from the active theme — pink→violet on neutral, blue→teal
-// on slate, peach→gold on sand) runs from the top of the screen and dies out
-// around the hero card's big number. It sits FIXED behind the transparent
-// ScrollView (content scrolls over it), and App.js paints the status-bar strip
-// in `glowWashTop` while this tab is active so the wash reads as starting at
-// the physical top. The 0.34 top opacity must stay in sync with `glowWashTop`
-// in theme.js (that token is the pre-blended solid of this top row).
-function HeaderGlow({ colors }) {
-  return (
-    <View style={styles_headerGlow} pointerEvents="none">
-      <Svg width="100%" height="100%">
-        <Defs>
-          <LinearGradient id="dashHeaderGlow" x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0" stopColor={colors.glowStart} stopOpacity="0.34" />
-            <Stop offset="0.45" stopColor={colors.glowEnd} stopOpacity="0.2" />
-            <Stop offset="1" stopColor={colors.glowEnd} stopOpacity="0" />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#dashHeaderGlow)" />
-      </Svg>
-    </View>
-  );
-}
-
-// Static style for the wash layer (outside createStyles — no theme colors).
-// Positioning is spelled out because StyleSheet.absoluteFillObject was removed
-// in RN 0.85. Height ends the fade around the hero number's position.
-const styles_headerGlow = {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  height: 240,
-};
 
 export default function DashboardScreen({
   loaded,
@@ -84,7 +47,7 @@ export default function DashboardScreen({
 
   return (
     <View style={styles.root}>
-      <HeaderGlow colors={colors} />
+      <HeaderGlow id="dashHeaderGlow" />
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}

@@ -1234,16 +1234,14 @@ function ExpenseTracker() {
   return (
     <ThemeProvider themeName={settings.theme}>
       <I18nProvider language={language}>
-        {/* On the Dashboard tab the top inset (status-bar strip) is painted in
-            glowWashTop — the solid equivalent of the HeaderGlow wash's top row —
-            so the page gradient reads as starting at the physical screen top. */}
+        {/* While the tabbed UI is up the top inset (status-bar strip) is
+            painted in glowWashTop — the solid equivalent of the HeaderGlow
+            wash's top row (every tab renders the wash) — so the page gradient
+            reads as starting at the physical screen top. */}
         <SafeAreaView
           style={[
             styles.safeArea,
-            {
-              backgroundColor:
-                mainUIVisible && tab === 'dashboard' ? theme.glowWashTop : theme.background,
-            },
+            { backgroundColor: mainUIVisible ? theme.glowWashTop : theme.background },
           ]}
           edges={['top', 'left', 'right']}
         >

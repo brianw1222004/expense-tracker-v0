@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
@@ -41,8 +42,10 @@ export default function SplitBillsScreen({
   const hasGroups = groups.length > 0;
 
   return (
+    <View style={styles.container}>
+      <HeaderGlow id="splitHeaderGlow" />
     <ScrollView
-      style={styles.container}
+      style={styles.scroll}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
@@ -140,6 +143,7 @@ export default function SplitBillsScreen({
         </View>
       )}
     </ScrollView>
+    </View>
   );
 }
 
@@ -215,6 +219,11 @@ const createStyles = (colors) =>
     container: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    // Transparent so the fixed HeaderGlow wash behind it shows through; the
+    // page background lives on `container`.
+    scroll: {
+      flex: 1,
     },
     content: {
       flexGrow: 1,

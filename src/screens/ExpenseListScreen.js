@@ -6,6 +6,7 @@ import { getCategory, getCategoryLabel } from '../categories';
 import { buildCalendarWeeks, dateKey, dayLabel, formatMoney, shiftMonthKey } from '../format';
 import EmptyState from '../components/EmptyState';
 import ExpenseRow from '../components/ExpenseRow';
+import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
@@ -115,16 +116,30 @@ export default function ExpenseListScreen({
   const selectedInMonth = selectedDate.startsWith(`${calYear}-${pad2(calMonth + 1)}`);
   const selectedDayNum = selectedInMonth ? sd : null;
 
-  if (!loaded) return <View style={styles.container} />;
+  // Every branch keeps the fixed HeaderGlow wash so the page always matches
+  // the glowWashTop status-bar strip App.js paints while the tab UI is up.
+  if (!loaded) {
+    return (
+      <View style={styles.container}>
+        <HeaderGlow id="listHeaderGlow" />
+      </View>
+    );
+  }
 
   if (!hasExpenses) {
-    return <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />;
+    return (
+      <View style={styles.container}>
+        <HeaderGlow id="listHeaderGlow" />
+        <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />
+      </View>
+    );
   }
 
   const deleteCategory = pendingDelete ? getCategory(pendingDelete.category, categories) : null;
 
   return (
     <View style={styles.container}>
+      <HeaderGlow id="listHeaderGlow" />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}

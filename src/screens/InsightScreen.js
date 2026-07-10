@@ -5,6 +5,7 @@ import AddCategoryModal from '../components/AddCategoryModal';
 import CurrencyPicker from '../components/CurrencyPicker';
 import CurrencyPill from '../components/CurrencyPill';
 import EmptyState from '../components/EmptyState';
+import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
@@ -143,6 +144,7 @@ export default function InsightScreen({
 
   return (
     <View style={styles.container}>
+      <HeaderGlow id="insightHeaderGlow" />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + TAB_BAR_HEIGHT + insets.bottom }]}
         showsVerticalScrollIndicator={false}

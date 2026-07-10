@@ -21,10 +21,10 @@ export const THEMES = {
     warning: '#b8963e',
     danger: '#b85c5c',
     backdrop: 'rgba(33, 42, 48, 0.5)',
-    // Dashboard top-of-page wash — a cool blue→teal fade that echoes this
-    // palette. glowWashTop is glowStart at the wash's top opacity (0.34)
-    // pre-blended over `background`: App.js paints the status-bar strip with
-    // it so the wash reads as starting at the physical top of the screen.
+    // Top-of-page wash (every tab's HeaderGlow) — a cool blue→teal fade that
+    // echoes this palette. glowWashTop is glowStart at the wash's top opacity
+    // (0.34) pre-blended over `background`: App.js paints the status-bar strip
+    // with it so the wash reads as starting at the physical top of the screen.
     glowStart: '#A9CBE8',
     glowEnd: '#9FD3C8',
     glowWashTop: '#dce9f3',
@@ -52,8 +52,8 @@ export const THEMES = {
     warning: '#b8963e',
     danger: '#b85c5c',
     backdrop: 'rgba(40, 33, 27, 0.5)',
-    // Dashboard top-of-page wash — a warm peach→gold fade that echoes this
-    // palette; glowWashTop = glowStart @ 0.34 over `background` (see slate).
+    // Top-of-page wash (every tab's HeaderGlow) — a warm peach→gold fade that
+    // echoes this palette; glowWashTop = glowStart @ 0.34 over `background` (see slate).
     glowStart: '#F3C6A4',
     glowEnd: '#E6CF9A',
     glowWashTop: '#f4e4d5',
@@ -81,8 +81,8 @@ export const THEMES = {
     warning: '#b8963e',
     danger: '#b85c5c',
     backdrop: 'rgba(11, 11, 11, 0.5)',
-    // Dashboard top-of-page wash — the original pink→violet iridescence, an
-    // intentional pop of color against this grayscale palette;
+    // Top-of-page wash (every tab's HeaderGlow) — the original pink→violet
+    // iridescence, an intentional pop of color against this grayscale palette;
     // glowWashTop = glowStart @ 0.34 over `background` (see slate).
     glowStart: '#F8B6D2',
     glowEnd: '#BCA9F5',
