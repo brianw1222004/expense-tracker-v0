@@ -149,8 +149,8 @@ export default function SharedSplitForm({
     const d = new Date(editBill.createdAt);
     return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
   });
-  // Currency picker + the collapsible Group / Paid by / Split popups. `picker` is
-  // which row's popup is open (one at a time), mirroring the group page's pattern.
+  // Currency picker + the Group / Paid by / Split option popups. `picker` is
+  // which selector chip's popup is open (one at a time).
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [picker, setPicker] = useState(null); // 'group' | 'payer' | 'split' | null
 
@@ -218,6 +218,15 @@ export default function SharedSplitForm({
         : null,
     [mode, amountValid, amount, participantIds, percentNum, currencyCode, cur.decimals]
   );
+  // Equal mode shows ONE "{amount} each" caption instead of repeating the same
+  // share on every person row; ≈ flags the cent-reconciled case where shares
+  // differ by a smallest unit.
+  const equalShareLabel = useMemo(() => {
+    if (!equalPreview) return null;
+    const vals = participantIds.map((id) => equalPreview[id]);
+    const allSame = vals.every((v) => v === vals[0]);
+    return `${allSame ? '' : '≈ '}${t('split.eachShare', { amount: formatMoney(vals[0], currencyCode) })}`;
+  }, [equalPreview, participantIds, currencyCode, t]);
 
   const customOk = mode !== 'custom' || (amountValid && customSharesValid(amount, customNum, participantIds, currencyCode));
   const percentOk = mode !== 'percentage' || percentageSharesValid(percentNum, participantIds);
@@ -302,8 +311,8 @@ export default function SharedSplitForm({
     if (ok) onDelete(editBill.id);
   };
 
-  // The single OptionPicker is driven by `picker`; its props depend on which row
-  // was tapped. Selecting reuses the same setters the old inline chips used.
+  // The single OptionPicker is driven by `picker`; its props depend on which
+  // selector chip was tapped.
   const pickerProps =
     picker === 'group'
       ? {
@@ -342,6 +351,15 @@ export default function SharedSplitForm({
   const lastPickerProps = useRef(null);
   if (pickerProps) lastPickerProps.current = pickerProps;
   const shownPicker = pickerProps ?? lastPickerProps.current;
+
+  // The config selectors render as ONE row of compact label-over-value chips
+  // (group hidden when locked) instead of stacked full-width rows; each chip
+  // opens the OptionPicker above.
+  const selectorChips = [
+    showGroupPicker && selectedGroup && { key: 'group', label: t('split.group'), value: selectedGroup.name },
+    { key: 'payer', label: t('split.paidBy'), value: payerName },
+    { key: 'split', label: t('split.splitMethod'), value: t(activeMode.labelKey) },
+  ].filter(Boolean);
 
   return (
     <View style={styles.card}>
@@ -434,178 +452,173 @@ export default function SharedSplitForm({
               />
             </View>
 
-            <View style={styles.selectCard}>
-              {showGroupPicker && (
+            <View style={styles.chipRow}>
+              {selectorChips.map((c) => (
                 <Pressable
-                  onPress={() => setPicker('group')}
+                  key={c.key}
+                  onPress={() => setPicker(c.key)}
                   accessibilityRole="button"
-                  accessibilityLabel={t('split.group')}
-                  style={({ pressed }) => [styles.selectRow, pressed && styles.pressedBg]}
+                  accessibilityLabel={c.label}
+                  style={({ pressed }) => [styles.chip, pressed && styles.pressedBg]}
                 >
-                  <Text style={styles.selectLabel}>{t('split.group')}</Text>
-                  <View style={styles.selectValueWrap}>
-                    <Text style={styles.selectValue} numberOfLines={1}>{selectedGroup.name}</Text>
-                    <HIcon name="chevron-right" size={18} color={colors.icon} />
+                  <Text style={styles.chipLabel} numberOfLines={1}>{c.label}</Text>
+                  <View style={styles.chipValueRow}>
+                    <Text style={styles.chipValue} numberOfLines={1}>{c.value}</Text>
+                    <HIcon name="chevron-down" size={14} color={colors.icon} />
                   </View>
                 </Pressable>
-              )}
-              <Pressable
-                onPress={() => setPicker('payer')}
-                accessibilityRole="button"
-                accessibilityLabel={t('split.paidBy')}
-                style={({ pressed }) => [
-                  styles.selectRow,
-                  showGroupPicker && styles.selectRowDivider,
-                  pressed && styles.pressedBg,
-                ]}
-              >
-                <Text style={styles.selectLabel}>{t('split.paidBy')}</Text>
-                <View style={styles.selectValueWrap}>
-                  <Text style={styles.selectValue} numberOfLines={1}>{payerName}</Text>
-                  <HIcon name="chevron-right" size={18} color={colors.icon} />
-                </View>
-              </Pressable>
-              <Pressable
-                onPress={() => setPicker('split')}
-                accessibilityRole="button"
-                accessibilityLabel={t('split.splitMethod')}
-                style={({ pressed }) => [styles.selectRow, styles.selectRowDivider, pressed && styles.pressedBg]}
-              >
-                <Text style={styles.selectLabel}>{t('split.splitMethod')}</Text>
-                <View style={styles.selectValueWrap}>
-                  <Text style={styles.selectValue} numberOfLines={1}>{t(activeMode.labelKey)}</Text>
-                  <HIcon name="chevron-right" size={18} color={colors.icon} />
-                </View>
-              </Pressable>
+              ))}
             </View>
 
             {mode === 'tax' && (
               <>
+                {/* Inline-label pills ("Tax %" / "Tip %" carry the % themselves)
+                    keep tax mode to one compact row. */}
                 <View style={styles.taxRow}>
                   <View style={styles.taxField}>
                     <Text style={styles.taxFieldLabel}>{t('split.taxRate')}</Text>
-                    <View style={styles.taxInputWrap}>
-                      <TextInput
-                        style={styles.taxInput}
-                        value={taxPct}
-                        onChangeText={(text) => setTaxPct(cleanAmountInput(text))}
-                        placeholder="0"
-                        placeholderTextColor={colors.textMuted}
-                        keyboardType="decimal-pad"
-                        keyboardAppearance={colors.keyboardAppearance}
-                        maxLength={6}
-                        accessibilityLabel={t('split.taxRate')}
-                      />
-                      <Text style={styles.taxPctSign}>%</Text>
-                    </View>
+                    <TextInput
+                      style={styles.taxInput}
+                      value={taxPct}
+                      onChangeText={(text) => setTaxPct(cleanAmountInput(text))}
+                      placeholder="0"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="decimal-pad"
+                      keyboardAppearance={colors.keyboardAppearance}
+                      maxLength={6}
+                      accessibilityLabel={t('split.taxRate')}
+                    />
                   </View>
                   <View style={styles.taxField}>
                     <Text style={styles.taxFieldLabel}>{t('split.tipRate')}</Text>
-                    <View style={styles.taxInputWrap}>
-                      <TextInput
-                        style={styles.taxInput}
-                        value={tipPct}
-                        onChangeText={(text) => setTipPct(cleanAmountInput(text))}
-                        placeholder="0"
-                        placeholderTextColor={colors.textMuted}
-                        keyboardType="decimal-pad"
-                        keyboardAppearance={colors.keyboardAppearance}
-                        maxLength={6}
-                        accessibilityLabel={t('split.tipRate')}
-                      />
-                      <Text style={styles.taxPctSign}>%</Text>
-                    </View>
+                    <TextInput
+                      style={styles.taxInput}
+                      value={tipPct}
+                      onChangeText={(text) => setTipPct(cleanAmountInput(text))}
+                      placeholder="0"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="decimal-pad"
+                      keyboardAppearance={colors.keyboardAppearance}
+                      maxLength={6}
+                      accessibilityLabel={t('split.tipRate')}
+                    />
                   </View>
                 </View>
                 <Text style={styles.hint}>{t('split.taxHint')}</Text>
               </>
             )}
 
-            <View style={styles.peopleCard}>
-              {people.map((p, index) => {
-                const on = !!included[p.id];
-                const pct = parseFloat(String(percent[p.id] ?? '').replace(',', '.')) || 0;
-                return (
-                  <View key={p.id} style={[styles.personRow, index > 0 && styles.rowDivider]}>
-                    <Pressable
-                      onPress={() => setIncluded((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: on }}
-                      accessibilityLabel={p.name}
-                      style={styles.personToggle}
-                    >
-                      <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                        {on && <HIcon name="tick-01" size={13} color={colors.onAccent} />}
-                      </View>
-                      <Text style={styles.personName} numberOfLines={1}>{p.name}</Text>
-                    </Pressable>
+            {mode === 'equal' ? (
+              /* Equal (the default) shows participants as tappable avatar chips —
+                 far shorter than one row per person — plus the single per-person
+                 caption below instead of the same share repeated on every row. */
+              <>
+                <View style={styles.memberChips}>
+                  {people.map((p) => {
+                    const on = !!included[p.id];
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => setIncluded((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                        accessibilityLabel={p.name}
+                        style={[styles.memberChip, on && styles.memberChipOn]}
+                      >
+                        <MemberAvatar name={p.name} on={on} styles={styles} />
+                        <Text style={[styles.memberChipName, !on && styles.memberNameOff]} numberOfLines={1}>
+                          {p.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {equalShareLabel != null && <Text style={styles.eachShare}>{equalShareLabel}</Text>}
+              </>
+            ) : (
+              /* Custom / percentage / tax need a per-person input, so those keep a
+                 row per person: the avatar+name toggles inclusion, the input sits
+                 on the right. */
+              <View style={styles.peopleCard}>
+                {people.map((p, index) => {
+                  const on = !!included[p.id];
+                  const pct = parseFloat(String(percent[p.id] ?? '').replace(',', '.')) || 0;
+                  return (
+                    <View key={p.id} style={[styles.personRow, index > 0 && styles.rowDivider]}>
+                      <Pressable
+                        onPress={() => setIncluded((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                        accessibilityLabel={p.name}
+                        style={styles.personToggle}
+                      >
+                        <MemberAvatar name={p.name} on={on} styles={styles} />
+                        <Text style={[styles.personName, !on && styles.memberNameOff]} numberOfLines={1}>{p.name}</Text>
+                      </Pressable>
 
-                    {on && mode === 'equal' && equalPreview?.[p.id] != null && (
-                      <Text style={styles.sharePreview}>{formatMoney(equalPreview[p.id], currencyCode)}</Text>
-                    )}
+                      {on && mode === 'custom' && (
+                        <View style={styles.inlineAmount}>
+                          <Text style={styles.inlineSymbol}>{cur.symbol}</Text>
+                          <TextInput
+                            style={styles.inlineInput}
+                            value={custom[p.id] ?? ''}
+                            onChangeText={(v) => setCustom((prev) => ({ ...prev, [p.id]: cleanAmountInput(v) }))}
+                            placeholder="0"
+                            placeholderTextColor={colors.textMuted}
+                            keyboardType={cur.decimals === 0 ? 'number-pad' : 'decimal-pad'}
+                            keyboardAppearance={colors.keyboardAppearance}
+                            maxLength={AMOUNT_MAX_LENGTH}
+                            accessibilityLabel={`${p.name} ${t('split.amount')}`}
+                          />
+                        </View>
+                      )}
 
-                    {on && mode === 'custom' && (
-                      <View style={styles.inlineAmount}>
-                        <Text style={styles.inlineSymbol}>{cur.symbol}</Text>
-                        <TextInput
-                          style={styles.inlineInput}
-                          value={custom[p.id] ?? ''}
-                          onChangeText={(v) => setCustom((prev) => ({ ...prev, [p.id]: cleanAmountInput(v) }))}
-                          placeholder="0"
-                          placeholderTextColor={colors.textMuted}
-                          keyboardType={cur.decimals === 0 ? 'number-pad' : 'decimal-pad'}
-                          keyboardAppearance={colors.keyboardAppearance}
-                          maxLength={AMOUNT_MAX_LENGTH}
-                          accessibilityLabel={`${p.name} ${t('split.amount')}`}
-                        />
-                      </View>
-                    )}
+                      {on && mode === 'percentage' && (
+                        <View style={styles.inlineAmount}>
+                          {percentPreview?.[p.id] != null && pct > 0 && (
+                            <Text style={styles.sharePreviewMuted}>
+                              {formatMoney(percentPreview[p.id], currencyCode)}
+                            </Text>
+                          )}
+                          <TextInput
+                            style={styles.pctInput}
+                            value={percent[p.id] ?? ''}
+                            onChangeText={(v) => setPercent((prev) => ({ ...prev, [p.id]: cleanAmountInput(v) }))}
+                            placeholder="0"
+                            placeholderTextColor={colors.textMuted}
+                            keyboardType="decimal-pad"
+                            keyboardAppearance={colors.keyboardAppearance}
+                            maxLength={6}
+                            accessibilityLabel={`${p.name} %`}
+                          />
+                          <Text style={styles.inlineSymbol}>%</Text>
+                        </View>
+                      )}
 
-                    {on && mode === 'percentage' && (
-                      <View style={styles.inlineAmount}>
-                        {percentPreview?.[p.id] != null && pct > 0 && (
-                          <Text style={styles.sharePreviewMuted}>
-                            {formatMoney(percentPreview[p.id], currencyCode)}
-                          </Text>
-                        )}
-                        <TextInput
-                          style={styles.pctInput}
-                          value={percent[p.id] ?? ''}
-                          onChangeText={(v) => setPercent((prev) => ({ ...prev, [p.id]: cleanAmountInput(v) }))}
-                          placeholder="0"
-                          placeholderTextColor={colors.textMuted}
-                          keyboardType="decimal-pad"
-                          keyboardAppearance={colors.keyboardAppearance}
-                          maxLength={6}
-                          accessibilityLabel={`${p.name} %`}
-                        />
-                        <Text style={styles.inlineSymbol}>%</Text>
-                      </View>
-                    )}
-
-                    {on && mode === 'tax' && (
-                      <View style={styles.inlineAmount}>
-                        <Text style={styles.inlineSymbol}>{cur.symbol}</Text>
-                        <TextInput
-                          style={styles.inlineInput}
-                          value={subtotals[p.id] ?? ''}
-                          onChangeText={(v) => setSubtotals((prev) => ({ ...prev, [p.id]: cleanAmountInput(v) }))}
-                          placeholder="0"
-                          placeholderTextColor={colors.textMuted}
-                          keyboardType={cur.decimals === 0 ? 'number-pad' : 'decimal-pad'}
-                          keyboardAppearance={colors.keyboardAppearance}
-                          maxLength={AMOUNT_MAX_LENGTH}
-                          accessibilityLabel={`${p.name} ${t('split.amount')}`}
-                        />
-                        {taxResult.shares[p.id] != null && (
-                          <Text style={styles.sharePreviewMuted}>→ {formatMoney(taxResult.shares[p.id], currencyCode)}</Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
+                      {on && mode === 'tax' && (
+                        <View style={styles.inlineAmount}>
+                          <Text style={styles.inlineSymbol}>{cur.symbol}</Text>
+                          <TextInput
+                            style={styles.inlineInput}
+                            value={subtotals[p.id] ?? ''}
+                            onChangeText={(v) => setSubtotals((prev) => ({ ...prev, [p.id]: cleanAmountInput(v) }))}
+                            placeholder="0"
+                            placeholderTextColor={colors.textMuted}
+                            keyboardType={cur.decimals === 0 ? 'number-pad' : 'decimal-pad'}
+                            keyboardAppearance={colors.keyboardAppearance}
+                            maxLength={AMOUNT_MAX_LENGTH}
+                            accessibilityLabel={`${p.name} ${t('split.amount')}`}
+                          />
+                          {taxResult.shares[p.id] != null && (
+                            <Text style={styles.sharePreviewMuted}>→ {formatMoney(taxResult.shares[p.id], currencyCode)}</Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             {mode === 'custom' && amountValid && !customOk && (
               <Text style={styles.warning}>{t('split.customMismatch')}</Text>
@@ -670,6 +683,18 @@ export default function SharedSplitForm({
   );
 }
 
+// Initial-letter avatar shared by the equal-mode member chips and the
+// input-mode rows; accent-filled while the person is included in the split.
+function MemberAvatar({ name, on, styles }) {
+  return (
+    <View style={[styles.avatar, on && styles.avatarOn]}>
+      <Text style={[styles.avatarText, on && styles.avatarTextOn]}>
+        {(name || '').trim().slice(0, 1).toUpperCase() || '?'}
+      </Text>
+    </View>
+  );
+}
+
 const createStyles = (colors) =>
   StyleSheet.create({
     ...popupChromeStyles(colors),
@@ -715,36 +740,30 @@ const createStyles = (colors) =>
       fontSize: 15,
     },
 
-    selectCard: {
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      overflow: 'hidden',
+    chipRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
       marginBottom: spacing.md,
     },
-    selectRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      minHeight: 52,
+    chip: {
+      flex: 1,
+      backgroundColor: colors.card,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: spacing.sm,
     },
-    selectRowDivider: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
-    },
-    selectLabel: {
-      color: colors.textSecondary,
+    chipLabel: {
+      color: colors.textMuted,
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 11,
     },
-    selectValueWrap: {
+    chipValueRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
-      flexShrink: 1,
-      marginLeft: spacing.sm,
+      gap: 2,
+      marginTop: 2,
     },
-    selectValue: {
+    chipValue: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 14,
@@ -806,26 +825,24 @@ const createStyles = (colors) =>
     taxRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: spacing.md,
+      gap: spacing.sm,
       marginBottom: spacing.sm,
     },
     taxField: {
       flex: 1,
       flexBasis: 0,
       minWidth: 120,
-    },
-    taxFieldLabel: {
-      color: colors.textSecondary,
-      fontFamily: fonts.medium,
-      fontSize: 12,
-      marginBottom: spacing.xs,
-    },
-    taxInputWrap: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.card,
       borderRadius: radius.sm,
       paddingHorizontal: spacing.md,
+    },
+    taxFieldLabel: {
+      color: colors.textMuted,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      flexShrink: 0,
     },
     taxInput: {
       flex: 1,
@@ -834,16 +851,9 @@ const createStyles = (colors) =>
       fontFamily: fonts.numBold,
       fontSize: 16,
       paddingVertical: spacing.sm + 2,
-      paddingRight: spacing.xs,
+      paddingLeft: spacing.xs,
+      textAlign: 'right',
       fontVariant: ['tabular-nums'],
-    },
-    taxPctSign: {
-      color: colors.textMuted,
-      fontFamily: fonts.numBold,
-      fontSize: 15,
-      minWidth: 14,
-      flexShrink: 0,
-      textAlign: 'center',
     },
     hint: {
       color: colors.textMuted,
@@ -853,6 +863,61 @@ const createStyles = (colors) =>
       marginBottom: spacing.md,
     },
 
+    memberChips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    memberChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs + 2,
+      backgroundColor: colors.card,
+      borderRadius: 999,
+      paddingVertical: spacing.xs,
+      paddingLeft: spacing.xs + 1,
+      paddingRight: spacing.sm + 4,
+      maxWidth: '100%',
+    },
+    memberChipOn: {
+      backgroundColor: `${colors.accent}15`,
+    },
+    memberChipName: {
+      color: colors.textPrimary,
+      fontFamily: fonts.medium,
+      fontSize: 14,
+      flexShrink: 1,
+    },
+    memberNameOff: {
+      color: colors.textMuted,
+    },
+    avatar: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: colors.cardPressed,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarOn: {
+      backgroundColor: colors.accent,
+    },
+    avatarText: {
+      color: colors.textMuted,
+      fontFamily: fonts.bold,
+      fontSize: 12,
+    },
+    avatarTextOn: {
+      color: colors.onAccent,
+    },
+    eachShare: {
+      color: colors.textSecondary,
+      fontFamily: fonts.numRegular,
+      fontSize: 13,
+      fontVariant: ['tabular-nums'],
+      textAlign: 'right',
+      marginTop: spacing.sm,
+    },
     peopleCard: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
@@ -863,7 +928,7 @@ const createStyles = (colors) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      minHeight: 50,
+      minHeight: 46,
     },
     rowDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
@@ -876,30 +941,11 @@ const createStyles = (colors) =>
       flex: 1,
       paddingVertical: spacing.sm,
     },
-    checkbox: {
-      width: 22,
-      height: 22,
-      borderRadius: 6,
-      borderWidth: 1.5,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    checkboxOn: {
-      backgroundColor: colors.accent,
-      borderColor: colors.accent,
-    },
     personName: {
       color: colors.textPrimary,
       fontFamily: fonts.regular,
       fontSize: 15,
       flexShrink: 1,
-    },
-    sharePreview: {
-      color: colors.textSecondary,
-      fontFamily: fonts.numBold,
-      fontSize: 15,
-      fontVariant: ['tabular-nums'],
     },
     sharePreviewMuted: {
       color: colors.textMuted,

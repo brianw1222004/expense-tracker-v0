@@ -81,11 +81,22 @@ create table public.split_expenses (
 
 create index split_expenses_user_created_idx on public.split_expenses (user_id, created_at desc);
 
--- One settings row per user.
+-- One settings row per user. The extra preference columns are nullable ON
+-- PURPOSE: NULL means "no device has pushed this field yet", so the app keeps
+-- its local value instead of clobbering it with an empty default (this is what
+-- makes adding these columns to a live database safe). Only per-device
+-- preferences (theme, language, onboarding flag) stay off the server.
+-- Existing database? Run supabase/migrate-settings-sync.sql instead.
 create table public.settings (
   user_id uuid primary key default auth.uid() references auth.users (id) on delete cascade,
   display_currency text not null,
   monthly_budget numeric not null default 0,
+  category_budgets jsonb,        -- {categoryId: amount}, in the display currency
+  category_order jsonb,          -- Insight grid tile order; null = spend-sorted
+  custom_categories jsonb,       -- user-created categories
+  custom_payment_methods jsonb,  -- user-created split-bill payment methods
+  first_name text,
+  last_name text,
   updated_at timestamptz not null default now()
 );
 

@@ -10,6 +10,7 @@ const {
   getRegularAll,
   getExternalAll,
   generateCategoryId,
+  isPresetCategory,
   EMOJI_OPTIONS,
   COLOR_OPTIONS,
 } = require('../categories');
@@ -213,6 +214,42 @@ describe('getCategory()', () => {
   it('other emoji is sparkles', () => {
     const cat = getCategory('other');
     expect(cat.emoji).toBe('sparkles');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Preset overrides & tombstones (edit/delete built-ins via customCategories)
+// ---------------------------------------------------------------------------
+describe('preset overrides and tombstones', () => {
+  const OVERRIDE = { id: 'food', label: 'Meals', emoji: 'pizza-01', color: '#111111', external: false, custom: true };
+  const TOMBSTONE = { id: 'transport', deleted: true };
+
+  it('an entry with a built-in id overrides that preset in place', () => {
+    const all = getAllCategories([OVERRIDE]);
+    expect(all).toHaveLength(8);
+    expect(all[0].id).toBe('food'); // keeps preset position
+    expect(all[0].label).toBe('Meals');
+  });
+
+  it('a { id, deleted } tombstone hides the preset from all lists', () => {
+    const all = getAllCategories([TOMBSTONE]);
+    expect(all).toHaveLength(7);
+    expect(all.map((c) => c.id)).not.toContain('transport');
+    expect(getRegularAll([TOMBSTONE]).map((c) => c.id)).not.toContain('transport');
+  });
+
+  it('getCategory resolves overrides and sends deleted ids to other', () => {
+    expect(getCategory('food', [OVERRIDE]).label).toBe('Meals');
+    expect(getCategory('transport', [TOMBSTONE]).id).toBe('other');
+  });
+
+  it("still labels orphans as other even when 'other' itself is deleted", () => {
+    expect(getCategory('nope', [{ id: 'other', deleted: true }]).id).toBe('other');
+  });
+
+  it('isPresetCategory distinguishes built-in ids from custom ones', () => {
+    expect(isPresetCategory('food')).toBe(true);
+    expect(isPresetCategory('c_gym')).toBe(false);
   });
 });
 

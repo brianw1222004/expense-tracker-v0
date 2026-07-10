@@ -21,11 +21,13 @@ export const THEMES = {
     warning: '#b8963e',
     danger: '#b85c5c',
     backdrop: 'rgba(33, 42, 48, 0.5)',
-    gradientStart: '#323f48',
-    gradientEnd: '#4e6a7b',
-    // Hero-card corner bloom — a cool blue→teal wash that echoes this palette.
+    // Dashboard top-of-page wash — a cool blue→teal fade that echoes this
+    // palette. glowWashTop is glowStart at the wash's top opacity (0.34)
+    // pre-blended over `background`: App.js paints the status-bar strip with
+    // it so the wash reads as starting at the physical top of the screen.
     glowStart: '#A9CBE8',
     glowEnd: '#9FD3C8',
+    glowWashTop: '#dce9f3',
     headerText: '#f6f8f9',
     headerTextSecondary: 'rgba(246, 248, 249, 0.65)',
     icon: '#638394',
@@ -50,11 +52,11 @@ export const THEMES = {
     warning: '#b8963e',
     danger: '#b85c5c',
     backdrop: 'rgba(40, 33, 27, 0.5)',
-    gradientStart: '#483e34',
-    gradientEnd: '#79694e',
-    // Hero-card corner bloom — a warm peach→gold wash that echoes this palette.
+    // Dashboard top-of-page wash — a warm peach→gold fade that echoes this
+    // palette; glowWashTop = glowStart @ 0.34 over `background` (see slate).
     glowStart: '#F3C6A4',
     glowEnd: '#E6CF9A',
+    glowWashTop: '#f4e4d5',
     headerText: '#f5f3ee',
     headerTextSecondary: 'rgba(245, 243, 238, 0.65)',
     icon: '#948461',
@@ -79,12 +81,12 @@ export const THEMES = {
     warning: '#b8963e',
     danger: '#b85c5c',
     backdrop: 'rgba(11, 11, 11, 0.5)',
-    gradientStart: '#1a1a1a',
-    gradientEnd: '#535353',
-    // Hero-card corner bloom — the original pink→violet iridescence, an
-    // intentional pop of color against this grayscale palette.
+    // Dashboard top-of-page wash — the original pink→violet iridescence, an
+    // intentional pop of color against this grayscale palette;
+    // glowWashTop = glowStart @ 0.34 over `background` (see slate).
     glowStart: '#F8B6D2',
     glowEnd: '#BCA9F5',
+    glowWashTop: '#f9e3ec',
     headerText: '#fafafa',
     headerTextSecondary: 'rgba(250, 250, 250, 0.65)',
     icon: '#727272',
@@ -95,18 +97,21 @@ export function getTheme(name) {
   return THEMES[name] ?? THEMES.neutral;
 }
 
-// Unified type: Inter (a neutral grotesque with strong tabular figures) drives
-// BOTH text and numbers, so word labels align with the money/stat figures next
-// to them. The num* slots stay separate (numeric styles also add fontVariant
-// tabular-nums) but resolve to the same Inter faces. Styles must set fontFamily
+// Unified type: Liberation Sans (bundled in assets/fonts, loaded in App.js)
+// drives BOTH text and numbers, so word labels align with the money/stat
+// figures next to them. The num* slots stay separate (numeric styles also add
+// fontVariant tabular-nums) but resolve to the same faces. All non-bold text
+// is slightly bolded: the regular slots use Arimo Medium (Arimo = the
+// Google-Fonts continuation of Liberation Sans, metric-identical, with the
+// 500 weight the Liberation family lacks). Styles must set fontFamily
 // WITHOUT fontWeight — Android mis-resolves when both are present.
 export const fonts = {
-  regular: 'Inter_400Regular',
-  medium: 'Inter_500Medium',
-  bold: 'Inter_700Bold',
-  numRegular: 'Inter_400Regular',
-  numMedium: 'Inter_500Medium',
-  numBold: 'Inter_700Bold',
+  regular: 'Arimo-Medium',
+  medium: 'LiberationSans-Bold',
+  bold: 'LiberationSans-Bold',
+  numRegular: 'Arimo-Medium',
+  numMedium: 'LiberationSans-Bold',
+  numBold: 'LiberationSans-Bold',
 };
 
 export const spacing = {

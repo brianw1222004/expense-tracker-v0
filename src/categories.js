@@ -11,8 +11,22 @@ const CATEGORIES = [
 
 const FALLBACK_CATEGORY = CATEGORIES.find((c) => c.id === 'other');
 
+// customCategories holds user-created categories, but may also carry entries
+// whose id matches a built-in: a full category object overrides that preset
+// in place (edited preset), and `{ id, deleted: true }` hides it (deleted
+// preset). This keeps presets editable/deletable without a second setting —
+// the array already persists and syncs as-is.
 export function getAllCategories(customCategories = []) {
-  return [...CATEGORIES, ...(Array.isArray(customCategories) ? customCategories : [])];
+  const extras = Array.isArray(customCategories) ? customCategories : [];
+  const byId = new Map(extras.map((c) => [c.id, c]));
+  return [
+    ...CATEGORIES.map((c) => byId.get(c.id) ?? c),
+    ...extras.filter((c) => !isPresetCategory(c.id)),
+  ].filter((c) => !c.deleted);
+}
+
+export function isPresetCategory(id) {
+  return CATEGORIES.some((c) => c.id === id);
 }
 
 export function getRegularAll(customCategories = []) {
@@ -24,7 +38,10 @@ export function getExternalAll(customCategories = []) {
 }
 
 export function getCategory(id, customCategories = []) {
-  return getAllCategories(customCategories).find((c) => c.id === id) ?? FALLBACK_CATEGORY;
+  const all = getAllCategories(customCategories);
+  // Fall back to 'other' for unknown/deleted ids; if 'other' itself was
+  // deleted, the static preset still labels those orphaned expenses.
+  return all.find((c) => c.id === id) ?? all.find((c) => c.id === 'other') ?? FALLBACK_CATEGORY;
 }
 
 export function getCategoryLabel(category, t) {

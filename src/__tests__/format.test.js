@@ -457,8 +457,8 @@ describe('isValidAmountText()', () => {
 });
 
 // ---------------------------------------------------------------------------
-// shiftMonthKey() — the 'YYYY-MM' month stepper shared by the Dashboard category
-// card (shiftCatMonth in App.js) and the breakdown page's prev-month derivation.
+// shiftMonthKey() — the 'YYYY-MM' month stepper behind every tab's independent
+// month selector (MonthSelector consumers) and the Insight prev-month derivation.
 // Year-boundary rollover is the behavior worth locking in.
 // ---------------------------------------------------------------------------
 describe('shiftMonthKey()', () => {

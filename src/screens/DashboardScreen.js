@@ -1,52 +1,52 @@
 import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 
 import CategorySummaryCard from '../components/CategorySummaryCard';
 import EmptyState from '../components/EmptyState';
+import MonthSelector from '../components/MonthSelector';
 import SpendingChart from '../components/SpendingChart';
 import { HIcon } from '../icons';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
-import { useT, useLanguage } from '../i18n';
-import { formatMoney, formatMoneyShort, monthKeyLabel } from '../format';
+import { useT } from '../i18n';
+import { formatMoney, formatMoneyShort } from '../format';
 
-// Soft iridescent bloom for the hero card's upper-right corner. The two hues
-// (`glowStart` → `glowEnd`) come from the active theme so the wash harmonises
-// with the palette — pink→violet on neutral (an intentional pop against the
-// grayscale), cool blue→teal on slate, warm peach→gold on sand. Tune
-// intensity/position via the stop opacities and gradient center below.
-function CardGlow({ colors }) {
+// Copilot-style page wash: the hero card's old corner bloom, promoted to the
+// Dashboard's background. A two-hue vertical fade (`glowStart` → `glowEnd` →
+// transparent, hues from the active theme — pink→violet on neutral, blue→teal
+// on slate, peach→gold on sand) runs from the top of the screen and dies out
+// around the hero card's big number. It sits FIXED behind the transparent
+// ScrollView (content scrolls over it), and App.js paints the status-bar strip
+// in `glowWashTop` while this tab is active so the wash reads as starting at
+// the physical top. The 0.34 top opacity must stay in sync with `glowWashTop`
+// in theme.js (that token is the pre-blended solid of this top row).
+function HeaderGlow({ colors }) {
   return (
-    <View style={styles_cardGlowClip} pointerEvents="none">
+    <View style={styles_headerGlow} pointerEvents="none">
       <Svg width="100%" height="100%">
         <Defs>
-          <RadialGradient id="spendCardGlow" cx="92%" cy="3%" r="95%" fx="92%" fy="3%">
-            <Stop offset="0" stopColor={colors.glowStart} stopOpacity="0.5" />
-            <Stop offset="0.45" stopColor={colors.glowEnd} stopOpacity="0.22" />
+          <LinearGradient id="dashHeaderGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+            <Stop offset="0" stopColor={colors.glowStart} stopOpacity="0.34" />
+            <Stop offset="0.45" stopColor={colors.glowEnd} stopOpacity="0.2" />
             <Stop offset="1" stopColor={colors.glowEnd} stopOpacity="0" />
-          </RadialGradient>
+          </LinearGradient>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#spendCardGlow)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#dashHeaderGlow)" />
       </Svg>
     </View>
   );
 }
 
-// Static style for the glow clip layer (outside createStyles — it needs no theme
-// colors, only the card's corner radius). Positioning is spelled out because
-// StyleSheet.absoluteFillObject was removed in RN 0.85.
-const styles_cardGlowClip = {
+// Static style for the wash layer (outside createStyles — no theme colors).
+// Positioning is spelled out because StyleSheet.absoluteFillObject was removed
+// in RN 0.85. Height ends the fade around the hero number's position.
+const styles_headerGlow = {
   position: 'absolute',
   top: 0,
   left: 0,
   right: 0,
-  bottom: 0,
-  borderRadius: radius.md,
-  overflow: 'hidden',
-  // Sit behind the card content but above the card's own background fill — on
-  // web an absolute child would otherwise paint over the static text.
-  zIndex: -1,
+  height: 240,
 };
 
 export default function DashboardScreen({
@@ -56,8 +56,8 @@ export default function DashboardScreen({
   monthTotal,
   lastMonthTotal,
   dailyTotals,
-  heroMonthKey,
-  onShiftHeroMonth,
+  monthKey,
+  onShiftMonth,
   displayCurrency,
   onOpenAccount,
   onAddPress,
@@ -65,19 +65,15 @@ export default function DashboardScreen({
   splitSummary,
   onOpenSplit,
   categoryMonths,
-  categoryMonthKey,
   currentMonthKey,
   allCategories,
-  onShiftCategoryMonth,
   onCategoryDetail,
 }) {
   const { colors } = useTheme();
   const t = useT();
-  const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const greetingName = (userName ?? '').trim();
-  const isCurrentMonth = heroMonthKey === currentMonthKey;
-  const canGoNext = heroMonthKey < currentMonthKey;
+  const isCurrentMonth = monthKey === currentMonthKey;
 
   const delta = monthTotal - (lastMonthTotal ?? 0);
   const hasLastMonth = (lastMonthTotal ?? 0) > 0;
@@ -87,7 +83,8 @@ export default function DashboardScreen({
   const deltaPct = hasLastMonth ? (Math.abs(delta) / lastMonthTotal) * 100 : 0;
 
   return (
-    <>
+    <View style={styles.root}>
+      <HeaderGlow colors={colors} />
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -105,32 +102,20 @@ export default function DashboardScreen({
             </Text>
           </Pressable>
         )}
-        {/* The month heading doubles as the hero card's month selector — the
-            chevrons step the Monthly Spending total/delta/chart through past
-            months (capped at the current month, like the category card nav). */}
-        <View style={styles.monthNav}>
-          <Pressable onPress={() => onShiftHeroMonth(-1)} hitSlop={10} accessibilityRole="button">
-            <HIcon name="chevron-left" size={20} color={colors.icon} />
-          </Pressable>
-          <Text style={styles.monthHeading} numberOfLines={1}>
-            {monthKeyLabel(heroMonthKey, language)}
-          </Text>
-          <Pressable
-            onPress={() => onShiftHeroMonth(1)}
-            disabled={!canGoNext}
-            hitSlop={10}
-            accessibilityRole="button"
-            style={!canGoNext ? styles.navDisabled : undefined}
-          >
-            <HIcon name="chevron-right" size={20} color={colors.icon} />
-          </Pressable>
-        </View>
       </View>
 
-      {/* Monthly Spending — total, month-over-month delta, trend chart. The
-          display-currency pill moved to the Insight page's Budget card. */}
+      {/* This page's ‹ month › selection, under the title — scopes the hero
+          card and the category summary card. Independent of the other tabs'
+          month selectors. */}
+      <MonthSelector
+        monthKey={monthKey}
+        currentMonthKey={currentMonthKey}
+        onShift={onShiftMonth}
+        style={styles.monthSelector}
+      />
+
+      {/* Monthly Spending — total, month-over-month delta, trend chart. */}
       <View style={styles.spendCard}>
-        <CardGlow colors={colors} />
         <View style={styles.spendTopRow}>
           <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
         </View>
@@ -158,11 +143,9 @@ export default function DashboardScreen({
       {hasExpenses && (
         <CategorySummaryCard
           months={categoryMonths}
-          monthKey={categoryMonthKey}
-          currentMonthKey={currentMonthKey}
+          monthKey={monthKey}
           displayCurrency={displayCurrency}
           allCategories={allCategories}
-          onShiftMonth={onShiftCategoryMonth}
           onMoreDetail={onCategoryDetail}
         />
       )}
@@ -200,7 +183,7 @@ export default function DashboardScreen({
         <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />
       )}
     </ScrollView>
-    </>
+    </View>
   );
 }
 
@@ -224,9 +207,14 @@ const DeltaBadge = React.memo(function DeltaBadge({ value, dir, colors, styles }
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    container: {
+    root: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    // Transparent so the fixed HeaderGlow wash behind it shows through; the
+    // page background lives on `root`.
+    container: {
+      flex: 1,
     },
     content: {
       flexGrow: 1,
@@ -236,39 +224,27 @@ const createStyles = (colors) =>
     greetingRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      justifyContent: 'center',
       minHeight: ACCOUNT_FAB_SIZE,
       marginTop: spacing.sm,
-      marginBottom: spacing.md,
+      marginBottom: spacing.xs,
       marginHorizontal: spacing.md,
-      // Clear the floating account button pinned at the screen's top-left.
-      paddingLeft: ACCOUNT_FAB_SIZE + spacing.sm,
+      // Symmetric clearance for the floating account button pinned top-left so
+      // the greeting centers on the SCREEN, not in the leftover space.
+      paddingHorizontal: ACCOUNT_FAB_SIZE + spacing.sm,
     },
     greeting: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 22,
       flexShrink: 1,
+      textAlign: 'center',
     },
     greetingPressable: {
       flexShrink: 1,
     },
-    // Month selector, top-right of the greeting row — label mirrors the
-    // greeting; the chevrons drive the hero card's month.
-    monthNav: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      marginLeft: spacing.sm,
-      flexShrink: 0,
-    },
-    monthHeading: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 22,
-    },
-    navDisabled: {
-      opacity: 0.3,
+    monthSelector: {
+      marginBottom: spacing.md,
     },
     spendCard: {
       backgroundColor: colors.card,

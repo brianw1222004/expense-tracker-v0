@@ -7,10 +7,11 @@ import { GROUP_ICONS } from '../splits';
 import Sheet from './Sheet';
 import { HIcon } from '../icons';
 
-// A dedicated full-page picker for a group's icon avatar. A roomy wrapped grid
-// of GROUP_ICONS (minimal hugeicon glyphs); tapping one selects it and closes
-// the sheet. Presented over the create/detail sheet so it reads as its own page.
-export default function IconPickerSheet({ visible, value, onSelect, onClose }) {
+// A dedicated full-page picker for an icon avatar (group, category, payment
+// method). A roomy wrapped grid of hugeicon glyphs — GROUP_ICONS unless the
+// caller passes its own `icons` list; tapping one selects it and closes the
+// sheet. Presented over the host modal/sheet so it reads as its own page.
+export default function IconPickerSheet({ visible, icons = GROUP_ICONS, value, onSelect, onClose }) {
   const { colors } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -35,7 +36,7 @@ export default function IconPickerSheet({ visible, value, onSelect, onClose }) {
         contentContainerStyle={[styles.grid, { paddingBottom: spacing.xl + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {GROUP_ICONS.map((name) => {
+        {icons.map((name) => {
           const selected = name === value;
           return (
             <Pressable

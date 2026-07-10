@@ -39,9 +39,11 @@ import Tv01Icon from '@hugeicons/core-free-icons/Tv01Icon';
 import Leaf01Icon from '@hugeicons/core-free-icons/Leaf01Icon';
 import StarCircleIcon from '@hugeicons/core-free-icons/StarCircleIcon';
 import Cancel01Icon from '@hugeicons/core-free-icons/Cancel01Icon';
+import Delete02Icon from '@hugeicons/core-free-icons/Delete02Icon';
 import Tick01Icon from '@hugeicons/core-free-icons/Tick01Icon';
 import ChevronLeftIcon from '@hugeicons/core-free-icons/ChevronLeftIcon';
 import ChevronRightIcon from '@hugeicons/core-free-icons/ChevronRightIcon';
+import ChevronDownIcon from '@hugeicons/core-free-icons/ChevronDownIcon';
 import CircleDashedIcon from '@hugeicons/core-free-icons/CircleDashedIcon';
 import Settings01Icon from '@hugeicons/core-free-icons/Settings01Icon';
 import Calendar01Icon from '@hugeicons/core-free-icons/Calendar01Icon';
@@ -108,9 +110,11 @@ const REGISTRY = {
   'star-circle': StarCircleIcon,
 
   'cancel-01': Cancel01Icon,
+  'delete-02': Delete02Icon,
   'tick-01': Tick01Icon,
   'chevron-left': ChevronLeftIcon,
   'chevron-right': ChevronRightIcon,
+  'chevron-down': ChevronDownIcon,
   'circle-dashed': CircleDashedIcon,
   'settings-01': Settings01Icon,
   'calendar-01': Calendar01Icon,

@@ -17,10 +17,14 @@ so nothing breaks in the meantime.
 This creates the `expenses`, `income`, and `settings` tables with Row Level
 Security, so each signed-in user can only ever read/write their own rows.
 
-> Already have an older database? Re-run `schema.sql` (or just the `income`
-> table + policy + trigger block) to add the new `income` table. Until it
-> exists, income simply won't sync — expense sync is unaffected (income uses a
-> separate, tolerant sync lane).
+> Already have an older database? Run
+> [`supabase/migrate-settings-sync.sql`](supabase/migrate-settings-sync.sql)
+> the same way to add the newer settings columns (category budgets, custom
+> categories/payment methods, profile name). Until it's run, only the display
+> currency and overall budget sync — everything else keeps working on-device.
+> Missing the `income` table entirely? Re-run its block from `schema.sql`;
+> income uses a separate, tolerant sync lane, so expense sync is unaffected
+> either way.
 
 ## 3. Configure auth
 

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { fonts, spacing, radius } from '../theme';
-import { EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId } from '../categories';
+import { EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId, getCategoryLabel } from '../categories';
 import { formatMoney, cleanAmountInput } from '../format';
 import { HIcon } from '../icons';
+import IconPickerSheet from './IconPickerSheet';
 
 function hslToHex(h, s, l) {
   s /= 100; l /= 100;
@@ -23,12 +24,14 @@ const HUE_STOPS = [
   { offset: '100%', color: '#ff0000' },
 ];
 
-// The add/edit-custom-category modal (name, monthly budget, paginated icon
-// grid, preset colors plus a hue-slider custom color, external switch).
+// The add/edit-category modal (name with a tappable icon avatar that opens the
+// shared IconPickerSheet, monthly budget, preset colors plus a hue-slider
+// custom color, external switch).
 // Formerly nested inside CategoryBreakdownScreen; now opened from the Insight
-// page's Categories card. A budget is REQUIRED: at least 5% of the overall
-// monthly budget (any positive amount when no overall budget is set), so every
-// category tile always has a spending-vs-budget bar to track.
+// page's Categories card for BOTH preset and custom categories. Creating a
+// category REQUIRES a budget: at least 5% of the overall monthly budget (any
+// positive amount when no overall budget is set), so every new tile has a
+// spending-vs-budget bar; when editing, the budget may stay empty.
 export default function AddCategoryModal({
   visible,
   editingCategory,
@@ -49,8 +52,7 @@ export default function AddCategoryModal({
   const [color, setColor] = useState(COLOR_OPTIONS[0]);
   const [external, setExternal] = useState(false);
   const [initialized, setInitialized] = useState(false);
-  const [iconPage, setIconPage] = useState(0);
-  const [iconGridWidth, setIconGridWidth] = useState(0);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [customColorActive, setCustomColorActive] = useState(false);
   const [hue, setHue] = useState(0);
   const sliderWidth = useRef(0);
@@ -63,7 +65,7 @@ export default function AddCategoryModal({
   useEffect(() => {
     if (visible && !initialized) {
       if (isEdit) {
-        setName(editingCategory.label);
+        setName(getCategoryLabel(editingCategory, t));
         setBudgetText(initialBudget > 0 ? String(initialBudget) : '');
         setEmoji(editingCategory.emoji);
         setColor(editingCategory.color);
@@ -79,32 +81,13 @@ export default function AddCategoryModal({
         setCustomColorActive(false);
       }
       setHue(0);
-      setIconPage(0);
+      setIconPickerOpen(false);
       setInitialized(true);
     }
     if (!visible && initialized) {
       setInitialized(false);
     }
   }, [visible, editingCategory]);
-
-  const ICONS_PER_PAGE = 14;
-  const iconPages = useMemo(() => {
-    const pages = [];
-    for (let i = 0; i < EMOJI_OPTIONS.length; i += ICONS_PER_PAGE) {
-      pages.push(EMOJI_OPTIONS.slice(i, i + ICONS_PER_PAGE));
-    }
-    return pages;
-  }, []);
-
-  const onIconScroll = useCallback((e) => {
-    const x = e.nativeEvent.contentOffset.x;
-    const w = e.nativeEvent.layoutMeasurement.width;
-    if (w > 0) setIconPage(Math.round(x / w));
-  }, []);
-
-  const onIconGridLayout = useCallback((e) => {
-    setIconGridWidth(e.nativeEvent.layout.width);
-  }, []);
 
   const huePanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -129,14 +112,15 @@ export default function AddCategoryModal({
     },
   }), []);
 
-  // Budget is required. Minimum is 5% of the overall monthly budget; with no
-  // overall budget set there is no base to take 5% of, so any positive amount
-  // passes.
+  // A budget is required when creating (minimum 5% of the overall monthly
+  // budget; any positive amount when no overall budget is set). When editing,
+  // an empty field is also fine — presets start without a budget, and a
+  // rename/recolor shouldn't force one.
   const minBudget = monthlyBudget > 0 ? monthlyBudget * 0.05 : 0;
   const budgetValue = parseFloat(budgetText.replace(',', '.')) || 0;
   const budgetOk = budgetValue > 0 && budgetValue >= minBudget;
   const budgetInvalid = budgetText.length > 0 && !budgetOk;
-  const canSave = name.trim().length > 0 && budgetOk;
+  const canSave = name.trim().length > 0 && (budgetOk || (isEdit && budgetText.length === 0));
 
   const handleSave = () => {
     if (!canSave) return;
@@ -162,28 +146,57 @@ export default function AddCategoryModal({
             <Text style={styles.headerTitle}>
               {t(isEdit ? 'cats.editCategory' : 'cats.addCategory')}
             </Text>
-            <Pressable
-              onPress={onClose}
-              hitSlop={8}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}
-            >
-              <HIcon name="cancel-01" size={18} color={colors.icon} />
-            </Pressable>
+            <View style={styles.headerBtns}>
+              {isEdit && (
+                <Pressable
+                  onPress={onDelete}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.delete')}
+                  style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}
+                >
+                  <HIcon name="delete-02" size={17} color={colors.danger} />
+                </Pressable>
+              )}
+              <Pressable
+                onPress={onClose}
+                hitSlop={8}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}
+              >
+                <HIcon name="cancel-01" size={18} color={colors.icon} />
+              </Pressable>
+            </View>
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Text style={styles.label}>{t('cats.categoryName')}</Text>
-            <TextInput
-              style={styles.nameInput}
-              value={name}
-              onChangeText={setName}
-              placeholder={t('cats.categoryName')}
-              placeholderTextColor={colors.textMuted}
-              maxLength={20}
-              keyboardAppearance={colors.keyboardAppearance}
-              autoFocus={!isEdit}
-            />
+            {/* The avatar circle doubles as the icon picker (the group-screen
+                pattern): tap it to open the shared IconPickerSheet. */}
+            <View style={styles.nameRow}>
+              <Pressable
+                onPress={() => setIconPickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('split.changeIcon')}
+                style={({ pressed }) => [
+                  styles.iconCircle,
+                  { backgroundColor: `${color}26` },
+                  pressed && styles.iconCirclePressed,
+                ]}
+              >
+                <HIcon name={emoji} size={24} color={color} />
+              </Pressable>
+              <TextInput
+                style={styles.nameInput}
+                value={name}
+                onChangeText={setName}
+                placeholder={t('cats.categoryName')}
+                placeholderTextColor={colors.textMuted}
+                maxLength={20}
+                keyboardAppearance={colors.keyboardAppearance}
+                autoFocus={!isEdit}
+              />
+            </View>
 
             <Text style={styles.label}>{t('cats.budgetLabel')}</Text>
             <View style={[styles.budgetRow, budgetInvalid && { borderColor: colors.danger }]}>
@@ -204,46 +217,6 @@ export default function AddCategoryModal({
                 ? t('cats.budgetMinHint', { amount: formatMoney(minBudget, displayCurrency) })
                 : t('cats.budgetAnyHint')}
             </Text>
-
-            <Text style={styles.label}>{t('cats.pickIcon')}</Text>
-            <View onLayout={onIconGridLayout} style={styles.iconGridWrapper}>
-              {iconGridWidth > 0 && (
-                <ScrollView
-                  horizontal
-                  pagingEnabled
-                  showsHorizontalScrollIndicator={false}
-                  onScroll={onIconScroll}
-                  scrollEventThrottle={16}
-                >
-                  {iconPages.map((page, pi) => (
-                    <View key={pi} style={[styles.grid, { width: iconGridWidth }]}>
-                      {page.map((e) => (
-                        <Pressable
-                          key={e}
-                          onPress={() => setEmoji(e)}
-                          style={[styles.gridCell, emoji === e && { backgroundColor: `${color}33`, borderColor: color }]}
-                        >
-                          <HIcon name={e} size={22} color={emoji === e ? color : colors.icon} />
-                        </Pressable>
-                      ))}
-                    </View>
-                  ))}
-                </ScrollView>
-              )}
-            </View>
-            {iconPages.length > 1 && (
-              <View style={styles.iconPageDots}>
-                {iconPages.map((_, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.iconPageDot,
-                      { backgroundColor: i === iconPage ? colors.accent : colors.border },
-                    ]}
-                  />
-                ))}
-              </View>
-            )}
 
             <Text style={styles.label}>{t('cats.pickColor')}</Text>
             <View style={styles.grid}>
@@ -346,19 +319,17 @@ export default function AddCategoryModal({
             >
               <Text style={styles.saveBtnText}>{t('cats.save')}</Text>
             </Pressable>
-
-            {isEdit && (
-              <Pressable
-                onPress={onDelete}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}
-              >
-                <Text style={styles.deleteBtnText}>{t('common.delete')}</Text>
-              </Pressable>
-            )}
           </ScrollView>
         </View>
       </View>
+
+      <IconPickerSheet
+        visible={iconPickerOpen}
+        icons={EMOJI_OPTIONS}
+        value={emoji}
+        onSelect={setEmoji}
+        onClose={() => setIconPickerOpen(false)}
+      />
     </Modal>
   );
 }
@@ -400,6 +371,22 @@ const createModalStyles = (colors) =>
       justifyContent: 'center',
     },
     closeBtnPressed: { backgroundColor: colors.cardPressed },
+    headerBtns: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    // Header trash button (edit mode only) — danger-tinted twin of closeBtn,
+    // always visible instead of buried at the bottom of the scroll content.
+    deleteBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: `${colors.danger}15`,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    deleteBtnPressed: { opacity: 0.6 },
     label: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
@@ -409,7 +396,26 @@ const createModalStyles = (colors) =>
       marginBottom: spacing.sm,
       marginTop: spacing.sm,
     },
+    // Name row: the tappable icon avatar (tinted to the chosen color) beside
+    // the name input — tapping it opens the IconPickerSheet.
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.xs,
+    },
+    iconCircle: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconCirclePressed: {
+      opacity: 0.6,
+    },
     nameInput: {
+      flex: 1,
       backgroundColor: colors.card,
       color: colors.textPrimary,
       borderRadius: radius.sm,
@@ -417,7 +423,6 @@ const createModalStyles = (colors) =>
       paddingVertical: spacing.sm + 4,
       fontFamily: fonts.regular,
       fontSize: 15,
-      marginBottom: spacing.xs,
     },
     // Required monthly budget for the category (min 5% of the overall budget);
     // the row's border turns danger-red while the entered amount is below it.
@@ -451,35 +456,11 @@ const createModalStyles = (colors) =>
       marginTop: spacing.xs,
       marginBottom: spacing.xs,
     },
-    iconGridWrapper: {
-      marginBottom: spacing.xs,
-    },
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.xs + 2,
       marginBottom: spacing.xs,
-    },
-    iconPageDots: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: spacing.xs + 2,
-      marginBottom: spacing.xs,
-    },
-    iconPageDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-    },
-    gridCell: {
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.card,
-      borderWidth: 1.5,
-      borderColor: 'transparent',
     },
     colorCell: {
       width: 32,
@@ -565,16 +546,5 @@ const createModalStyles = (colors) =>
       color: colors.onAccent,
       fontFamily: fonts.bold,
       fontSize: 16,
-    },
-    deleteBtn: {
-      alignItems: 'center',
-      paddingVertical: spacing.sm + 4,
-      marginTop: spacing.sm,
-    },
-    deleteBtnPressed: { opacity: 0.6 },
-    deleteBtnText: {
-      color: colors.danger,
-      fontFamily: fonts.bold,
-      fontSize: 14,
     },
   });

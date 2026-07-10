@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { spacing, useTheme } from '../theme';
+import { fonts, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { HIcon } from '../icons';
 
@@ -88,6 +88,9 @@ const TabItem = React.memo(function TabItem({ styles, colors, icon, selected, id
           strokeWidth={selected ? 2 : 1.5}
         />
       </View>
+      <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 });
@@ -128,17 +131,28 @@ const createStyles = (colors) =>
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      height: 44,
+      height: 48,
     },
     iconPill: {
-      width: 52,
-      height: 34,
-      borderRadius: 17,
+      width: 48,
+      height: 28,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
     },
     iconPillSelected: {
       backgroundColor: `${colors.accent}15`,
+    },
+    label: {
+      fontFamily: fonts.regular,
+      fontSize: 10,
+      lineHeight: 13,
+      marginTop: 2,
+      color: colors.textMuted,
+    },
+    labelSelected: {
+      fontFamily: fonts.medium,
+      color: colors.accent,
     },
     itemPressed: {
       opacity: 0.6,

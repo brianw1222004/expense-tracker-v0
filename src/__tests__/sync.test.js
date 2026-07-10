@@ -1,6 +1,12 @@
 // `coalesce` and the pure queue reducer `applyExpenseOps` are imported directly
 // from the source — no duplicated copy — so a regression in sync.js fails here.
-const { coalesce, applyExpenseOps, applyPendingOps } = require('../sync');
+const {
+  coalesce,
+  applyExpenseOps,
+  applyPendingOps,
+  pickSyncedSettings,
+  fromSettingsRow,
+} = require('../sync');
 
 // Helper to build a queue the way enqueue() does: coalesce the incoming op
 // against the existing queue, then push it.
@@ -244,5 +250,70 @@ describe('applyPendingOps()', () => {
 
   it('returns an empty array unchanged when there are no pending ops', () => {
     expect(applyPendingOps('another-unknown-user', [])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Settings sync mapping — pickSyncedSettings / fromSettingsRow
+// ---------------------------------------------------------------------------
+describe('settings sync mapping', () => {
+  it('pickSyncedSettings keeps device-local preferences off the queue', () => {
+    const picked = pickSyncedSettings({
+      displayCurrency: 'EUR',
+      monthlyBudget: 500,
+      categoryBudgets: { food: 100 },
+      categoryOrder: ['food', 'other'],
+      customCategories: [{ id: 'c1', label: 'Pets' }],
+      customPaymentMethods: [{ id: 'p1', label: 'Venmo' }],
+      firstName: 'Ada',
+      lastName: 'L',
+      theme: 'sand',
+      language: 'zh',
+      onboardingDone: true,
+    });
+    expect(picked).toEqual({
+      displayCurrency: 'EUR',
+      monthlyBudget: 500,
+      categoryBudgets: { food: 100 },
+      categoryOrder: ['food', 'other'],
+      customCategories: [{ id: 'c1', label: 'Pets' }],
+      customPaymentMethods: [{ id: 'p1', label: 'Venmo' }],
+      firstName: 'Ada',
+      lastName: 'L',
+    });
+  });
+
+  it('fromSettingsRow omits NULL columns so the local value stands after merge', () => {
+    // A row from a just-migrated (or pre-migration) database: extra columns
+    // NULL / absent. Merging this over local settings must not clobber them.
+    const settings = fromSettingsRow({ display_currency: 'USD', monthly_budget: 300 });
+    expect(settings).toEqual({ displayCurrency: 'USD', monthlyBudget: 300 });
+
+    const local = { categoryBudgets: { food: 50 }, firstName: 'Ada', theme: 'sand' };
+    expect({ ...local, ...settings }.categoryBudgets).toEqual({ food: 50 });
+    expect({ ...local, ...settings }.firstName).toBe('Ada');
+  });
+
+  it('fromSettingsRow maps concrete columns, including empty pushed values', () => {
+    const settings = fromSettingsRow({
+      display_currency: 'EUR',
+      monthly_budget: '500',
+      category_budgets: {},
+      category_order: ['food'],
+      custom_categories: [],
+      custom_payment_methods: [{ id: 'p1' }],
+      first_name: '',
+      last_name: 'L',
+    });
+    expect(settings).toEqual({
+      displayCurrency: 'EUR',
+      monthlyBudget: 500,
+      categoryBudgets: {},
+      categoryOrder: ['food'],
+      customCategories: [],
+      customPaymentMethods: [{ id: 'p1' }],
+      firstName: '',
+      lastName: 'L',
+    });
   });
 });

@@ -3,9 +3,10 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { fonts, radius, spacing, useTheme, cardShadow } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
-import { buildCalendarWeeks, dateKey, dayLabel, formatMoney, monthLabel } from '../format';
+import { buildCalendarWeeks, dateKey, dayLabel, formatMoney, shiftMonthKey } from '../format';
 import EmptyState from '../components/EmptyState';
 import ExpenseRow from '../components/ExpenseRow';
+import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 
@@ -48,7 +49,6 @@ export default function ExpenseListScreen({
   }, [today]);
 
   const dateNames = getDateNames(language);
-  const calMonthText = monthLabel(new Date(calYear, calMonth), language);
   const grid = useMemo(() => buildCalendarWeeks(calYear, calMonth), [calYear, calMonth]);
 
   const expenseDays = useMemo(() => {
@@ -98,16 +98,16 @@ export default function ExpenseListScreen({
     setSelectedDate(`${calYear}-${pad2(calMonth + 1)}-${pad2(day)}`);
   };
 
-  const prevMonth = () => {
-    setCalPeriod(({ year, month }) =>
-      month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 }
-    );
-  };
-
-  const nextMonth = () => {
-    setCalPeriod(({ year, month }) =>
-      month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 }
-    );
+  // This page's month selection (the ‹ month › selector under the title — the
+  // calendar card no longer has its own month nav). Stepping months also moves
+  // the selected day (today in the current month, the 1st otherwise) so the
+  // rows below always show the displayed month. Independent of the other tabs.
+  const calMonthKey = `${calYear}-${pad2(calMonth + 1)}`;
+  const shiftCalMonth = (dir) => {
+    const next = shiftMonthKey(calMonthKey, dir);
+    const [y, m] = next.split('-').map(Number);
+    setCalPeriod({ year: y, month: m - 1 });
+    setSelectedDate(next === today.slice(0, 7) ? today : `${next}-01`);
   };
 
   const [sy, sm, sd] = selectedDate.split('-').map(Number);
@@ -131,27 +131,14 @@ export default function ExpenseListScreen({
       >
         <Text style={styles.title}>{t('list.title')}</Text>
 
-        <View style={styles.calendarCard}>
-          <View style={styles.calHeader}>
-            <Pressable
-              onPress={prevMonth}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel={t('add.prevMonth')}
-            >
-              <HIcon name="chevron-left" size={18} color={colors.icon} />
-            </Pressable>
-            <Text style={styles.calMonthLabel}>{calMonthText}</Text>
-            <Pressable
-              onPress={nextMonth}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel={t('add.nextMonth')}
-            >
-              <HIcon name="chevron-right" size={18} color={colors.icon} />
-            </Pressable>
-          </View>
+        <MonthSelector
+          monthKey={calMonthKey}
+          currentMonthKey={today.slice(0, 7)}
+          onShift={shiftCalMonth}
+          style={styles.monthSelector}
+        />
 
+        <View style={styles.calendarCard}>
           <View style={styles.calWeekRow}>
             {dateNames.weekdayLetters.map((letter, i) => (
               <View key={i} style={styles.calWeekCell}>
@@ -344,8 +331,11 @@ const FilterChip = React.memo(function FilterChip({ icon, label, color, selected
 
 const createStyles = (colors) =>
   StyleSheet.create({
+    // Explicit background: the SafeAreaView behind the tabs is wash-tinted
+    // while the Dashboard tab is active, so screens must paint their own.
     container: {
       flex: 1,
+      backgroundColor: colors.background,
     },
     scrollContent: {
       paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
@@ -359,6 +349,9 @@ const createStyles = (colors) =>
       textAlign: 'center',
     },
 
+    monthSelector: {
+      marginTop: spacing.sm,
+    },
     calendarCard: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
@@ -368,18 +361,6 @@ const createStyles = (colors) =>
       paddingBottom: spacing.xs,
       paddingHorizontal: spacing.xs,
       ...cardShadow,
-    },
-    calHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.sm,
-      marginBottom: spacing.sm,
-    },
-    calMonthLabel: {
-      color: colors.textPrimary,
-      fontSize: 16,
-      fontFamily: fonts.bold,
     },
     calWeekRow: {
       flexDirection: 'row',

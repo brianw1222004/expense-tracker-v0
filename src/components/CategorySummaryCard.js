@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
-import { useT, useLanguage } from '../i18n';
-import { formatMoneyShort, monthKeyLabel } from '../format';
+import { useT } from '../i18n';
+import { formatMoneyShort } from '../format';
 import { getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
 
@@ -45,48 +45,33 @@ function formatPct(pct) {
 }
 
 // The category-spending summary card shown on the Dashboard (moved off the old
-// Categories tab): a month nav, a rounded-segment donut of the month's spending
-// by category with the total in the center, and the single most- / least-spent
-// category beside it. A "more detail" pill (top-right) jumps to the Insight tab,
-// which hosts the full per-category tile grid on its Categories card.
+// Categories tab): a "Categorical spending" section title (mirroring the Split
+// balances card below it), a rounded-segment donut of the month's spending by
+// category with the total in the center, and the single most- / least-spent
+// category beside it. The month comes from the app-wide selection on the
+// Monthly Spending card (no month nav of its own). A "more detail" pill
+// (top-right) jumps to the Insight tab, which hosts the full per-category tile
+// grid on its Categories card.
 export default function CategorySummaryCard({
   months,
   monthKey,
-  currentMonthKey,
   displayCurrency,
   allCategories,
-  onShiftMonth,
   onMoreDetail,
 }) {
   const { colors } = useTheme();
   const t = useT();
-  const language = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const viewMonth = useMemo(
     () => months.find((m) => m.key === monthKey) ?? { key: monthKey, total: 0, byCategory: {} },
     [months, monthKey]
   );
-  const canGoNext = monthKey < currentMonthKey;
 
   return (
     <View style={styles.card}>
       <View style={styles.topRow}>
-        <View style={styles.monthNav}>
-          <Pressable onPress={() => onShiftMonth(-1)} hitSlop={12} accessibilityRole="button">
-            <HIcon name="chevron-left" size={20} color={colors.icon} />
-          </Pressable>
-          <Text style={styles.monthLabel}>{monthKeyLabel(monthKey, language)}</Text>
-          <Pressable
-            onPress={() => onShiftMonth(1)}
-            disabled={!canGoNext}
-            hitSlop={12}
-            accessibilityRole="button"
-            style={!canGoNext ? styles.navDisabled : undefined}
-          >
-            <HIcon name="chevron-right" size={20} color={colors.icon} />
-          </Pressable>
-        </View>
+        <Text style={styles.cardTitle}>{t('cats.sectionTitle')}</Text>
         <Pressable
           onPress={onMoreDetail}
           accessibilityRole="button"
@@ -232,28 +217,20 @@ const createStyles = (colors) =>
     topRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'space-between',
       marginBottom: spacing.sm,
       minHeight: 24,
     },
-    monthNav: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.md,
-    },
-    navDisabled: { opacity: 0.3 },
-    monthLabel: {
+    // Section title, top-left — mirrors the Split balances card's title below.
+    cardTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 15,
-      minWidth: 100,
-      textAlign: 'center',
+      flexShrink: 1,
+      marginRight: spacing.sm,
     },
     // Soft accent-tinted fill, fully rounded — the shared card-header pill family.
     moreDetailPill: {
-      position: 'absolute',
-      right: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 2,

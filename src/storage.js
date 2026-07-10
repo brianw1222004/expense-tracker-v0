@@ -17,17 +17,18 @@ function scopedKey(base, userId) {
 }
 
 // monthlyBudget and every categoryBudgets value are in the display currency;
-// 0 / missing means "no budget set". theme / language / categoryBudgets are
-// DEVICE-LOCAL: the Supabase settings row only has display_currency and
-// monthly_budget columns, so sync.js never pushes the extra fields and App.js
-// merges pulls over the local settings instead of replacing them — pushing
-// unknown columns would error and wedge the whole pending-ops queue.
+// 0 / missing means "no budget set". Everything here syncs through the Supabase
+// settings row (see toSettingsRow in sync.js) EXCEPT theme / language /
+// onboardingDone, which are per-device preferences and stay DEVICE-LOCAL.
+// Pulled settings are merged over local (never replace it), and sync.js omits
+// server columns that are NULL — i.e. no device has pushed them yet — so the
+// local value always stands until something is actually synced.
 export const DEFAULT_SETTINGS = {
   displayCurrency: DEFAULT_CURRENCY,
   monthlyBudget: 0,
   categoryBudgets: {},
   // Manual tile order on the Insight Categories grid (drag-to-reorder);
-  // null = spend-sorted. Device-local, like the other extra fields.
+  // null = spend-sorted.
   categoryOrder: null,
   customCategories: [],
   customPaymentMethods: [],

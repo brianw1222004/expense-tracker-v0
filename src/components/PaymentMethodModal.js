@@ -6,6 +6,7 @@ import { useT } from '../i18n';
 import { COLOR_OPTIONS } from '../categories';
 import { PAYMENT_ICON_OPTIONS } from '../splits';
 import { HIcon } from '../icons';
+import IconPickerSheet from './IconPickerSheet';
 
 // HSL→hex + the rainbow stops, mirroring AddCategoryModal's custom-color picker.
 function hslToHex(h, s, l) {
@@ -41,6 +42,7 @@ export default function PaymentMethodModal({ visible, onSave, onClose }) {
   const [color, setColor] = useState(COLOR_OPTIONS[0]);
   const [customColorActive, setCustomColorActive] = useState(false);
   const [hue, setHue] = useState(0);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const sliderWidth = useRef(0);
   const customHexColor = useMemo(() => hslToHex(hue, 80, 50), [hue]);
 
@@ -51,6 +53,7 @@ export default function PaymentMethodModal({ visible, onSave, onClose }) {
       setColor(COLOR_OPTIONS[0]);
       setCustomColorActive(false);
       setHue(0);
+      setIconPickerOpen(false);
     }
   }, [visible]);
 
@@ -113,32 +116,34 @@ export default function PaymentMethodModal({ visible, onSave, onClose }) {
               </View>
             </View>
 
-            <View style={styles.inputWrap}>
-              <TextInput
-                style={styles.nameInput}
-                value={name}
-                onChangeText={setName}
-                placeholder={t('pay.namePlaceholder')}
-                placeholderTextColor={colors.textMuted}
-                keyboardAppearance={colors.keyboardAppearance}
-                maxLength={20}
-                autoFocus
-                accessibilityLabel={t('split.paymentMethodName')}
-              />
-            </View>
-
-            <Text style={styles.label}>{t('pay.icon')}</Text>
-            <View style={styles.grid}>
-              {PAYMENT_ICON_OPTIONS.map((ic) => (
-                <Pressable
-                  key={ic}
-                  onPress={() => setIcon(ic)}
-                  accessibilityRole="button"
-                  style={[styles.iconCell, icon === ic && { backgroundColor: `${color}33`, borderColor: color }]}
-                >
-                  <HIcon name={ic} size={22} color={icon === ic ? color : colors.icon} />
-                </Pressable>
-              ))}
+            {/* The avatar circle doubles as the icon picker (the group-screen
+                pattern): tap it to open the shared IconPickerSheet. */}
+            <View style={styles.nameRow}>
+              <Pressable
+                onPress={() => setIconPickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('split.changeIcon')}
+                style={({ pressed }) => [
+                  styles.iconCircle,
+                  { backgroundColor: `${color}26` },
+                  pressed && styles.iconCirclePressed,
+                ]}
+              >
+                <HIcon name={icon} size={24} color={color} />
+              </Pressable>
+              <View style={styles.inputWrap}>
+                <TextInput
+                  style={styles.nameInput}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder={t('pay.namePlaceholder')}
+                  placeholderTextColor={colors.textMuted}
+                  keyboardAppearance={colors.keyboardAppearance}
+                  maxLength={20}
+                  autoFocus
+                  accessibilityLabel={t('split.paymentMethodName')}
+                />
+              </View>
             </View>
 
             <Text style={styles.label}>{t('pay.color')}</Text>
@@ -223,6 +228,14 @@ export default function PaymentMethodModal({ visible, onSave, onClose }) {
           </ScrollView>
         </Pressable>
       </Pressable>
+
+      <IconPickerSheet
+        visible={iconPickerOpen}
+        icons={PAYMENT_ICON_OPTIONS}
+        value={icon}
+        onSelect={setIcon}
+        onClose={() => setIconPickerOpen(false)}
+      />
     </Modal>
   );
 }
@@ -284,11 +297,29 @@ const createStyles = (colors) =>
       fontSize: 14,
       maxWidth: 180,
     },
+    // Name row: the tappable icon avatar (tinted to the chosen color) beside
+    // the name input — tapping it opens the IconPickerSheet.
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    iconCircle: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconCirclePressed: {
+      opacity: 0.6,
+    },
     inputWrap: {
+      flex: 1,
       backgroundColor: colors.card,
       borderRadius: radius.md,
       paddingHorizontal: spacing.md,
-      marginBottom: spacing.md,
     },
     nameInput: {
       color: colors.textPrimary,
@@ -309,16 +340,6 @@ const createStyles = (colors) =>
       flexWrap: 'wrap',
       gap: spacing.xs + 2,
       marginBottom: spacing.md,
-    },
-    iconCell: {
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      borderWidth: 1.5,
-      borderColor: 'transparent',
-      backgroundColor: colors.card,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     colorCell: {
       width: 32,

@@ -5,6 +5,7 @@ import AddCategoryModal from '../components/AddCategoryModal';
 import CurrencyPicker from '../components/CurrencyPicker';
 import CurrencyPill from '../components/CurrencyPill';
 import EmptyState from '../components/EmptyState';
+import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT } from '../i18n';
@@ -21,15 +22,14 @@ import { HIcon } from '../icons';
 // widget style of the retired CategoryBreakdownScreen) with an "External"
 // subsection. Tiles reorder by long-press drag (the breakdown page's
 // drag-reorder, restored — persisted in device-local settings.categoryOrder).
-// The card header's add pill (and tapping a custom tile) opens
-// AddCategoryModal, so custom-category management lives here now.
+// The card header's add pill (and tapping any tile) opens AddCategoryModal,
+// so category management — including editing/deleting presets — lives here.
 export default function InsightScreen({
   loaded,
   hasExpenses,
   displayCurrency,
   monthlyBudget,
   categoryBudgets,
-  totalsByCategory,
   regularCategories,
   externalCategories,
   months,
@@ -52,11 +52,24 @@ export default function InsightScreen({
   const [modalCategory, setModalCategory] = useState(null); // null | 'new' | category
   // Vertical scrolling pauses while a tile drag is live so the grid owns the gesture.
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  // This page's month selection (the ‹ month › selector under the title) —
+  // scopes the budget gauge and every category tile. Owned locally: each tab's
+  // month is independent of the others'.
+  const [monthKey, setMonthKey] = useState(currentMonthKey);
+  const shiftMonth = (dir) => setMonthKey((key) => shiftMonthKey(key, dir));
 
+  // The selected month's per-category totals (byMonth folds split shares in,
+  // matching derive's current-month totals); {} for a month with no data so
+  // every tile honestly shows 0.
+  const totalsByCategory = useMemo(
+    () => months.find((m) => m.key === monthKey)?.byCategory ?? {},
+    [months, monthKey]
+  );
+  // Month-over-month deltas compare the selected month to the one before it.
   const prevMonth = useMemo(() => {
-    const prevKey = shiftMonthKey(currentMonthKey, -1);
+    const prevKey = shiftMonthKey(monthKey, -1);
     return months.find((m) => m.key === prevKey) ?? { key: prevKey, total: 0, byCategory: {} };
-  }, [months, currentMonthKey]);
+  }, [months, monthKey]);
 
   const spentOf = (category) => totalsByCategory[category.id] ?? 0;
   const hasBudgetFor = (category) => (categoryBudgets?.[category.id] ?? 0) > 0;
@@ -136,6 +149,13 @@ export default function InsightScreen({
         scrollEnabled={scrollEnabled}
       >
         <Text style={styles.title}>{t('insight.title')}</Text>
+
+        <MonthSelector
+          monthKey={monthKey}
+          currentMonthKey={currentMonthKey}
+          onShift={shiftMonth}
+          style={styles.monthSelector}
+        />
 
         {/* Hold the budget cards until data has loaded so a cold launch never
             flashes an empty "No budget set" bar before the cache resolves. */}
@@ -416,7 +436,7 @@ function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, o
           key={row.category.id}
           {...row}
           displayCurrency={displayCurrency}
-          onEdit={row.category.custom ? () => onEditCategory(row.category) : undefined}
+          onEdit={() => onEditCategory(row.category)}
           onLongPress={() => startDrag(i)}
           onPressOut={() => releaseWithoutDrag(i)}
           onLayout={(e) => { cellLayouts.current[i] = e.nativeEvent.layout; }}
@@ -439,8 +459,9 @@ function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, o
 // category-tinted track that fills against the budget as spending accrues;
 // without a budget it stays an empty strip, so tracking reads even at $0 spent
 // or before a budget is set. Budgeted categories add "/ budget" to the amount.
-// Custom categories open the edit modal on tap; long-press drags any tile to
-// reorder.
+// Tapping any tile opens the edit modal (presets included — edits/deletes are
+// stored as overrides/tombstones in customCategories); long-press drags any
+// tile to reorder.
 function CategoryTile({
   category,
   budget,
@@ -559,6 +580,9 @@ const createStyles = (colors) =>
       fontSize: 26,
       fontFamily: fonts.bold,
       textAlign: 'center',
+      marginBottom: spacing.xs,
+    },
+    monthSelector: {
       marginBottom: spacing.md,
     },
     card: {

@@ -165,8 +165,23 @@ export function enqueueExpensesReplace(userId, expenses) {
   return enqueue(userId, { type: 'replace', expenses });
 }
 
+// Only the server-synced settings fields ride the queue — theme/language/
+// onboardingDone are per-device preferences and never leave the device.
+export function pickSyncedSettings(settings) {
+  return {
+    displayCurrency: settings.displayCurrency,
+    monthlyBudget: settings.monthlyBudget,
+    categoryBudgets: settings.categoryBudgets ?? {},
+    categoryOrder: settings.categoryOrder ?? null,
+    customCategories: settings.customCategories ?? [],
+    customPaymentMethods: settings.customPaymentMethods ?? [],
+    firstName: settings.firstName ?? '',
+    lastName: settings.lastName ?? '',
+  };
+}
+
 export function enqueueSettingsPush(userId, settings) {
-  return enqueue(userId, { type: 'settings', settings });
+  return enqueue(userId, { type: 'settings', settings: pickSyncedSettings(settings) });
 }
 
 export function enqueueIncomeUpsert(userId, income) {
@@ -271,6 +286,42 @@ function fromIncomeRow(row) {
   };
 }
 
+function toSettingsRow(settings) {
+  return {
+    display_currency: settings.displayCurrency,
+    monthly_budget: settings.monthlyBudget,
+    category_budgets: settings.categoryBudgets ?? {},
+    category_order: settings.categoryOrder ?? null,
+    custom_categories: settings.customCategories ?? [],
+    custom_payment_methods: settings.customPaymentMethods ?? [],
+    first_name: settings.firstName ?? '',
+    last_name: settings.lastName ?? '',
+  };
+}
+
+// The extra settings columns are nullable and default NULL; NULL (or a missing
+// column on a pre-migration database) means "no device has pushed this field
+// yet", so it's omitted here and App.js's merge-over-local keeps the device's
+// value. category_order NULL is ambiguous (never-pushed vs. spend-sorted) —
+// resolved in favor of keeping the local order.
+export function fromSettingsRow(row) {
+  const settings = {
+    displayCurrency: row.display_currency || DEFAULT_SETTINGS.displayCurrency,
+    monthlyBudget: Number(row.monthly_budget) || 0,
+  };
+  if (row.category_budgets != null && typeof row.category_budgets === 'object') {
+    settings.categoryBudgets = row.category_budgets;
+  }
+  if (Array.isArray(row.category_order)) settings.categoryOrder = row.category_order;
+  if (Array.isArray(row.custom_categories)) settings.customCategories = row.custom_categories;
+  if (Array.isArray(row.custom_payment_methods)) {
+    settings.customPaymentMethods = row.custom_payment_methods;
+  }
+  if (row.first_name != null) settings.firstName = row.first_name;
+  if (row.last_name != null) settings.lastName = row.last_name;
+  return settings;
+}
+
 function toGroupRow(group) {
   return {
     id: group.id,
@@ -371,11 +422,20 @@ async function runOp(op, userId) {
       if (cleared.error) throw cleared.error;
     }
   } else if (op.type === 'settings') {
-    const { error } = await supabase.from('settings').upsert({
-      display_currency: op.settings.displayCurrency,
-      monthly_budget: op.settings.monthlyBudget,
-    });
-    if (error) throw error;
+    const { error } = await supabase.from('settings').upsert(toSettingsRow(op.settings));
+    if (error) {
+      // A database created before the extra settings columns rejects the full
+      // row with an unknown-column error (PGRST204). Fall back to the original
+      // two-column payload so an unmigrated server can't wedge this lane —
+      // expense ops queue behind settings ops.
+      const unknownColumn = error.code === 'PGRST204' || /column/i.test(error.message ?? '');
+      if (!unknownColumn) throw error;
+      const legacy = await supabase.from('settings').upsert({
+        display_currency: op.settings.displayCurrency,
+        monthly_budget: op.settings.monthlyBudget,
+      });
+      if (legacy.error) throw legacy.error;
+    }
   }
 }
 
@@ -601,7 +661,9 @@ export async function syncWithServer(userId) {
         .from('expenses')
         .select('id, amount, currency, note, category, created_at')
         .order('created_at', { ascending: false }),
-      supabase.from('settings').select('display_currency, monthly_budget').maybeSingle(),
+      // `*` instead of a column list so the pull works with or without the
+      // extra settings columns (see fromSettingsRow's NULL handling).
+      supabase.from('settings').select('*').maybeSingle(),
       supabase
         .from('income')
         .select('id, amount, currency, source, note, created_at')
@@ -625,16 +687,11 @@ export async function syncWithServer(userId) {
     let settings = null;
     if (queuedSettings) {
       // If a settings push is still queued (flush stopped early), the local
-      // value is newer than the server's — prefer it.
-      settings = {
-        displayCurrency: queuedSettings.settings.displayCurrency,
-        monthlyBudget: queuedSettings.settings.monthlyBudget,
-      };
+      // value is newer than the server's — prefer it. The op already holds
+      // exactly the synced subset (pickSyncedSettings).
+      settings = { ...queuedSettings.settings };
     } else if (!settingsRes.error && settingsRes.data) {
-      settings = {
-        displayCurrency: settingsRes.data.display_currency || DEFAULT_SETTINGS.displayCurrency,
-        monthlyBudget: Number(settingsRes.data.monthly_budget) || 0,
-      };
+      settings = fromSettingsRow(settingsRes.data);
     }
 
     // Tolerant pulls: a missing table or any error leaves the field null so

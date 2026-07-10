@@ -1,9 +1,10 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
 import { useT } from '../i18n';
-import { formatMoney, formatMoneyShort } from '../format';
+import { formatMoney, formatMoneyShort, shiftMonthKey } from '../format';
 import { convert } from '../currency';
 import { groupNet, groupBalances, getPaymentMethodLabel, getPaymentMethodColor, getGroupIcon } from '../splits';
 import { HIcon } from '../icons';
@@ -22,6 +23,7 @@ export default function SplitBillsScreen({
   splitExpenses,
   displayCurrency,
   summary,
+  currentMonthKey,
   customPaymentMethods,
   onOpenGroup,
   onCreateGroup,
@@ -29,6 +31,12 @@ export default function SplitBillsScreen({
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  // This page's month selection (under the title, matching every other tab).
+  // DELIBERATELY display-only: balances are outstanding debts, so the summary
+  // and group cards stay all-time regardless of the selected month (product
+  // decision — don't wire it into the balance math without asking).
+  const [monthKey, setMonthKey] = useState(currentMonthKey);
+  const shiftMonth = (dir) => setMonthKey((key) => shiftMonthKey(key, dir));
 
   const hasGroups = groups.length > 0;
 
@@ -41,6 +49,13 @@ export default function SplitBillsScreen({
       <View style={styles.titleRow}>
         <Text style={styles.title} numberOfLines={1}>{t('split.title')}</Text>
       </View>
+
+      <MonthSelector
+        monthKey={monthKey}
+        currentMonthKey={currentMonthKey}
+        onShift={shiftMonth}
+        style={styles.monthSelector}
+      />
 
       <View style={styles.summaryCard}>
         <Text style={styles.summaryLabel}>{t('split.netBalance')}</Text>
@@ -210,7 +225,7 @@ const createStyles = (colors) =>
       justifyContent: 'center',
       alignItems: 'center',
       marginTop: spacing.sm,
-      marginBottom: spacing.md,
+      marginBottom: spacing.xs,
       marginHorizontal: spacing.md,
       // Symmetric horizontal padding (clears the top-left account FAB) so the
       // title reads visually centered on screen.
@@ -221,6 +236,9 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 22,
       textAlign: 'center',
+    },
+    monthSelector: {
+      marginBottom: spacing.md,
     },
     summaryCard: {
       backgroundColor: colors.card,

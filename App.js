@@ -15,12 +15,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as HapticsModule from 'expo-haptics';
-import {
-  useFonts,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
+import { useFonts } from 'expo-font';
 
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddEntryScreen from './src/screens/AddEntryScreen';
@@ -78,7 +73,7 @@ import {
 import { supabase, isSupabaseConfigured } from './src/supabase';
 import { buildDemoExpenses, buildDemoIncome } from './src/demoData';
 import { redenominateBudgets, getCurrency } from './src/currency';
-import { getAllCategories, getRegularAll, getExternalAll } from './src/categories';
+import { getAllCategories, getRegularAll, getExternalAll, isPresetCategory } from './src/categories';
 import { dateKey, shiftMonthKey } from './src/format';
 import { deriveViewData } from './src/derive';
 import { overallBalance, yourShareAsExpenses, groupBalances, removeMemberFromBill, YOU } from './src/splits';
@@ -106,9 +101,11 @@ export default function App() {
   // Block first paint until loaded so no screen ever renders with the fallback
   // face; on a load error render anyway rather than hanging on a blank screen.
   const [fontsLoaded, fontsError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_700Bold,
+    // Arimo is the Google-Fonts continuation of Liberation Sans (same design,
+    // metric-identical); its 500 instance supplies the medium weight the
+    // Liberation family lacks — all non-bold text renders with it.
+    'Arimo-Medium': require('./assets/fonts/Arimo-Medium.ttf'),
+    'LiberationSans-Bold': require('./assets/fonts/LiberationSans-Bold.ttf'),
   });
   if (!fontsLoaded && !fontsError) return null;
 
@@ -149,11 +146,12 @@ function ExpenseTracker() {
   // Split-bills: the open group's id (detail sheet). New bills are added through
   // the shared add popup (addEntryMode='shared'), not a separate sheet.
   const [activeGroupId, setActiveGroupId] = useState(null);
-  // Selected month for the Dashboard category summary card.
-  const [catMonthKey, setCatMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
-  // Selected month for the Dashboard's Monthly Spending hero card (the ‹ month ›
-  // nav in the greeting row). Independent of the category card's selection.
-  const [heroMonthKey, setHeroMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
+  // The Dashboard's selected month (the ‹ month › selector under the greeting),
+  // scoping the hero card + category summary card. Every tab owns its own
+  // independent month selection (Expenses/Insight/Split keep theirs as local
+  // screen state since their data needs no App-level derivation) — changing the
+  // month on one page never affects another.
+  const [dashMonthKey, setDashMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
   // The add popup sits over whichever tab is active. `addEntryMode` toggles its
   // two forms (personal expense vs. shared split bill). `sharedLockedGroupId`,
   // when set, locks the shared form to one group (launched from a group's "Add a
@@ -254,7 +252,7 @@ function ExpenseTracker() {
       if (result.income) setIncome(applyPendingIncomeOps(userId, result.income));
       // group.icon and bill.meta are DEVICE-LOCAL (not in the Supabase mapping),
       // so a server reconcile would drop them. Preserve them from in-memory state
-      // by id — same posture as theme/language/categoryBudgets.
+      // by id — same posture as theme/language.
       if (result.groups) {
         const pulled = applyPendingGroupOps(userId, result.groups);
         setGroups((prev) => {
@@ -279,6 +277,12 @@ function ExpenseTracker() {
           if (!merged.onboardingDone && result.expenses.length > 0) merged.onboardingDone = true;
           return merged;
         });
+        // Server row predates the extra settings columns (they pull as unset):
+        // seed them from this device's values so budgets/categories/name reach
+        // the server without waiting for the next settings edit.
+        if (result.settings.categoryBudgets === undefined) {
+          enqueueSettingsPush(userId, { ...settingsRef.current, ...result.settings });
+        }
       } else if (!result.settings && result.expenses.length > 0) {
         setSettings((prev) => prev.onboardingDone ? prev : { ...prev, onboardingDone: true });
       }
@@ -305,7 +309,7 @@ function ExpenseTracker() {
       if (result.income) setIncome(applyPendingIncomeOps(userId, result.income));
       // group.icon and bill.meta are DEVICE-LOCAL (not in the Supabase mapping),
       // so a server reconcile would drop them. Preserve them from in-memory state
-      // by id — same posture as theme/language/categoryBudgets.
+      // by id — same posture as theme/language.
       if (result.groups) {
         const pulled = applyPendingGroupOps(userId, result.groups);
         setGroups((prev) => {
@@ -326,6 +330,10 @@ function ExpenseTracker() {
       }
       if (result.settings && settingsVersionRef.current === versionBeforeSync) {
         setSettings((prev) => ({ ...prev, ...result.settings }));
+        // Same migration seeding as the sign-in sync above.
+        if (result.settings.categoryBudgets === undefined) {
+          enqueueSettingsPush(userId, { ...settingsRef.current, ...result.settings });
+        }
       }
     });
     return () => {
@@ -621,14 +629,22 @@ function ExpenseTracker() {
         }
         if (
           next.displayCurrency !== cur.displayCurrency ||
-          next.monthlyBudget !== cur.monthlyBudget
+          next.monthlyBudget !== cur.monthlyBudget ||
+          next.categoryBudgets !== cur.categoryBudgets ||
+          next.categoryOrder !== cur.categoryOrder ||
+          next.customCategories !== cur.customCategories ||
+          next.customPaymentMethods !== cur.customPaymentMethods ||
+          next.firstName !== cur.firstName ||
+          next.lastName !== cur.lastName
         ) {
-          // Only the server-synced fields (displayCurrency/monthlyBudget) bump
-          // the guard. Device-local-only patches (e.g. customCategories edits)
-          // must NOT bump it, or a concurrent server settings merge from an
-          // in-flight sync would be dropped for no reason.
+          // Only server-synced field changes bump the guard. Device-local
+          // patches (theme/language/onboardingDone) must NOT bump it, or a
+          // concurrent server settings merge from an in-flight sync would be
+          // dropped for no reason. Object fields compare by reference — a patch
+          // carrying one always brings a fresh object, so at worst an
+          // equal-value patch enqueues a redundant (coalesced) push.
           settingsVersionRef.current += 1;
-          enqueueSettingsPush(userId, { displayCurrency: next.displayCurrency, monthlyBudget: next.monthlyBudget });
+          enqueueSettingsPush(userId, next); // sync.js picks the synced subset
         }
         return next;
       });
@@ -858,22 +874,34 @@ function ExpenseTracker() {
     }));
   };
 
+  // Presets delete as a `{ id, deleted: true }` tombstone (getAllCategories
+  // hides them); user-created categories are simply removed. Either way the
+  // category's budget goes with it.
   const deleteCustomCategory = (id) => {
-    setSettings((prev) => ({
-      ...prev,
-      customCategories: (prev.customCategories || []).filter((c) => c.id !== id),
-    }));
+    setSettings((prev) => {
+      const kept = (prev.customCategories || []).filter((c) => c.id !== id);
+      const { [id]: _, ...categoryBudgets } = prev.categoryBudgets || {};
+      return {
+        ...prev,
+        customCategories: isPresetCategory(id) ? [...kept, { id, deleted: true }] : kept,
+        categoryBudgets,
+      };
+    });
   };
 
+  // Upsert: an edited preset has no entry in customCategories yet — its first
+  // save appends an override carrying the preset's id.
   const updateCustomCategory = (updated) => {
     const { budget, ...cat } = updated;
-    setSettings((prev) => ({
-      ...prev,
-      customCategories: (prev.customCategories || []).map((c) =>
-        c.id === cat.id ? cat : c
-      ),
-      ...(budget > 0 ? { categoryBudgets: { ...prev.categoryBudgets, [cat.id]: budget } } : {}),
-    }));
+    setSettings((prev) => {
+      const list = prev.customCategories || [];
+      const exists = list.some((c) => c.id === cat.id);
+      return {
+        ...prev,
+        customCategories: exists ? list.map((c) => (c.id === cat.id ? cat : c)) : [...list, cat],
+        ...(budget > 0 ? { categoryBudgets: { ...prev.categoryBudgets, [cat.id]: budget } } : {}),
+      };
+    });
   };
 
   // A custom payment method carries the same {id,label,color,icon} shape as the
@@ -916,7 +944,7 @@ function ExpenseTracker() {
   // as spending") but never enter the Expenses list — see deriveViewData.
   const splitShareItems = useMemo(() => yourShareAsExpenses(splitExpenses), [splitExpenses]);
 
-  const { sections, months, totalsByCategory, hasSpending } =
+  const { sections, months, hasSpending } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language, settings.customCategories, undefined, splitShareItems),
       // dayStamp is a dep-only trigger: it forces re-derivation at midnight (so
@@ -937,32 +965,28 @@ function ExpenseTracker() {
   const hasExpenses = expenses.length > 0;
   const currentMonthKey = dayStamp.slice(0, 7);
 
-  // Resolve the category card/breakdown month, falling back to the current month
-  // when the selected month has no spending data (mirrors the old Categories tab).
-  const catEffectiveKey = months.some((m) => m.key === catMonthKey) ? catMonthKey : currentMonthKey;
-  const shiftCatMonth = useCallback((dir) => {
-    setCatMonthKey((key) => shiftMonthKey(key, dir));
-  }, []);
-
-  const shiftHeroMonth = useCallback((dir) => {
-    setHeroMonthKey((key) => shiftMonthKey(key, dir));
+  const shiftDashMonth = useCallback((dir) => {
+    setDashMonthKey((key) => shiftMonthKey(key, dir));
   }, []);
   // The hero card's view of the selected month: total, previous-month total
   // (for the delta badge) and the per-day chart series. Months with no data
   // render honestly as $0 with a flat chart (no fallback to the current month).
   const heroView = useMemo(() => {
-    const selected = months.find((m) => m.key === heroMonthKey);
-    const prev = months.find((m) => m.key === shiftMonthKey(heroMonthKey, -1));
-    const [y, mo] = heroMonthKey.split('-').map(Number);
+    const selected = months.find((m) => m.key === dashMonthKey);
+    const prev = months.find((m) => m.key === shiftMonthKey(dashMonthKey, -1));
+    const [y, mo] = dashMonthKey.split('-').map(Number);
     const daysInMonth = new Date(y, mo, 0).getDate();
     return {
       total: selected?.total ?? 0,
       prevTotal: prev?.total ?? 0,
       dailyTotals: selected?.dailyTotals ?? new Array(daysInMonth).fill(0),
     };
-  }, [months, heroMonthKey]);
+  }, [months, dashMonthKey]);
 
   let content = null;
+  // True only on the main-UI branch below — gates chrome that must never render
+  // over Auth/Onboarding (here: the Dashboard's wash-tinted status-bar strip).
+  let mainUIVisible = false;
   if (isSupabaseConfigured && !session) {
     content = sessionLoaded ? <AuthScreen /> : null;
   } else if (isSupabaseConfigured && session && !loaded) {
@@ -975,6 +999,7 @@ function ExpenseTracker() {
       />
     );
   } else {
+    mainUIVisible = true;
     // Global chrome (account FAB top-left, add FAB bottom-right) hides whenever
     // any popup or sheet is open so it never floats over a modal surface.
     const chromeVisible =
@@ -993,8 +1018,8 @@ function ExpenseTracker() {
               monthTotal={heroView.total}
               lastMonthTotal={heroView.prevTotal}
               dailyTotals={heroView.dailyTotals}
-              heroMonthKey={heroMonthKey}
-              onShiftHeroMonth={shiftHeroMonth}
+              monthKey={dashMonthKey}
+              onShiftMonth={shiftDashMonth}
               userName={settings.firstName}
               displayCurrency={displayCurrency}
               onOpenAccount={() => setOverlay('account')}
@@ -1003,10 +1028,8 @@ function ExpenseTracker() {
               splitSummary={splitSummary}
               onOpenSplit={() => changeTab('split')}
               categoryMonths={months}
-              categoryMonthKey={catEffectiveKey}
               currentMonthKey={currentMonthKey}
               allCategories={allCategories}
-              onShiftCategoryMonth={shiftCatMonth}
               onCategoryDetail={() => changeTab('insight')}
             />
           </Animated.View>
@@ -1029,6 +1052,7 @@ function ExpenseTracker() {
               splitExpenses={splitExpenses}
               displayCurrency={displayCurrency}
               summary={splitSummary}
+              currentMonthKey={currentMonthKey}
               customPaymentMethods={settings.customPaymentMethods}
               onOpenGroup={setActiveGroupId}
               onCreateGroup={() => {
@@ -1044,7 +1068,6 @@ function ExpenseTracker() {
               displayCurrency={displayCurrency}
               monthlyBudget={settings.monthlyBudget}
               categoryBudgets={settings.categoryBudgets}
-              totalsByCategory={totalsByCategory}
               regularCategories={regularCategories}
               externalCategories={externalCategories}
               months={months}
@@ -1211,8 +1234,17 @@ function ExpenseTracker() {
   return (
     <ThemeProvider themeName={settings.theme}>
       <I18nProvider language={language}>
+        {/* On the Dashboard tab the top inset (status-bar strip) is painted in
+            glowWashTop — the solid equivalent of the HeaderGlow wash's top row —
+            so the page gradient reads as starting at the physical screen top. */}
         <SafeAreaView
-          style={[styles.safeArea, { backgroundColor: theme.background }]}
+          style={[
+            styles.safeArea,
+            {
+              backgroundColor:
+                mainUIVisible && tab === 'dashboard' ? theme.glowWashTop : theme.background,
+            },
+          ]}
           edges={['top', 'left', 'right']}
         >
           <StatusBar style={theme.statusBarStyle} />
