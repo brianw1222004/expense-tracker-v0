@@ -33,11 +33,6 @@ beforeEach(async () => {
 // DEFAULT_SETTINGS shape
 // ---------------------------------------------------------------------------
 describe('DEFAULT_SETTINGS', () => {
-  test('contains firstName and lastName as empty strings', () => {
-    expect(DEFAULT_SETTINGS.firstName).toBe('');
-    expect(DEFAULT_SETTINGS.lastName).toBe('');
-  });
-
   test('onboardingDone defaults to false', () => {
     expect(DEFAULT_SETTINGS.onboardingDone).toBe(false);
   });
@@ -74,12 +69,6 @@ describe('loadSettings() — fresh install', () => {
     expect(settings.monthlyBudget).toBe(DEFAULT_SETTINGS.monthlyBudget);
     expect(settings.theme).toBe(DEFAULT_SETTINGS.theme);
     expect(settings.language).toBe(DEFAULT_SETTINGS.language);
-  });
-
-  test('returns firstName and lastName as empty strings on fresh install', async () => {
-    const settings = await loadSettings(LOCAL_USER);
-    expect(settings.firstName).toBe('');
-    expect(settings.lastName).toBe('');
   });
 
   test('returns onboardingDone as false on fresh install', async () => {
@@ -136,16 +125,6 @@ describe('loadSettings() — partial cache merging', () => {
     expect(settings.language).toBe('zh');
     expect(settings.monthlyBudget).toBe(1200);
     expect(settings.onboardingDone).toBe(true);
-  });
-
-  test('firstName and lastName survive a save→load round-trip', async () => {
-    const full = { ...DEFAULT_SETTINGS, firstName: 'Ada', lastName: 'Lovelace', onboardingDone: true };
-    await saveSettings(LOCAL_USER, full);
-
-    const settings = await loadSettings(LOCAL_USER);
-
-    expect(settings.firstName).toBe('Ada');
-    expect(settings.lastName).toBe('Lovelace');
   });
 });
 
@@ -532,21 +511,6 @@ describe('boundary values', () => {
     await saveIncome(LOCAL_USER, income);
     const result = await loadIncome(LOCAL_USER);
     expect(result[0].amount).toBe(9999999);
-  });
-
-  test('settings with empty-string firstName and lastName are preserved', async () => {
-    const s = { ...DEFAULT_SETTINGS, firstName: '', lastName: '', onboardingDone: true };
-    await saveSettings(LOCAL_USER, s);
-    const result = await loadSettings(LOCAL_USER);
-    expect(result.firstName).toBe('');
-    expect(result.lastName).toBe('');
-  });
-
-  test('settings with single-character firstName are preserved', async () => {
-    const s = { ...DEFAULT_SETTINGS, firstName: 'X', onboardingDone: true };
-    await saveSettings(LOCAL_USER, s);
-    const result = await loadSettings(LOCAL_USER);
-    expect(result.firstName).toBe('X');
   });
 
   test('settings with monthlyBudget of 0 (no budget set) are preserved', async () => {

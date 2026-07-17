@@ -344,18 +344,27 @@ export function groupNet(group, splitExpenses) {
 
 // Overall owed/owe across every group, in the display currency. `owed` = total
 // others owe you; `owe` = total you owe others; `net` = owed - owe.
+// `owedCount`/`oweCount` = how many people are behind each figure (a member in
+// several groups counts once per group — each debt is per-group).
 export function overallBalance(groups, splitExpenses, displayCurrency) {
   let owed = 0;
   let owe = 0;
+  let owedCount = 0;
+  let oweCount = 0;
   for (const g of groups) {
     const balances = groupBalances(g, splitExpenses);
     for (const v of Object.values(balances)) {
       const d = convert(v, g.currency, displayCurrency);
-      if (d > 0) owed += d;
-      else if (d < 0) owe += -d;
+      if (d > 0) {
+        owed += d;
+        owedCount += 1;
+      } else if (d < 0) {
+        owe += -d;
+        oweCount += 1;
+      }
     }
   }
-  return { owed, owe, net: owed - owe };
+  return { owed, owe, net: owed - owe, owedCount, oweCount };
 }
 
 // Your share of each split bill, as expense-like items so the existing spending

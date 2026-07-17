@@ -77,6 +77,25 @@ async function persistQueue(key) {
   }
 }
 
+// Wipe every pending-op lane for one user — in-memory AND the durable
+// AsyncStorage mirrors. Used by "delete account": a queued-but-unflushed op
+// (e.g. a replace-with-empty that couldn't reach the server) must not survive
+// the wipe, or it would replay on the next sync and silently delete data the
+// account recreated on another device in the meantime. Lanes are set to empty
+// rather than deleted so an in-flight ensureQueueLoaded can't resurrect old ops.
+export async function clearQueues(userId) {
+  const laneKeys = [userId, incomeKey(userId), groupsKey(userId), splitsKey(userId)];
+  for (const key of laneKeys) {
+    queues.set(key, []);
+    queueLoads.delete(key);
+  }
+  try {
+    await AsyncStorage.multiRemove(laneKeys.map((key) => `${QUEUE_KEY}:${key}`));
+  } catch {
+    // Best-effort, same stance as persistQueue.
+  }
+}
+
 // Drop queued ops the incoming op makes redundant (expense/settings lane).
 // Removal is by value here and by identity in flush(), so the two never fight
 // over array indices.
@@ -175,8 +194,6 @@ export function pickSyncedSettings(settings) {
     categoryOrder: settings.categoryOrder ?? null,
     customCategories: settings.customCategories ?? [],
     customPaymentMethods: settings.customPaymentMethods ?? [],
-    firstName: settings.firstName ?? '',
-    lastName: settings.lastName ?? '',
   };
 }
 
@@ -294,8 +311,6 @@ function toSettingsRow(settings) {
     category_order: settings.categoryOrder ?? null,
     custom_categories: settings.customCategories ?? [],
     custom_payment_methods: settings.customPaymentMethods ?? [],
-    first_name: settings.firstName ?? '',
-    last_name: settings.lastName ?? '',
   };
 }
 
@@ -317,8 +332,6 @@ export function fromSettingsRow(row) {
   if (Array.isArray(row.custom_payment_methods)) {
     settings.customPaymentMethods = row.custom_payment_methods;
   }
-  if (row.first_name != null) settings.firstName = row.first_name;
-  if (row.last_name != null) settings.lastName = row.last_name;
   return settings;
 }
 

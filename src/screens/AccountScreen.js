@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, THEMES, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
@@ -14,30 +14,6 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
   const t = useT();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-
-  const [firstName, setFirstName] = useState(settings.firstName ?? '');
-  const [lastName, setLastName] = useState(settings.lastName ?? '');
-
-  // Re-seed the inputs whenever the sheet opens so they reflect the latest
-  // saved name (set during onboarding, or on another sign-in).
-  useEffect(() => {
-    if (visible) {
-      setFirstName(settings.firstName ?? '');
-      setLastName(settings.lastName ?? '');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
-
-  // onBlur (not onEndEditing) so the commit also fires on web.
-  const commitName = () => {
-    const first = firstName.trim();
-    const last = lastName.trim();
-    setFirstName(first);
-    setLastName(last);
-    if (first !== (settings.firstName ?? '') || last !== (settings.lastName ?? '')) {
-      onUpdateSettings({ firstName: first, lastName: last });
-    }
-  };
 
   return (
     <Sheet
@@ -63,40 +39,6 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
             contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.sectionHeader}>{t('acct.name')}</Text>
-            <View style={styles.card}>
-              <View style={styles.row}>
-                <TextInput
-                  style={styles.nameInput}
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  onBlur={commitName}
-                  placeholder={t('acct.firstName')}
-                  placeholderTextColor={colors.textMuted}
-                  keyboardAppearance={colors.keyboardAppearance}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  maxLength={40}
-                  accessibilityLabel={t('acct.firstName')}
-                />
-              </View>
-              <View style={[styles.row, styles.rowDivider]}>
-                <TextInput
-                  style={styles.nameInput}
-                  value={lastName}
-                  onChangeText={setLastName}
-                  onBlur={commitName}
-                  placeholder={t('acct.lastName')}
-                  placeholderTextColor={colors.textMuted}
-                  keyboardAppearance={colors.keyboardAppearance}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  maxLength={40}
-                  accessibilityLabel={t('acct.lastName')}
-                />
-              </View>
-            </View>
-
             <Text style={styles.sectionHeader}>{t('acct.section')}</Text>
             {accountEmail ? (
               <>
@@ -275,13 +217,6 @@ const createStyles = (colors) =>
     rowLabelSelected: {
       color: colors.accent,
       fontFamily: fonts.bold,
-    },
-    nameInput: {
-      flex: 1,
-      color: colors.textPrimary,
-      fontSize: 15,
-      fontFamily: fonts.regular,
-      paddingVertical: 0,
     },
     signOutText: {
       color: colors.danger,

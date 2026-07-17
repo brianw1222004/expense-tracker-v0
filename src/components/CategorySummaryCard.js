@@ -44,14 +44,18 @@ function formatPct(pct) {
   return `${rounded >= 100 && pct < 100 ? 99 : rounded}%`;
 }
 
+// How many categories get their own row beside the donut; the ring still
+// carries every category, the rows surface only the biggest spenders.
+const TOP_ROWS = 3;
+
 // The category-spending summary card shown on the Dashboard (moved off the old
-// Categories tab): a "Categorical spending" section title (mirroring the Split
-// balances card below it), a rounded-segment donut of the month's spending by
-// category with the total in the center, and the single most- / least-spent
-// category beside it. The month comes from the app-wide selection on the
-// Monthly Spending card (no month nav of its own). A "more detail" pill
-// (top-right) jumps to the Insight tab, which hosts the full per-category tile
-// grid on its Categories card.
+// Categories tab): a "CATEGORICAL SPENDING OVERVIEW" section heading (the same
+// uppercase heading style as the Dashboard's other cards), a rounded-segment
+// donut of the month's spending by category with the total in the center, and
+// the top-spending categories beside it (icon + name + share). The month comes
+// from the app-wide selection on the Monthly Spending card (no month nav of
+// its own). A centered "More detail ⌄" link below jumps to the Insight tab,
+// which hosts the full per-category tile grid on its Categories card.
 export default function CategorySummaryCard({
   months,
   monthKey,
@@ -70,18 +74,7 @@ export default function CategorySummaryCard({
 
   return (
     <View style={styles.card}>
-      <View style={styles.topRow}>
-        <Text style={styles.cardTitle}>{t('cats.sectionTitle')}</Text>
-        <Pressable
-          onPress={onMoreDetail}
-          accessibilityRole="button"
-          hitSlop={8}
-          style={({ pressed }) => [styles.moreDetailPill, pressed && styles.moreDetailPillPressed]}
-        >
-          <Text style={styles.moreDetailText}>{t('cats.moreDetail')}</Text>
-          <HIcon name="chevron-right" size={13} color={colors.accent} strokeWidth={2} />
-        </Pressable>
-      </View>
+      <Text style={styles.cardTitle}>{t('cats.sectionTitle')}</Text>
 
       <CategoryDonut
         byCategory={viewMonth.byCategory}
@@ -92,14 +85,23 @@ export default function CategorySummaryCard({
         styles={styles}
         t={t}
       />
+
+      <Pressable
+        onPress={onMoreDetail}
+        accessibilityRole="button"
+        hitSlop={8}
+        style={({ pressed }) => [styles.moreDetailLink, pressed && styles.moreDetailLinkPressed]}
+      >
+        <Text style={styles.moreDetailText}>{t('cats.moreDetail')}</Text>
+        <HIcon name="chevron-down" size={14} color={colors.textSecondary} strokeWidth={2} />
+      </Pressable>
     </View>
   );
 }
 
 // Rounded-segment donut of one month's spending by category. The ring carries
-// the breakdown of ALL categories; beside it we surface only the extremes — the
-// single most- and least-spent categories — sharing the same `total` denominator
-// so their percentages match the arcs.
+// the breakdown of ALL categories; beside it we list the top spenders, sharing
+// the same `total` denominator so their percentages match the arcs.
 function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colors, styles, t }) {
   const segments = useMemo(() => {
     if (total <= 0) return [];
@@ -111,8 +113,7 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
 
   const arcs = useMemo(() => buildArcs(segments, total), [segments, total]);
 
-  const mostSeg = segments[0] ?? null;
-  const leastSeg = segments.length > 1 ? segments[segments.length - 1] : null;
+  const topSegs = segments.slice(0, TOP_ROWS);
 
   return (
     <View style={styles.donutBody}>
@@ -153,29 +154,13 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
       </View>
 
       <View style={styles.statCol}>
-        {mostSeg && (
-          <ExtremeStat
-            label={t('cats.mostSpending')}
-            seg={mostSeg}
-            total={total}
-            displayCurrency={displayCurrency}
-            colors={colors}
-            styles={styles}
-            t={t}
-          />
-        )}
-        {leastSeg && (
-          <ExtremeStat
-            label={t('cats.leastSpending')}
-            seg={leastSeg}
-            total={total}
-            displayCurrency={displayCurrency}
-            colors={colors}
-            styles={styles}
-            t={t}
-          />
-        )}
-        {!mostSeg && (
+        {topSegs.map((seg, i) => (
+          <View key={seg.category.id}>
+            {i > 0 && <View style={styles.statDivider} />}
+            <TopCategoryRow seg={seg} total={total} styles={styles} t={t} />
+          </View>
+        ))}
+        {topSegs.length === 0 && (
           <Text style={styles.emptyMonth}>{t('cats.emptyMonth')}</Text>
         )}
       </View>
@@ -183,23 +168,17 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
   );
 }
 
-// One "most/least spending" card beside the donut: a tinted pill with the
-// category's color, its name + share, and the amount in the display currency.
-function ExtremeStat({ label, seg, total, displayCurrency, colors, styles, t }) {
+// One top-spending row beside the donut: the category's icon in its color,
+// its name, and its share of the month right-aligned in the same color.
+function TopCategoryRow({ seg, total, styles, t }) {
   const pct = (seg.value / total) * 100;
   return (
-    <View style={[styles.statCard, { backgroundColor: `${seg.category.color}14` }]}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <View style={styles.statRow}>
-        <View style={[styles.statDot, { backgroundColor: seg.category.color }]} />
-        <Text style={styles.statName} numberOfLines={1}>
-          {getCategoryLabel(seg.category, t)}
-        </Text>
-        <Text style={[styles.statPct, { color: seg.category.color }]}>{formatPct(pct)}</Text>
-      </View>
-      <Text style={styles.statAmount} numberOfLines={1}>
-        {formatMoneyShort(seg.value, displayCurrency)}
+    <View style={styles.statRow}>
+      <HIcon name={seg.category.emoji} size={24} color={seg.category.color} strokeWidth={1.8} />
+      <Text style={styles.statName} numberOfLines={1}>
+        {getCategoryLabel(seg.category, t)}
       </Text>
+      <Text style={[styles.statPct, { color: seg.category.color }]}>{formatPct(pct)}</Text>
     </View>
   );
 }
@@ -214,37 +193,31 @@ const createStyles = (colors) =>
       marginTop: spacing.md,
       ...cardShadow,
     },
-    topRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: spacing.sm,
-      minHeight: 24,
-    },
-    // Section title, top-left — mirrors the Split balances card's title below.
+    // Uppercase card heading — the same style as the Dashboard's other cards.
     cardTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 15,
-      flexShrink: 1,
-      marginRight: spacing.sm,
+      fontSize: 14,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+      marginBottom: spacing.md,
     },
-    // Soft accent-tinted fill, fully rounded — the shared card-header pill family.
-    moreDetailPill: {
+    // Centered quiet "More detail ⌄" link under the donut body.
+    moreDetailLink: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 2,
-      backgroundColor: `${colors.accent}15`,
-      borderRadius: 14,
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: spacing.xs + 1,
+      justifyContent: 'center',
+      alignSelf: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      marginTop: spacing.sm,
     },
-    moreDetailPillPressed: { opacity: 0.6 },
+    moreDetailLinkPressed: { opacity: 0.6 },
     moreDetailText: {
-      color: colors.accent,
-      fontFamily: fonts.bold,
-      fontSize: 11.5,
-      letterSpacing: 0.4,
+      color: colors.textSecondary,
+      fontFamily: fonts.medium,
+      fontSize: 14,
     },
     donutBody: {
       flexDirection: 'row',
@@ -271,47 +244,29 @@ const createStyles = (colors) =>
     },
     statCol: {
       flex: 1,
-      marginLeft: spacing.md,
-      gap: spacing.sm,
+      marginLeft: spacing.lg,
+      gap: spacing.md,
     },
-    statCard: {
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: spacing.sm,
-      gap: 3,
-    },
-    statLabel: {
-      color: colors.textMuted,
-      fontFamily: fonts.medium,
-      fontSize: 10,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
+    // Dimmed hairline between the top-category rows beside the donut.
+    statDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginBottom: spacing.md,
     },
     statRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs + 2,
-    },
-    statDot: {
-      width: 9,
-      height: 9,
-      borderRadius: 5,
+      gap: spacing.sm,
     },
     statName: {
       flex: 1,
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 13,
+      fontSize: 18,
     },
     statPct: {
       fontFamily: fonts.numBold,
-      fontSize: 13,
-      fontVariant: ['tabular-nums'],
-    },
-    statAmount: {
-      color: colors.textSecondary,
-      fontFamily: fonts.numRegular,
-      fontSize: 12,
+      fontSize: 17,
       fontVariant: ['tabular-nums'],
     },
     emptyMonth: {

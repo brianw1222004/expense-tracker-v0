@@ -6,7 +6,9 @@ const {
   applyPendingOps,
   pickSyncedSettings,
   fromSettingsRow,
+  clearQueues,
 } = require('../sync');
+const AsyncStorage = require('@react-native-async-storage/async-storage');
 
 // Helper to build a queue the way enqueue() does: coalesce the incoming op
 // against the existing queue, then push it.
@@ -254,6 +256,47 @@ describe('applyPendingOps()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// clearQueues() — the "delete account" purge
+// ---------------------------------------------------------------------------
+describe('clearQueues()', () => {
+  const QUEUE_PREFIX = '@expense-tracker/pending-ops';
+
+  it('removes every lane\'s durable queue key and empties the in-memory lanes', async () => {
+    const userId = 'wipe-user';
+    const laneKeys = [userId, `${userId}::income`, `${userId}::groups`, `${userId}::splits`];
+    // Seed durable queues the way persistQueue writes them. A stale
+    // replace-with-empty is exactly the op that must not survive "delete
+    // account": replaying it after the account recreates data on another
+    // device would silently wipe that data.
+    for (const key of laneKeys) {
+      await AsyncStorage.setItem(
+        `${QUEUE_PREFIX}:${key}`,
+        JSON.stringify([{ type: 'replace', expenses: [] }])
+      );
+    }
+
+    await clearQueues(userId);
+
+    for (const key of laneKeys) {
+      expect(await AsyncStorage.getItem(`${QUEUE_PREFIX}:${key}`)).toBeNull();
+    }
+    // The in-memory expense lane is empty too, so re-applying pending ops on
+    // top of a pull is a no-op instead of a replay of the stale wipe.
+    const expenses = [{ id: 'e1', amount: 10 }];
+    expect(applyPendingOps(userId, expenses)).toEqual(expenses);
+  });
+
+  it('leaves other users\' queues untouched', async () => {
+    const otherKey = `${QUEUE_PREFIX}:other-user`;
+    await AsyncStorage.setItem(otherKey, JSON.stringify([{ type: 'delete', id: 'e9' }]));
+
+    await clearQueues('wipe-user');
+
+    expect(await AsyncStorage.getItem(otherKey)).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Settings sync mapping — pickSyncedSettings / fromSettingsRow
 // ---------------------------------------------------------------------------
 describe('settings sync mapping', () => {
@@ -265,8 +308,6 @@ describe('settings sync mapping', () => {
       categoryOrder: ['food', 'other'],
       customCategories: [{ id: 'c1', label: 'Pets' }],
       customPaymentMethods: [{ id: 'p1', label: 'Venmo' }],
-      firstName: 'Ada',
-      lastName: 'L',
       theme: 'sand',
       language: 'zh',
       onboardingDone: true,
@@ -278,8 +319,6 @@ describe('settings sync mapping', () => {
       categoryOrder: ['food', 'other'],
       customCategories: [{ id: 'c1', label: 'Pets' }],
       customPaymentMethods: [{ id: 'p1', label: 'Venmo' }],
-      firstName: 'Ada',
-      lastName: 'L',
     });
   });
 
@@ -289,9 +328,8 @@ describe('settings sync mapping', () => {
     const settings = fromSettingsRow({ display_currency: 'USD', monthly_budget: 300 });
     expect(settings).toEqual({ displayCurrency: 'USD', monthlyBudget: 300 });
 
-    const local = { categoryBudgets: { food: 50 }, firstName: 'Ada', theme: 'sand' };
+    const local = { categoryBudgets: { food: 50 }, theme: 'sand' };
     expect({ ...local, ...settings }.categoryBudgets).toEqual({ food: 50 });
-    expect({ ...local, ...settings }.firstName).toBe('Ada');
   });
 
   it('fromSettingsRow maps concrete columns, including empty pushed values', () => {
@@ -302,8 +340,6 @@ describe('settings sync mapping', () => {
       category_order: ['food'],
       custom_categories: [],
       custom_payment_methods: [{ id: 'p1' }],
-      first_name: '',
-      last_name: 'L',
     });
     expect(settings).toEqual({
       displayCurrency: 'EUR',
@@ -312,8 +348,6 @@ describe('settings sync mapping', () => {
       categoryOrder: ['food'],
       customCategories: [],
       customPaymentMethods: [{ id: 'p1' }],
-      firstName: '',
-      lastName: 'L',
     });
   });
 });

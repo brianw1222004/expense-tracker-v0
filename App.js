@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   Animated,
   AppState,
+  BackHandler,
   Easing,
   Keyboard,
   PanResponder,
@@ -33,6 +34,7 @@ import TabBar from './src/components/TabBar';
 import AddExpenseModal from './src/components/AddExpenseModal';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import RewardCheck from './src/components/RewardCheck';
+import HeaderGlow from './src/components/HeaderGlow';
 import {
   loadExpenses,
   saveExpenses,
@@ -53,6 +55,7 @@ import {
   applyPendingIncomeOps,
   applyPendingGroupOps,
   applyPendingSplitOps,
+  clearQueues,
   enqueueExpenseDelete,
   enqueueExpenseUpsert,
   enqueueExpensesReplace,
@@ -88,6 +91,14 @@ const Haptics = Platform.OS === 'web'
 
 const TAB_INDEX = { dashboard: 0, list: 1, split: 2, insight: 3 };
 const TAB_NAMES = ['dashboard', 'list', 'split', 'insight'];
+
+// Tab-switch transition: the page background + HeaderGlow wash sit on a fixed
+// backdrop layer that never moves while the screens crossfade over it with a
+// small directional glide — since every tab paints the identical background +
+// wash, only the widgets appear to change, so a switch reads as one stationary
+// page swapping its content (the Copilot-app feel).
+// How far the widgets travel during the crossfade.
+const COPILOT_GLIDE = 28;
 
 // Entry ids. crypto.randomUUID isn't guaranteed: Hermes (RN) has no global
 // crypto and web only exposes it in a secure context, so a bare call can throw
@@ -146,7 +157,7 @@ function ExpenseTracker() {
   // Split-bills: the open group's id (detail sheet). New bills are added through
   // the shared add popup (addEntryMode='shared'), not a separate sheet.
   const [activeGroupId, setActiveGroupId] = useState(null);
-  // The Dashboard's selected month (the ‹ month › selector under the greeting),
+  // The Dashboard's selected month (the ‹ month › selector under the title),
   // scoping the hero card + category summary card. Every tab owns its own
   // independent month selection (Expenses/Insight/Split keep theirs as local
   // screen state since their data needs no App-level derivation) — changing the
@@ -278,7 +289,7 @@ function ExpenseTracker() {
           return merged;
         });
         // Server row predates the extra settings columns (they pull as unset):
-        // seed them from this device's values so budgets/categories/name reach
+        // seed them from this device's values so budgets/categories reach
         // the server without waiting for the next settings edit.
         if (result.settings.categoryBudgets === undefined) {
           enqueueSettingsPush(userId, { ...settingsRef.current, ...result.settings });
@@ -380,6 +391,30 @@ function ExpenseTracker() {
       setSharedLockedGroupId(null);
     }
   }, [sharedLockedGroupId]);
+
+  // Android hardware/gesture back closes the add/edit popups. AddExpenseModal
+  // is a plain View (not an RN Modal), so nothing installs onRequestClose for
+  // these — without this handler, back would background/exit the whole app
+  // with a popup open. The Sheet-based overlays are real Modals and already
+  // handle back themselves.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    if (!addOpen && !editingExpense && !editingSplit) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (editingSplit) {
+        // Mirror the editor's onClose round-trip back to the group sheet.
+        const g = editingSplit.groupId;
+        setEditingSplit(null);
+        if (g) setActiveGroupId(g);
+      } else if (editingExpense) {
+        setEditingExpense(null);
+      } else {
+        closeAdd();
+      }
+      return true;
+    });
+    return () => sub.remove();
+  }, [addOpen, editingExpense, editingSplit, closeAdd]);
 
   // Open the shared add popup locked to one group (from GroupDetailScreen's "Add
   // a bill"). Closes the group sheet while the popup is up; closeAdd reopens it.
@@ -633,9 +668,7 @@ function ExpenseTracker() {
           next.categoryBudgets !== cur.categoryBudgets ||
           next.categoryOrder !== cur.categoryOrder ||
           next.customCategories !== cur.customCategories ||
-          next.customPaymentMethods !== cur.customPaymentMethods ||
-          next.firstName !== cur.firstName ||
-          next.lastName !== cur.lastName
+          next.customPaymentMethods !== cur.customPaymentMethods
         ) {
           // Only server-synced field changes bump the guard. Device-local
           // patches (theme/language/onboardingDone) must NOT bump it, or a
@@ -667,7 +700,9 @@ function ExpenseTracker() {
       slideAnim.setValue(0);
       Animated.timing(slideAnim, {
         toValue: 1,
-        duration: 300,
+        // The crossfade travels a few px, not a screen width — a slightly
+        // shorter run keeps it feeling snappy.
+        duration: 260,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start(() => {
@@ -758,15 +793,20 @@ function ExpenseTracker() {
       return screenTab === tab ? { opacity: 1, zIndex: 2 } : { opacity: 0, zIndex: 0 };
     }
     const dir = slideDirRef.current;
+    // Widgets-only motion: a crossfade plus a small directional glide. The
+    // wash is a vertical (row-uniform) gradient, so the glide is invisible
+    // on it, and the fixed backdrop behind the screens fills the strip a
+    // gliding screen exposes with identical pixels — the background never
+    // appears to move, only the widgets swap.
     if (screenTab === tab) {
       return {
         zIndex: 2,
-        opacity: slideAnim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0.5, 1, 1] }),
+        opacity: slideAnim,
         transform: [
           {
             translateX: slideAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [dir * screenWidth, 0],
+              outputRange: [dir * COPILOT_GLIDE, 0],
             }),
           },
         ],
@@ -775,12 +815,12 @@ function ExpenseTracker() {
     if (screenTab === prevTab) {
       return {
         zIndex: 1,
-        opacity: slideAnim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [1, 0, 0] }),
+        opacity: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
         transform: [
           {
             translateX: slideAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [0, -dir * screenWidth],
+              outputRange: [0, -dir * COPILOT_GLIDE],
             }),
           },
         ],
@@ -839,8 +879,20 @@ function ExpenseTracker() {
         flushGroups(wipeUser),
         flushSplits(wipeUser),
       ]).catch(() => {});
+      // The settings row isn't covered by the four lanes — delete it directly
+      // (RLS scopes it to this user) so budgets/custom categories/payment
+      // methods don't survive the wipe and re-pull on a later sign-in.
+      await supabase.from('settings').delete().eq('user_id', wipeUser).then(
+        () => {},
+        () => {}
+      );
     }
 
+    // Purge the pending-op queues (durable + in-memory). If a wipe op above
+    // couldn't flush (offline), letting it linger is worse than dropping it:
+    // a stale replace-with-empty replaying later would silently delete data
+    // this account recreated on another device.
+    await clearQueues(wipeUser);
     await clearUserStorage(wipeUser);
 
     // Reset in-memory state so nothing stale lingers behind the sign-out.
@@ -862,12 +914,29 @@ function ExpenseTracker() {
   const regularCategories = getRegularAll(settings.customCategories);
   const externalCategories = getExternalAll(settings.customCategories);
 
+  // Every custom-category/payment-method mutator below changes server-synced
+  // fields (customCategories / categoryBudgets / customPaymentMethods), so
+  // they all go through this helper, which applies updateSettings' discipline:
+  // bump the version guard (so an in-flight pull can't clobber the change) and
+  // enqueue a push. Pushes coalesce in sync.js, so always enqueuing is free.
+  const patchSyncedSettings = useCallback(
+    (fn) => {
+      setSettings((prev) => {
+        const next = fn(prev);
+        settingsVersionRef.current += 1;
+        enqueueSettingsPush(userId, next); // sync.js picks the synced subset
+        return next;
+      });
+    },
+    [userId]
+  );
+
   // The add/edit-category modal returns the category plus its required monthly
   // `budget`; the budget lives in settings.categoryBudgets (not on the category
   // object), so split it off before storing either.
   const addCustomCategory = (category) => {
     const { budget, ...cat } = category;
-    setSettings((prev) => ({
+    patchSyncedSettings((prev) => ({
       ...prev,
       customCategories: [...(prev.customCategories || []), cat],
       ...(budget > 0 ? { categoryBudgets: { ...prev.categoryBudgets, [cat.id]: budget } } : {}),
@@ -878,7 +947,7 @@ function ExpenseTracker() {
   // hides them); user-created categories are simply removed. Either way the
   // category's budget goes with it.
   const deleteCustomCategory = (id) => {
-    setSettings((prev) => {
+    patchSyncedSettings((prev) => {
       const kept = (prev.customCategories || []).filter((c) => c.id !== id);
       const { [id]: _, ...categoryBudgets } = prev.categoryBudgets || {};
       return {
@@ -893,7 +962,7 @@ function ExpenseTracker() {
   // save appends an override carrying the preset's id.
   const updateCustomCategory = (updated) => {
     const { budget, ...cat } = updated;
-    setSettings((prev) => {
+    patchSyncedSettings((prev) => {
       const list = prev.customCategories || [];
       const exists = list.some((c) => c.id === cat.id);
       return {
@@ -913,14 +982,14 @@ function ExpenseTracker() {
       typeof method === 'string'
         ? { id, label: method }
         : { id, label: method.label, color: method.color, icon: method.icon };
-    setSettings((prev) => ({
+    patchSyncedSettings((prev) => ({
       ...prev,
       customPaymentMethods: [...(prev.customPaymentMethods || []), entry],
     }));
   };
 
   const removeCustomPaymentMethod = (id) => {
-    setSettings((prev) => ({
+    patchSyncedSettings((prev) => ({
       ...prev,
       customPaymentMethods: (prev.customPaymentMethods || []).filter((pm) => pm.id !== id),
     }));
@@ -1011,6 +1080,16 @@ function ExpenseTracker() {
     content = (
       <>
         <View style={styles.content} {...swipePanResponder.panHandlers}>
+          {/* The stationary page: the same background + wash every screen
+              paints, kept fixed behind the crossfading screens so tab
+              switches read as widgets swapping on one unmoving page. Idle
+              screens are opaque, so this layer only shows mid-transition. */}
+          <View
+            style={[styles.screen, { backgroundColor: theme.background }]}
+            pointerEvents="none"
+          >
+            <HeaderGlow id="tabBackdropGlow" />
+          </View>
           <Animated.View style={[styles.screen, screenStyle('dashboard')]} pointerEvents={tab === 'dashboard' ? 'auto' : 'none'}>
             <DashboardScreen
               loaded={loaded}
@@ -1020,9 +1099,7 @@ function ExpenseTracker() {
               dailyTotals={heroView.dailyTotals}
               monthKey={dashMonthKey}
               onShiftMonth={shiftDashMonth}
-              userName={settings.firstName}
               displayCurrency={displayCurrency}
-              onOpenAccount={() => setOverlay('account')}
               onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
               splitSummary={splitSummary}

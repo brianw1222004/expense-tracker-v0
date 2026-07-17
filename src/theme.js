@@ -11,7 +11,7 @@ export const THEMES = {
     border: '#d4dde3',
     textPrimary: '#212a30',
     textSecondary: '#405664',
-    textMuted: '#829fae',
+    textMuted: '#5c7887', // ≥4.5:1 on white — muted text is 12-13px, needs normal-text contrast
     accent: '#4e6a7b',
     accentDark: '#384954',
     onAccent: '#f6f8f9',
@@ -42,7 +42,7 @@ export const THEMES = {
     border: '#d2ccb9',
     textPrimary: '#28211b',
     textSecondary: '#605240',
-    textMuted: '#a29470',
+    textMuted: '#7d7053', // ≥4.5:1 on white (see slate)
     accent: '#79694e',
     accentDark: '#605240',
     onAccent: '#f5f3ee',
@@ -71,7 +71,7 @@ export const THEMES = {
     border: '#dedede',
     textPrimary: '#0b0b0b',
     textSecondary: '#404040',
-    textMuted: '#a3a3a3',
+    textMuted: '#767676', // ≥4.5:1 on white (see slate)
     accent: '#535353',
     accentDark: '#404040',
     onAccent: '#fafafa',

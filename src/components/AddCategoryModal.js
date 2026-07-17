@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { fonts, spacing, radius } from '../theme';
 import { EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId, getCategoryLabel } from '../categories';
 import { formatMoney, cleanAmountInput } from '../format';
 import { HIcon } from '../icons';
 import IconPickerSheet from './IconPickerSheet';
+import ToggleSwitch from './ToggleSwitch';
 
 function hslToHex(h, s, l) {
   s /= 100; l /= 100;
@@ -300,12 +301,7 @@ export default function AddCategoryModal({
                 <Text style={styles.switchText}>{t('cats.external')}</Text>
                 <Text style={styles.switchHint}>{t('cats.externalHint')}</Text>
               </View>
-              <Switch
-                value={external}
-                onValueChange={setExternal}
-                trackColor={{ false: colors.border, true: colors.accent }}
-                thumbColor={colors.onAccent}
-              />
+              <ToggleSwitch value={external} onValueChange={setExternal} />
             </View>
 
             <Pressable

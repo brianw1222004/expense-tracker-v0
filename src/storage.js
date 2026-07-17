@@ -34,8 +34,6 @@ export const DEFAULT_SETTINGS = {
   customPaymentMethods: [],
   theme: 'neutral',
   language: 'en',
-  firstName: '',
-  lastName: '',
   onboardingDone: false,
 };
 

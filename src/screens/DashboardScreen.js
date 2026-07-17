@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CategorySummaryCard from '../components/CategorySummaryCard';
 import EmptyState from '../components/EmptyState';
@@ -8,21 +9,19 @@ import MonthSelector from '../components/MonthSelector';
 import SpendingChart from '../components/SpendingChart';
 import { HIcon } from '../icons';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
-import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
+import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT } from '../i18n';
 import { formatMoney, formatMoneyShort } from '../format';
 
 export default function DashboardScreen({
   loaded,
   hasExpenses,
-  userName,
   monthTotal,
   lastMonthTotal,
   dailyTotals,
   monthKey,
   onShiftMonth,
   displayCurrency,
-  onOpenAccount,
   onAddPress,
   onLoadDemo,
   splitSummary,
@@ -34,8 +33,8 @@ export default function DashboardScreen({
 }) {
   const { colors } = useTheme();
   const t = useT();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const greetingName = (userName ?? '').trim();
   const isCurrentMonth = monthKey === currentMonthKey;
 
   const delta = monthTotal - (lastMonthTotal ?? 0);
@@ -50,22 +49,10 @@ export default function DashboardScreen({
       <HeaderGlow id="dashHeaderGlow" />
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + TAB_BAR_HEIGHT + insets.bottom }]}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.greetingRow}>
-        {greetingName ? (
-          <Text style={styles.greeting} numberOfLines={1}>
-            {t('dash.greeting', { name: greetingName })}
-          </Text>
-        ) : (
-          <Pressable onPress={onOpenAccount} accessibilityRole="button" style={styles.greetingPressable}>
-            <Text style={styles.greeting} numberOfLines={1}>
-              {t('dash.greetingNoName')}
-            </Text>
-          </Pressable>
-        )}
-      </View>
+      <Text style={styles.title}>{t('dash.title')}</Text>
 
       {/* This page's ‹ month › selection, under the title — scopes the hero
           card and the category summary card. Independent of the other tabs'
@@ -79,9 +66,7 @@ export default function DashboardScreen({
 
       {/* Monthly Spending — total, month-over-month delta, trend chart. */}
       <View style={styles.spendCard}>
-        <View style={styles.spendTopRow}>
-          <Text style={styles.balanceLabel}>{t('dash.monthlySpending')}</Text>
-        </View>
+        <Text style={[styles.sectionHeading, styles.spendHeading]}>{t('dash.monthlySpending')}</Text>
 
         <View style={styles.heroNumberRow}>
           <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
@@ -121,23 +106,31 @@ export default function DashboardScreen({
           style={({ pressed }) => [styles.splitCard, pressed && styles.splitCardPressed]}
         >
           <View style={styles.splitHeader}>
-            <Text style={styles.summaryTitle}>{t('split.dashTitle')}</Text>
+            <Text style={styles.sectionHeading}>{t('split.dashTitle')}</Text>
             <HIcon name="chevron-right" size={18} color={colors.textMuted} strokeWidth={2} />
           </View>
           <View style={styles.splitRow}>
-            <View style={styles.splitCol}>
-              <Text style={styles.splitColLabel}>{t('split.owedToYou')}</Text>
-              <Text style={[styles.splitColValue, { color: colors.success }]} numberOfLines={1}>
-                {formatMoneyShort(splitSummary.owed, displayCurrency)}
-              </Text>
-            </View>
+            <SplitStat
+              label={t('split.owedToYou')}
+              amount={splitSummary.owed}
+              count={splitSummary.owedCount}
+              tone={colors.success}
+              icon="money-receive-01"
+              displayCurrency={displayCurrency}
+              styles={styles}
+              t={t}
+            />
             <View style={styles.splitColDivider} />
-            <View style={styles.splitCol}>
-              <Text style={styles.splitColLabel}>{t('split.youOwe')}</Text>
-              <Text style={[styles.splitColValue, { color: colors.danger }]} numberOfLines={1}>
-                {formatMoneyShort(splitSummary.owe, displayCurrency)}
-              </Text>
-            </View>
+            <SplitStat
+              label={t('split.youOwe')}
+              amount={splitSummary.owe}
+              count={splitSummary.oweCount}
+              tone={colors.danger}
+              icon="credit-card"
+              displayCurrency={displayCurrency}
+              styles={styles}
+              t={t}
+            />
           </View>
         </Pressable>
       )}
@@ -150,23 +143,40 @@ export default function DashboardScreen({
   );
 }
 
-// Pill showing a percentage change. `dir`: 'down' = spending fell (green ↓),
-// 'up' = rose (red ↑), 'flat' = unchanged (muted, no arrow). The circle/arrow
-// is omitted when flat so an exact tie never reads as an increase.
+// Month-over-month change beside the hero total: a plain "↓ 82.6%" in the
+// semantic tone. `dir`: 'down' = spending fell (green ↓), 'up' = rose (red ↑),
+// 'flat' = unchanged (muted, no arrow — an exact tie never reads as an increase).
 const DeltaBadge = React.memo(function DeltaBadge({ value, dir, colors, styles }) {
   const tone = dir === 'down' ? colors.success : dir === 'up' ? colors.danger : colors.textMuted;
-  const flat = dir === 'flat';
+  const arrow = dir === 'down' ? '↓ ' : dir === 'up' ? '↑ ' : '';
   return (
-    <View style={[styles.deltaBadge, flat && styles.deltaBadgeFlat, { backgroundColor: `${tone}1A` }]}>
-      {!flat && (
-        <View style={[styles.deltaCircle, { backgroundColor: tone }]}>
-          <Text style={[styles.deltaArrow, { color: colors.onAccent }]}>{dir === 'down' ? '↓' : '↑'}</Text>
-        </View>
-      )}
-      <Text style={[styles.deltaPct, { color: tone }]}>{value}%</Text>
-    </View>
+    <Text style={[styles.deltaText, { color: tone }]} numberOfLines={1}>
+      {arrow}
+      {value}%
+    </Text>
   );
 });
+
+// One side of the split-balances widget: label, toned amount, a person/debt
+// count caption, and a toned icon on the right.
+function SplitStat({ label, amount, count, tone, icon, displayCurrency, styles, t }) {
+  const caption =
+    count <= 0 ? t('split.noDebts') : count === 1 ? t('split.personOne') : t('split.personCount', { n: count });
+  return (
+    <View style={styles.splitCol}>
+      <View style={styles.splitColText}>
+        <Text style={styles.splitColLabel}>{label}</Text>
+        <Text style={[styles.splitColValue, { color: tone }]} numberOfLines={1}>
+          {formatMoneyShort(amount, displayCurrency)}
+        </Text>
+        <Text style={styles.splitColCaption} numberOfLines={1}>
+          {caption}
+        </Text>
+      </View>
+      <HIcon name={icon} size={30} color={tone} strokeWidth={1.6} />
+    </View>
+  );
+}
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -180,31 +190,17 @@ const createStyles = (colors) =>
       flex: 1,
     },
     content: {
+      // paddingBottom is set inline (needs the safe-area inset).
       flexGrow: 1,
-      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
     },
 
-    greetingRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: ACCOUNT_FAB_SIZE,
-      marginTop: spacing.sm,
-      marginBottom: spacing.xs,
-      marginHorizontal: spacing.md,
-      // Symmetric clearance for the floating account button pinned top-left so
-      // the greeting centers on the SCREEN, not in the leftover space.
-      paddingHorizontal: ACCOUNT_FAB_SIZE + spacing.sm,
-    },
-    greeting: {
+    title: {
       color: colors.textPrimary,
+      fontSize: 26,
       fontFamily: fonts.bold,
-      fontSize: 22,
-      flexShrink: 1,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
       textAlign: 'center',
-    },
-    greetingPressable: {
-      flexShrink: 1,
     },
     monthSelector: {
       marginBottom: spacing.md,
@@ -216,18 +212,18 @@ const createStyles = (colors) =>
       padding: spacing.lg,
       ...cardShadow,
     },
-    spendTopRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: spacing.sm,
-    },
-    balanceLabel: {
-      color: colors.textMuted,
-      fontFamily: fonts.medium,
-      fontSize: 12,
-      letterSpacing: 0.8,
+    // The uppercase card heading every Dashboard card leads with ("MONTHLY
+    // SPENDING SUMMARY" / "SPLIT BALANCES & DEBT" — CategorySummaryCard mirrors it).
+    sectionHeading: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+      letterSpacing: 0.6,
       textTransform: 'uppercase',
+      flexShrink: 1,
+    },
+    spendHeading: {
+      marginBottom: spacing.sm,
     },
     heroNumberRow: {
       flexDirection: 'row',
@@ -246,43 +242,13 @@ const createStyles = (colors) =>
       marginTop: spacing.md,
     },
 
-    // Percentage-change pill (filled circle + arrow + percent).
-    deltaBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      alignSelf: 'flex-end',
-      borderRadius: 14,
-      paddingLeft: 3,
-      paddingRight: spacing.sm,
-      paddingVertical: 3,
-      gap: spacing.xs + 1,
-      marginBottom: 6,
-    },
-    deltaBadgeFlat: {
-      paddingLeft: spacing.sm,
-    },
-    deltaCircle: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    deltaArrow: {
+    // Plain "↓ 82.6%" change beside the hero total.
+    deltaText: {
       fontFamily: fonts.numBold,
-      fontSize: 11,
-      lineHeight: 13,
-    },
-    deltaPct: {
-      fontFamily: fonts.numBold,
-      fontSize: 13,
-      fontVariant: ['tabular-nums'],
-    },
-
-    summaryTitle: {
-      color: colors.textPrimary,
-      fontFamily: fonts.bold,
       fontSize: 15,
+      fontVariant: ['tabular-nums'],
+      alignSelf: 'flex-end',
+      marginBottom: 8,
     },
 
     // Split-balances widget — mirrors the budget card surface.
@@ -309,17 +275,30 @@ const createStyles = (colors) =>
     },
     splitCol: {
       flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+    },
+    splitColText: {
+      flexShrink: 1,
     },
     splitColLabel: {
-      color: colors.textMuted,
+      color: colors.textSecondary,
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
     },
     splitColValue: {
       fontFamily: fonts.numBold,
-      fontSize: 18,
+      fontSize: 22,
       fontVariant: ['tabular-nums'],
-      marginTop: 2,
+      marginTop: 1,
+    },
+    splitColCaption: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      marginTop: 1,
     },
     splitColDivider: {
       width: StyleSheet.hairlineWidth,

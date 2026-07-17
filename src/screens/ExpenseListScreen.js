@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme, cardShadow } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
@@ -29,6 +30,7 @@ export default function ExpenseListScreen({
   const { colors } = useTheme();
   const t = useT();
   const language = useLanguage();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const today = dateKey(Date.now());
@@ -141,7 +143,7 @@ export default function ExpenseListScreen({
     <View style={styles.container}>
       <HeaderGlow id="listHeaderGlow" />
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xl + TAB_BAR_HEIGHT + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>{t('list.title')}</Text>
@@ -353,7 +355,7 @@ const createStyles = (colors) =>
       backgroundColor: colors.background,
     },
     scrollContent: {
-      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
+      // paddingBottom is set inline (needs the safe-area inset).
     },
     title: {
       color: colors.textPrimary,

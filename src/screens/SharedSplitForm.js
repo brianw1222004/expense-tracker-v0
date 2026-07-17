@@ -529,6 +529,7 @@ export default function SharedSplitForm({
                         <Text style={[styles.memberChipName, !on && styles.memberNameOff]} numberOfLines={1}>
                           {p.name}
                         </Text>
+                        <CheckBadge on={on} styles={styles} />
                       </Pressable>
                     );
                   })}
@@ -552,6 +553,7 @@ export default function SharedSplitForm({
                         accessibilityLabel={p.name}
                         style={styles.personToggle}
                       >
+                        <CheckBadge on={on} styles={styles} />
                         <MemberAvatar name={p.name} on={on} styles={styles} />
                         <Text style={[styles.personName, !on && styles.memberNameOff]} numberOfLines={1}>{p.name}</Text>
                       </Pressable>
@@ -679,6 +681,17 @@ export default function SharedSplitForm({
         onSelect={shownPicker?.onSelect || (() => {})}
         onClose={() => setPicker(null)}
       />
+    </View>
+  );
+}
+
+// Explicit checkbox affordance on every participant toggle: an accent-filled
+// ✓ circle while included, a hollow ring while excluded — so it reads as a
+// choice, not just a tint change.
+function CheckBadge({ on, styles }) {
+  return (
+    <View style={[styles.checkBadge, on && styles.checkBadgeOn]}>
+      {on && <Text style={styles.checkBadgeMark}>✓</Text>}
     </View>
   );
 }
@@ -874,13 +887,16 @@ const createStyles = (colors) =>
       gap: spacing.xs + 2,
       backgroundColor: colors.card,
       borderRadius: 999,
-      paddingVertical: spacing.xs,
-      paddingLeft: spacing.xs + 1,
-      paddingRight: spacing.sm + 4,
+      borderWidth: 1.5,
+      borderColor: 'transparent',
+      paddingVertical: spacing.xs - 1.5,
+      paddingLeft: spacing.xs - 0.5,
+      paddingRight: spacing.sm + 2,
       maxWidth: '100%',
     },
     memberChipOn: {
       backgroundColor: `${colors.accent}15`,
+      borderColor: `${colors.accent}55`,
     },
     memberChipName: {
       color: colors.textPrimary,
@@ -909,6 +925,25 @@ const createStyles = (colors) =>
     },
     avatarTextOn: {
       color: colors.onAccent,
+    },
+    checkBadge: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    checkBadgeOn: {
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
+    },
+    checkBadgeMark: {
+      color: colors.onAccent,
+      fontFamily: fonts.bold,
+      fontSize: 11,
+      lineHeight: 13,
     },
     eachShare: {
       color: colors.textSecondary,

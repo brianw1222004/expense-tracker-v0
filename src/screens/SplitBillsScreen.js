@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
@@ -31,6 +32,7 @@ export default function SplitBillsScreen({
 }) {
   const { colors } = useTheme();
   const t = useT();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   // This page's month selection (under the title, matching every other tab).
   // DELIBERATELY display-only: balances are outstanding debts, so the summary
@@ -46,7 +48,7 @@ export default function SplitBillsScreen({
       <HeaderGlow id="splitHeaderGlow" />
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + TAB_BAR_HEIGHT + insets.bottom }]}
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.titleRow}>
@@ -226,8 +228,8 @@ const createStyles = (colors) =>
       flex: 1,
     },
     content: {
+      // paddingBottom is set inline (needs the safe-area inset).
       flexGrow: 1,
-      paddingBottom: spacing.xl + TAB_BAR_HEIGHT,
     },
     titleRow: {
       minHeight: ACCOUNT_FAB_SIZE,
