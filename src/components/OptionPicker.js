@@ -6,10 +6,11 @@ import { HIcon } from '../icons';
 
 // Generic compact centered picker popup — the same small-widget shape as
 // CurrencyPicker (not a full-height sheet). Renders a titled list of options;
-// tapping a row selects it and closes. Each option is { id, label, icon? }. Used
-// by the Shared add form so Group / Paid by / Split method each collapse to a
-// row, and by the group sheet's remove-member choice (which passes `subtitle`
-// for a line of context under the title).
+// tapping a row selects it and closes. Each option is { id, label, icon?,
+// color? } — `color` tints the icon badge (used for categories). Suits richer
+// lists than the anchored AnchorMenu: used by the Shared add form's Category
+// chip and the group sheet's remove-member choice (which passes `subtitle` for
+// a line of context under the title).
 export default function OptionPicker({ visible, title, subtitle, options = [], value, onSelect, onClose }) {
   const { colors } = useTheme();
   const t = useT();
@@ -55,8 +56,8 @@ export default function OptionPicker({ visible, title, subtitle, options = [], v
                   ]}
                 >
                   {opt.icon ? (
-                    <View style={styles.badge}>
-                      <HIcon name={opt.icon} size={20} color={colors.icon} />
+                    <View style={[styles.badge, opt.color ? { backgroundColor: `${opt.color}26` } : null]}>
+                      <HIcon name={opt.icon} size={20} color={opt.color ?? colors.icon} />
                     </View>
                   ) : null}
                   <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>{opt.label}</Text>

@@ -331,8 +331,7 @@ const createStyles = (colors) =>
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 12,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
+      letterSpacing: 0.2,
       marginBottom: spacing.sm,
     },
     grid: {

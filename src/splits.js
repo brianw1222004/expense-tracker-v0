@@ -241,6 +241,13 @@ export function billsForGroup(groupId, splitExpenses) {
   return splitExpenses.filter((b) => b.groupId === groupId);
 }
 
+// Display name for a member id (the YOU sentinel localizes; unknown ids —
+// e.g. a removed member still named on an old settlement — fall back politely).
+export function nameFor(id, group, t) {
+  if (id === YOU) return t('split.you');
+  return group.members.find((m) => m.id === id)?.name ?? t('split.someone');
+}
+
 // Rewrite a bill after a member is removed from its group.
 //  - 'redistribute' → the member's share is re-split among the remaining
 //    participants: equal-mode bills stay equal (recomputed over the remainder);

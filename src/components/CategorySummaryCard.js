@@ -36,31 +36,27 @@ function buildArcs(segments, total) {
   });
 }
 
-function formatPct(pct) {
-  if (pct < 10) return `${pct.toFixed(1)}%`;
-  // Never round a sub-100% share up to "100%" — beside a non-zero "least" card
-  // that reads as a contradiction (the two visibly don't sum).
-  const rounded = Math.round(pct);
-  return `${rounded >= 100 && pct < 100 ? 99 : rounded}%`;
-}
-
 // How many categories get their own row beside the donut; the ring still
 // carries every category, the rows surface only the biggest spenders.
 const TOP_ROWS = 3;
 
 // The category-spending summary card shown on the Dashboard (moved off the old
-// Categories tab): a "CATEGORICAL SPENDING OVERVIEW" section heading (the same
-// uppercase heading style as the Dashboard's other cards), a rounded-segment
+// Categories tab): a "Categorical Spending Overview" section heading (the same
+// title-case heading style as the Dashboard's other cards), a rounded-segment
 // donut of the month's spending by category with the total in the center, and
-// the top-spending categories beside it (icon + name + share). The month comes
-// from the app-wide selection on the Monthly Spending card (no month nav of
-// its own). A centered "More detail ⌄" link below jumps to the Insight tab,
-// which hosts the full per-category tile grid on its Categories card.
+// the top-spending categories beside it — icon + name + spent amount, over a
+// progress bar that fills against the category's budget in a zone tone (green
+// under, orange within 15%, red over; budget on the right, share-of-total
+// fill when no budget is set). The month comes from the app-wide selection on the Monthly
+// Spending card (no month nav of its own). A "More detail ›" link in the
+// header jumps to the Insight tab, which hosts the full per-category tile
+// grid on its Categories card.
 export default function CategorySummaryCard({
   months,
   monthKey,
   displayCurrency,
   allCategories,
+  categoryBudgets,
   onMoreDetail,
 }) {
   const { colors } = useTheme();
@@ -74,27 +70,29 @@ export default function CategorySummaryCard({
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>{t('cats.sectionTitle')}</Text>
+      <View style={styles.cardHeader}>
+        <Text style={styles.cardTitle}>{t('cats.sectionTitle')}</Text>
+        <Pressable
+          onPress={onMoreDetail}
+          accessibilityRole="button"
+          hitSlop={8}
+          style={({ pressed }) => [styles.moreDetailLink, pressed && styles.moreDetailLinkPressed]}
+        >
+          <Text style={styles.moreDetailText}>{t('cats.moreDetail')}</Text>
+          <HIcon name="chevron-right" size={14} color={colors.textSecondary} strokeWidth={2} />
+        </Pressable>
+      </View>
 
       <CategoryDonut
         byCategory={viewMonth.byCategory}
         total={viewMonth.total}
         displayCurrency={displayCurrency}
         allCategories={allCategories}
+        categoryBudgets={categoryBudgets}
         colors={colors}
         styles={styles}
         t={t}
       />
-
-      <Pressable
-        onPress={onMoreDetail}
-        accessibilityRole="button"
-        hitSlop={8}
-        style={({ pressed }) => [styles.moreDetailLink, pressed && styles.moreDetailLinkPressed]}
-      >
-        <Text style={styles.moreDetailText}>{t('cats.moreDetail')}</Text>
-        <HIcon name="chevron-down" size={14} color={colors.textSecondary} strokeWidth={2} />
-      </Pressable>
     </View>
   );
 }
@@ -102,7 +100,7 @@ export default function CategorySummaryCard({
 // Rounded-segment donut of one month's spending by category. The ring carries
 // the breakdown of ALL categories; beside it we list the top spenders, sharing
 // the same `total` denominator so their percentages match the arcs.
-function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colors, styles, t }) {
+function CategoryDonut({ byCategory, total, displayCurrency, allCategories, categoryBudgets, colors, styles, t }) {
   const segments = useMemo(() => {
     if (total <= 0) return [];
     return (allCategories ?? [])
@@ -157,7 +155,15 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
         {topSegs.map((seg, i) => (
           <View key={seg.category.id}>
             {i > 0 && <View style={styles.statDivider} />}
-            <TopCategoryRow seg={seg} total={total} styles={styles} t={t} />
+            <TopCategoryRow
+              seg={seg}
+              total={total}
+              budget={categoryBudgets?.[seg.category.id] ?? 0}
+              displayCurrency={displayCurrency}
+              colors={colors}
+              styles={styles}
+              t={t}
+            />
           </View>
         ))}
         {topSegs.length === 0 && (
@@ -168,17 +174,46 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, colo
   );
 }
 
-// One top-spending row beside the donut: the category's icon in its color,
-// its name, and its share of the month right-aligned in the same color.
-function TopCategoryRow({ seg, total, styles, t }) {
-  const pct = (seg.value / total) * 100;
+// One top-spending row beside the donut, in the shared category-row format
+// (matching the Insight Categories list): a small category-tinted icon circle
+// leads a two-line block and centers on its full height, so the name and the
+// progress bar share the same left edge. Line 1 is name + this month's spend;
+// line 2 is the bar with the budget beside it. The bar fills spent-of-budget
+// in a budget-zone tone — green under budget, orange within 15% of it, red
+// over — mirroring the Insight budget gauge; with no budget set it falls back
+// to the category's share of the month total (green, no zone to breach) and
+// the budget label is omitted.
+function TopCategoryRow({ seg, total, budget, displayCurrency, colors, styles, t }) {
+  const hasBudget = budget > 0;
+  const ratio = hasBudget ? seg.value / budget : seg.value / total;
+  const fillPct = Math.min(ratio * 100, 100);
+  const tone =
+    hasBudget && ratio > 1 ? colors.danger : hasBudget && ratio >= 0.85 ? colors.warning : colors.success;
   return (
     <View style={styles.statRow}>
-      <HIcon name={seg.category.emoji} size={24} color={seg.category.color} strokeWidth={1.8} />
-      <Text style={styles.statName} numberOfLines={1}>
-        {getCategoryLabel(seg.category, t)}
-      </Text>
-      <Text style={[styles.statPct, { color: seg.category.color }]}>{formatPct(pct)}</Text>
+      <View style={[styles.statIconBox, { backgroundColor: `${seg.category.color}1A` }]}>
+        <HIcon name={seg.category.emoji} size={16} color={seg.category.color} strokeWidth={1.8} />
+      </View>
+      <View style={styles.statBody}>
+        <View style={styles.statHead}>
+          <Text style={styles.statName} numberOfLines={1}>
+            {getCategoryLabel(seg.category, t)}
+          </Text>
+          <Text style={styles.statSpent} numberOfLines={1}>
+            {formatMoneyShort(seg.value, displayCurrency)}
+          </Text>
+        </View>
+        <View style={styles.statBarRow}>
+          <View style={styles.statBarTrack}>
+            <View style={[styles.statBarFill, { width: `${fillPct}%`, backgroundColor: tone }]} />
+          </View>
+          {hasBudget && (
+            <Text style={styles.statBudget} numberOfLines={1}>
+              {formatMoneyShort(budget, displayCurrency)}
+            </Text>
+          )}
+        </View>
+      </View>
     </View>
   );
 }
@@ -193,25 +228,26 @@ const createStyles = (colors) =>
       marginTop: spacing.md,
       ...cardShadow,
     },
-    // Uppercase card heading — the same style as the Dashboard's other cards.
+    // Heading row: title on the left, the "More detail ›" link on the right.
+    cardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+    },
+    // Title-case card heading — the same style as the Dashboard's other cards.
     cardTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 14,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
-      marginBottom: spacing.md,
+      letterSpacing: 0.2,
+      flexShrink: 1,
     },
-    // Centered quiet "More detail ⌄" link under the donut body.
+    // Quiet "More detail ›" link in the header.
     moreDetailLink: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      alignSelf: 'center',
       gap: spacing.xs,
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      marginTop: spacing.sm,
     },
     moreDetailLinkPressed: { opacity: 0.6 },
     moreDetailText: {
@@ -238,36 +274,83 @@ const createStyles = (colors) =>
       color: colors.textMuted,
       fontFamily: fonts.medium,
       fontSize: 10,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
+      letterSpacing: 0.2,
       marginTop: 1,
     },
     statCol: {
       flex: 1,
       marginLeft: spacing.lg,
-      gap: spacing.md,
+      gap: spacing.sm,
     },
     // Dimmed hairline between the top-category rows beside the donut.
     statDivider: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: colors.border,
-      marginBottom: spacing.md,
+      marginBottom: spacing.sm,
     },
+    // A top-category row: tinted icon circle centered on the two-line block
+    // beside it (the shared category-row format from the Insight list, sized
+    // down for the narrow column beside the donut).
     statRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
     },
-    statName: {
+    statIconBox: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    statBody: {
       flex: 1,
+      gap: 4,
+    },
+    // Name + spend line of a top-category row.
+    statHead: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+    },
+    statName: {
+      flexShrink: 1,
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 18,
+      fontSize: 15,
     },
-    statPct: {
+    // This month's spend, right-aligned on the name line.
+    statSpent: {
+      color: colors.textPrimary,
       fontFamily: fonts.numBold,
-      fontSize: 17,
+      fontSize: 14,
       fontVariant: ['tabular-nums'],
+    },
+    // Comparison bar with the budget beside it (label omitted when unbudgeted).
+    statBarRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    statBudget: {
+      color: colors.textMuted,
+      fontFamily: fonts.numRegular,
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+    },
+    // Spent-of-budget fill in the zone tone (green/orange/red); neutral track
+    // matching the Insight list's bars.
+    statBarTrack: {
+      flex: 1,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.background,
+      overflow: 'hidden',
+    },
+    statBarFill: {
+      height: '100%',
+      borderRadius: 3,
     },
     emptyMonth: {
       color: colors.textMuted,

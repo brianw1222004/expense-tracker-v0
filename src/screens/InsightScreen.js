@@ -18,13 +18,14 @@ import { HIcon } from '../icons';
 // The Insight tab: the budget view compressed into two cards. A "Budget" card
 // with a compact horizontal bar gauge (the old BudgetGauge donut was retired)
 // plus the display-currency pill and "Edit budgets" on its header; below it a
-// merged "Categories" card — a two-column grid of category tiles (month amount,
-// month-over-month delta, and a budget progress bar when one is set — the
-// widget style of the retired CategoryBreakdownScreen) with an "External"
-// subsection. Tiles reorder by long-press drag (the breakdown page's
-// drag-reorder, restored — persisted in device-local settings.categoryOrder).
-// The card header's add pill (and tapping any tile) opens AddCategoryModal,
-// so category management — including editing/deleting presets — lives here.
+// merged "Categories" card — a single-column list of clean category rows (name
+// + month amount over an indented budget progress bar, led by a tinted icon
+// circle; the old packed two-column tiles and their MoM delta were retired)
+// with an "External" subsection. Rows reorder by long-press drag (the
+// breakdown page's drag-reorder — persisted in device-local
+// settings.categoryOrder). The card header's add pill (and tapping any row)
+// opens AddCategoryModal, so category management — including editing/deleting
+// presets — lives here.
 export default function InsightScreen({
   loaded,
   hasExpenses,
@@ -341,11 +342,12 @@ function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t })
   );
 }
 
-// Drag-to-reorder grid of category tiles (the retired breakdown page's grid,
-// restored). Long-press (200ms) arms a drag; the tile follows the pointer and
-// drops onto the nearest cell, and the new id order is persisted via
-// onReorder. Only the visual drop position animates — the reorder itself is a
-// state change, mirroring the original implementation.
+// Drag-to-reorder list of category rows (the retired breakdown page's grid
+// mechanics, unchanged — the nearest-cell drop math doesn't care that cells
+// are now full-width rows). Long-press (200ms) arms a drag; the row follows
+// the pointer and drops onto the nearest cell, and the new id order is
+// persisted via onReorder. Only the visual drop position animates — the
+// reorder itself is a state change, mirroring the original implementation.
 function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, onDragStateChange, styles, colors, t }) {
   const [dragIndex, setDragIndex] = useState(-1);
   const pan = useRef(new Animated.ValueXY()).current;
@@ -432,12 +434,13 @@ function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, o
   }, [endDrag]);
 
   return (
-    <View style={styles.catGrid} {...panResponder.panHandlers}>
+    <View style={styles.catList} {...panResponder.panHandlers}>
       {rows.map((row, i) => (
         <CategoryTile
           key={row.category.id}
           {...row}
           displayCurrency={displayCurrency}
+          divider={i > 0}
           onEdit={() => onEditCategory(row.category)}
           onLongPress={() => startDrag(i)}
           onPressOut={() => releaseWithoutDrag(i)}
@@ -453,23 +456,24 @@ function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, o
   );
 }
 
-// One category widget tile — the visual carried over from the retired breakdown
-// page: tinted cell with a color-keyed left edge, circular icon chip, month
-// amount (always shown — "$0" is the placeholder when nothing is recorded yet)
-// and month-over-month delta (up = red, down = green, "new" when last month was
-// empty). Every tile carries a progress bar along its bottom — a dimmed
-// category-tinted track that fills against the budget as spending accrues;
-// without a budget it stays an empty strip, so tracking reads even at $0 spent
-// or before a budget is set. Budgeted categories add "/ budget" to the amount.
-// Tapping any tile opens the edit modal (presets included — edits/deletes are
-// stored as overrides/tombstones in customCategories); long-press drags any
-// tile to reorder.
+// One category row — the clean list style that replaced the packed widget
+// tiles: a small category-tinted icon circle leads a two-line block and
+// centers on its full height (the midpoint between the title line and the
+// bar), so the name and the progress bar share the same left edge — the bar
+// starts at the name, not under the icon. Line 1 is name + month amount
+// ("$0" is the placeholder when nothing is recorded yet; danger-toned when
+// over budget); line 2 is the budget progress bar with the budget figure at
+// its right. The track renders on EVERY row so tracking always reads; without
+// a budget it stays an empty strip (and shows no figure) until one is set.
+// The MoM delta was dropped in this decluttering. Tapping a row opens the
+// edit modal (presets included — edits/deletes are stored as
+// overrides/tombstones in customCategories); long-press drags to reorder.
 function CategoryTile({
   category,
   budget,
   thisVal,
-  lastVal,
   displayCurrency,
+  divider,
   onEdit,
   onLongPress,
   onPressOut,
@@ -483,79 +487,54 @@ function CategoryTile({
   const factor = 10 ** getCurrency(displayCurrency).decimals;
   const spent = Math.round(thisVal * factor) / factor;
   const hasBudget = budget > 0;
+  const ratio = hasBudget ? spent / budget : 0;
   const over = hasBudget && spent > budget;
-  const hasActivity = thisVal > 0 || lastVal > 0;
-  const delta = lastVal > 0 ? ((thisVal - lastVal) / lastVal) * 100 : null;
+  // Budget-zone tone shared with the Dashboard's top-category rows and the
+  // budget gauge: green under budget, orange within 15% of it, red over.
+  const zone = over ? colors.danger : ratio >= 0.85 ? colors.warning : colors.success;
 
   const dragStyle = dragging
     ? { transform: pan.getTranslateTransform(), zIndex: 10, elevation: 10, opacity: 0.9 }
     : undefined;
 
   return (
-    <Animated.View
-      onLayout={onLayout}
-      style={[
-        styles.catTile,
-        { backgroundColor: `${category.color}0A`, borderLeftColor: `${category.color}33` },
-        dragStyle,
-      ]}
-    >
+    <Animated.View onLayout={onLayout} style={[divider && styles.catRowDivider, dragStyle]}>
       <Pressable
         onPress={onEdit}
         onLongPress={onLongPress}
         onPressOut={onPressOut}
         delayLongPress={200}
         accessibilityRole="button"
-        style={({ pressed }) => [pressed && !dragging && styles.catTilePressed]}
+        style={({ pressed }) => [styles.catRow, pressed && !dragging && styles.catRowPressed]}
       >
-        <View style={styles.catTileInner}>
-          <View style={[styles.catIconBox, { backgroundColor: `${category.color}20` }]}>
-            <HIcon name={category.emoji} size={22} color={category.color} />
-          </View>
-          <View style={styles.catContent}>
-            <Text style={styles.catName} numberOfLines={1}>{getCategoryLabel(category, t)}</Text>
-            {/* Amount and MoM delta share one row under the title. */}
-            <View style={styles.catValueRow}>
-              <Text
-                style={[styles.catMonthVal, over && { color: colors.danger }]}
-                numberOfLines={1}
-              >
-                {formatMoneyShort(spent, displayCurrency)}
-                {hasBudget && (
-                  <Text style={styles.catBudgetVal}>
-                    {' / '}{formatMoneyShort(budget, displayCurrency)}
-                  </Text>
-                )}
-              </Text>
-              {hasActivity &&
-                (delta !== null ? (
-                  <Text
-                    style={[
-                      styles.catDelta,
-                      { color: delta > 0 ? colors.danger : delta < 0 ? colors.success : colors.textMuted },
-                    ]}
-                  >
-                    {delta > 0 ? '+' : ''}{Math.round(delta)}%
-                  </Text>
-                ) : thisVal > 0 ? (
-                  <Text style={[styles.catDelta, { color: colors.textMuted }]}>{t('cats.newCat')}</Text>
-                ) : null)}
-            </View>
-          </View>
+        <View style={[styles.catIconBox, { backgroundColor: `${category.color}1A` }]}>
+          <HIcon name={category.emoji} size={18} color={category.color} strokeWidth={1.8} />
         </View>
-        {/* The track renders on EVERY tile so tracking always reads; without a
-            budget there's nothing to fill against, so it stays an empty dimmed
-            strip until one is set. */}
-        <View style={[styles.catTileTrack, { backgroundColor: `${category.color}1A` }]}>
-          <View
-            style={[
-              styles.catTileFill,
-              {
-                width: hasBudget ? `${Math.min(100, (spent / budget) * 100)}%` : '0%',
-                backgroundColor: over ? colors.danger : category.color,
-              },
-            ]}
-          />
+        <View style={styles.catRowBody}>
+          <View style={styles.catRowTop}>
+            <Text style={styles.catName} numberOfLines={1}>{getCategoryLabel(category, t)}</Text>
+            <Text style={[styles.catMonthVal, over && { color: colors.danger }]} numberOfLines={1}>
+              {formatMoneyShort(spent, displayCurrency)}
+            </Text>
+          </View>
+          <View style={styles.catRowBottom}>
+            <View style={styles.catTrack}>
+              <View
+                style={[
+                  styles.catFill,
+                  {
+                    width: hasBudget ? `${Math.min(100, ratio * 100)}%` : '0%',
+                    backgroundColor: zone,
+                  },
+                ]}
+              />
+            </View>
+            {hasBudget && (
+              <Text style={styles.catBudgetVal} numberOfLines={1}>
+                {formatMoneyShort(budget, displayCurrency)}
+              </Text>
+            )}
+          </View>
         </View>
       </Pressable>
     </Animated.View>
@@ -584,8 +563,10 @@ const createStyles = (colors) =>
       textAlign: 'center',
       marginBottom: spacing.xs,
     },
+    // A touch more air than the other tabs' md so the first card's border
+    // doesn't crowd the ‹ month › selector.
     monthSelector: {
-      marginBottom: spacing.md,
+      marginBottom: spacing.lg,
     },
     card: {
       backgroundColor: colors.card,
@@ -704,8 +685,7 @@ const createStyles = (colors) =>
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 11,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
+      letterSpacing: 0.2,
     },
     dividerAmount: {
       color: colors.textSecondary,
@@ -713,81 +693,76 @@ const createStyles = (colors) =>
       fontSize: 12,
       fontVariant: ['tabular-nums'],
     },
-    // Two-column category widget grid (style carried over from the retired
-    // CategoryBreakdownScreen).
-    catGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
+    // Single-column category row list (replaced the two-column widget grid).
+    catList: {
       marginTop: spacing.xs,
     },
-    catTile: {
-      width: '48.5%',
-      borderRadius: radius.sm,
-      borderLeftWidth: 3,
+    catRowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
     },
-    catTilePressed: {
-      opacity: 0.8,
-    },
-    catTileInner: {
+    catRow: {
       flexDirection: 'row',
+      // Centers the icon circle on the two-line block beside it.
       alignItems: 'center',
-      padding: spacing.sm,
-      gap: spacing.sm,
+      gap: spacing.sm + 2,
+      paddingVertical: spacing.sm + 2,
+    },
+    catRowPressed: {
+      opacity: 0.7,
     },
     catIconBox: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 34,
+      height: 34,
+      borderRadius: 17,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    catContent: {
+    catRowBody: {
       flex: 1,
-      alignItems: 'center',
-      gap: 3,
+      gap: spacing.xs + 1,
+    },
+    catRowTop: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
     },
     catName: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 13,
-    },
-    catValueRow: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-      justifyContent: 'center',
-      gap: spacing.xs + 2,
+      fontSize: 14,
+      flexShrink: 1,
     },
     catMonthVal: {
       fontFamily: fonts.numBold,
-      fontSize: 15,
+      fontSize: 14,
       color: colors.textPrimary,
       fontVariant: ['tabular-nums'],
-      flexShrink: 1,
+    },
+    catRowBottom: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    // Neutral track (matching the Budget card's gauge) with a budget-zone
+    // toned fill, instead of the old per-tile tinted track.
+    catTrack: {
+      flex: 1,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.background,
+      overflow: 'hidden',
+    },
+    catFill: {
+      height: '100%',
+      borderRadius: 3,
     },
     catBudgetVal: {
+      color: colors.textMuted,
       fontFamily: fonts.numRegular,
       fontSize: 12,
-      color: colors.textMuted,
       fontVariant: ['tabular-nums'],
-    },
-    catDelta: {
-      fontFamily: fonts.numBold,
-      fontSize: 12,
-      fontVariant: ['tabular-nums'],
-    },
-    // Track color is set inline (a dimmed tint of the category color) so the
-    // empty bar stays visible on the tile's own tinted background.
-    catTileTrack: {
-      height: 4,
-      borderRadius: 2,
-      overflow: 'hidden',
-      marginHorizontal: spacing.sm,
-      marginBottom: spacing.sm,
-    },
-    catTileFill: {
-      height: '100%',
-      borderRadius: 2,
     },
     emptyHint: {
       color: colors.textMuted,

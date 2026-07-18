@@ -29,6 +29,7 @@ export default function DashboardScreen({
   categoryMonths,
   currentMonthKey,
   allCategories,
+  categoryBudgets,
   onCategoryDetail,
 }) {
   const { colors } = useTheme();
@@ -94,6 +95,7 @@ export default function DashboardScreen({
           monthKey={monthKey}
           displayCurrency={displayCurrency}
           allCategories={allCategories}
+          categoryBudgets={categoryBudgets}
           onMoreDetail={onCategoryDetail}
         />
       )}
@@ -115,7 +117,7 @@ export default function DashboardScreen({
               amount={splitSummary.owed}
               count={splitSummary.owedCount}
               tone={colors.success}
-              icon="money-receive-01"
+              icon="money-receive-square"
               displayCurrency={displayCurrency}
               styles={styles}
               t={t}
@@ -126,7 +128,7 @@ export default function DashboardScreen({
               amount={splitSummary.owe}
               count={splitSummary.oweCount}
               tone={colors.danger}
-              icon="credit-card"
+              icon="money-send-square"
               displayCurrency={displayCurrency}
               styles={styles}
               t={t}
@@ -173,7 +175,7 @@ function SplitStat({ label, amount, count, tone, icon, displayCurrency, styles, 
           {caption}
         </Text>
       </View>
-      <HIcon name={icon} size={30} color={tone} strokeWidth={1.6} />
+      <HIcon name={icon} size={30} color={tone} strokeWidth={1.8} />
     </View>
   );
 }
@@ -212,14 +214,13 @@ const createStyles = (colors) =>
       padding: spacing.lg,
       ...cardShadow,
     },
-    // The uppercase card heading every Dashboard card leads with ("MONTHLY
-    // SPENDING SUMMARY" / "SPLIT BALANCES & DEBT" — CategorySummaryCard mirrors it).
+    // The title-case card heading every Dashboard card leads with ("Monthly
+    // Spending Summary" / "Split Balances & Debt" — CategorySummaryCard mirrors it).
     sectionHeading: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 14,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
+      letterSpacing: 0.2,
       flexShrink: 1,
     },
     spendHeading: {

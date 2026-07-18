@@ -23,6 +23,7 @@ import {
   DEFAULT_METHOD_COLOR,
   DEFAULT_METHOD_ICON,
   getGroupIcon,
+  nameFor,
   YOU,
 } from '../splits';
 import { HIcon } from '../icons';
@@ -30,12 +31,13 @@ import { HIcon } from '../icons';
 const TINT_MS = 350;
 
 // Group-detail sheet, members first: combined per-member balances + editing
-// lead the sheet (they're what you open a group to see), then the
-// payment-method-themed settings card (the group's surface tints to its
-// selected payment method's color), the bill list (tap to edit, long-press to
-// delete), and the group's avatar (a dedicated icon-picker page). A null group
-// renders a closed sheet so the parent can keep it mounted without guarding
-// every prop.
+// lead the sheet (they're what you open a group to see), then the bill list
+// (tap to edit, long-press to delete), and the group's avatar (a dedicated
+// icon-picker page). The payment method lives in the title row as a compact
+// widget pill (beside the currency pill, tinted to the method's color) that
+// expands into the themed chip panel on tap and collapses back after a pick.
+// A null group renders a closed sheet so the parent can keep it mounted
+// without guarding every prop.
 export default function GroupDetailScreen({
   visible,
   group,
@@ -66,6 +68,12 @@ export default function GroupDetailScreen({
   // The member the remove-choice popup is asking about:
   // { id, name, count, amount } (amount = their shares in the group currency).
   const [removing, setRemoving] = useState(null);
+  // Payment-method selector: collapsed into a small widget pill in the title
+  // row (beside the currency pill); tapping it expands the themed chip panel
+  // under the header, and picking a method collapses it back.
+  const [payExpanded, setPayExpanded] = useState(false);
+  const [payContentH, setPayContentH] = useState(0);
+  const payAnim = useRef(new Animated.Value(0)).current;
 
   // Animated tint of the settings card to the group's payment-method color,
   // mirroring the add-expense category tint. The endpoints live in STATE (not
@@ -93,6 +101,14 @@ export default function GroupDetailScreen({
       Animated.timing(colorAnim, { toValue: 1, duration: TINT_MS, useNativeDriver: false }).start();
     }
   }, [group?.id, group?.paymentMethod, customPaymentMethods, colorAnim, tint.to]);
+
+  // Re-collapse the selector whenever the sheet closes so it reopens compact.
+  useEffect(() => {
+    if (!visible) {
+      setPayExpanded(false);
+      payAnim.setValue(0);
+    }
+  }, [visible, payAnim]);
 
   const balances = useMemo(
     () => (group ? groupBalances(group, splitExpenses) : {}),
@@ -145,6 +161,11 @@ export default function GroupDetailScreen({
   const allMethods = getAllPaymentMethods(customPaymentMethods);
   const groupIcon = getGroupIcon(group.icon);
 
+  const togglePay = (open) => {
+    setPayExpanded(open);
+    Animated.timing(payAnim, { toValue: open ? 1 : 0, duration: 240, useNativeDriver: false }).start();
+  };
+
   // Animated border (full color) + background wash (12% alpha) for the card.
   const tintBorder = colorAnim.interpolate({
     inputRange: [0, 1],
@@ -158,6 +179,9 @@ export default function GroupDetailScreen({
     inputRange: [0, 1],
     outputRange: [`${tint.from}26`, `${tint.to}26`],
   });
+  // Selector expand/collapse: height + fade of the panel, chevron flip on the pill.
+  const panelHeight = payAnim.interpolate({ inputRange: [0, 1], outputRange: [0, payContentH] });
+  const chevronSpin = payAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
 
   const newMemberId = () =>
     globalThis.crypto?.randomUUID?.() ??
@@ -268,6 +292,23 @@ export default function GroupDetailScreen({
             style={styles.headerPill}
             textStyle={styles.headerPillText}
           />
+          {/* Collapsed payment-method widget — expands the selector panel below. */}
+          <Pressable
+            onPress={() => togglePay(!payExpanded)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: payExpanded }}
+            accessibilityLabel={`${t('split.paymentMethod')}: ${getPaymentMethodLabel(group.paymentMethod || 'cash', t, customPaymentMethods)}`}
+            style={({ pressed }) => [pressed && styles.pressedFade]}
+          >
+            <Animated.View style={[styles.payPill, { borderColor: tintBorder, backgroundColor: tintAvatar }]}>
+              <Text style={[styles.payPillText, { color: methodColor }]} numberOfLines={1}>
+                {getPaymentMethodLabel(group.paymentMethod || 'cash', t, customPaymentMethods)}
+              </Text>
+              <Animated.View style={{ transform: [{ rotate: chevronSpin }] }}>
+                <HIcon name="chevron-down" size={12} color={methodColor} strokeWidth={2} />
+              </Animated.View>
+            </Animated.View>
+          </Pressable>
         </View>
         <Pressable
           onPress={onClose}
@@ -285,8 +326,72 @@ export default function GroupDetailScreen({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* The payment-method selector panel — collapsed by default (the header
+            widget pill summarizes the selection); expands from under the title
+            row when the pill is tapped, and collapses back after a pick. The
+            outer wrapper animates height/opacity while the inner content is
+            measured at its intrinsic size. */}
+        <Animated.View style={[styles.payPanel, { height: panelHeight, opacity: payAnim }]}>
+          <View
+            style={styles.payPanelInner}
+            onLayout={(e) => setPayContentH(e.nativeEvent.layout.height)}
+          >
+            {/* Shadow lives on the wrapper; the inner card carries
+                overflow:'hidden' (to clip the tint wash + chips to the rounded
+                corners) which on iOS would otherwise suppress the drop shadow. */}
+            <View style={styles.cardShadowWrap}>
+              <Animated.View style={[styles.settingsCard, { borderColor: tintBorder }]}>
+                <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tintWash }]} />
+                <View style={styles.payHeaderRow}>
+                  <Text style={styles.settingLabel}>{t('split.paymentMethod')}</Text>
+                </View>
+                <View style={styles.chipRow}>
+                  {allMethods.map((pm) => {
+                    const selected = pm.id === (group.paymentMethod || 'cash');
+                    const pColor = pm.color || DEFAULT_METHOD_COLOR;
+                    const pIcon = pm.icon || DEFAULT_METHOD_ICON;
+                    const isCustom = !PAYMENT_METHODS.some((b) => b.id === pm.id);
+                    return (
+                      <Pressable
+                        key={pm.id}
+                        onPress={() => {
+                          onUpdateGroup(group.id, { paymentMethod: pm.id });
+                          togglePay(false);
+                        }}
+                        onLongPress={isCustom ? () => removePaymentMethod(pm.id) : undefined}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        accessibilityHint={isCustom ? t('split.longPressDelete') : undefined}
+                        style={({ pressed }) => [
+                          styles.chip,
+                          selected && { backgroundColor: `${pColor}1F`, borderColor: pColor },
+                          pressed && styles.pressedFade,
+                        ]}
+                      >
+                        <HIcon name={pIcon} size={15} color={pColor} />
+                        <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]} numberOfLines={1}>
+                          {getPaymentMethodLabel(pm.id, t, customPaymentMethods)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable
+                    onPress={() => setPaymentModalOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('split.addPaymentMethod')}
+                    style={({ pressed }) => [styles.chip, styles.chipAdd, pressed && styles.pressedFade]}
+                  >
+                    <HIcon name="plus-sign" size={12} color={colors.accent} />
+                    <Text style={[styles.chipLabel, { color: colors.accent }]}>{t('split.addPaymentMethod')}</Text>
+                  </Pressable>
+                </View>
+              </Animated.View>
+            </View>
+          </View>
+        </Animated.View>
+
         {/* Members lead the sheet — the balances are what you open a group to
-            see; the payment-method settings card follows. */}
+            see. */}
         <Text style={styles.sectionHeader}>{t('split.members')}</Text>
         <View style={styles.cardShadowWrap}>
           <View style={styles.card}>
@@ -365,56 +470,6 @@ export default function GroupDetailScreen({
           <HIcon name="plus-sign" size={14} color={colors.accent} />
           <Text style={styles.addMemberText}>{t('split.addMember')}</Text>
         </Pressable>
-
-        <Text style={styles.sectionHeader}>{t('split.groupSettings')}</Text>
-        {/* Shadow lives on the wrapper; the inner card carries overflow:'hidden'
-            (to clip the tint wash + chips to the rounded corners) which on iOS
-            would otherwise suppress the drop shadow. */}
-        <View style={styles.cardShadowWrap}>
-          <Animated.View style={[styles.settingsCard, { borderColor: tintBorder }]}>
-            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tintWash }]} />
-            <View style={styles.payHeaderRow}>
-              <Text style={styles.settingLabel}>{t('split.paymentMethod')}</Text>
-            </View>
-            <View style={styles.chipRow}>
-              {allMethods.map((pm) => {
-                const selected = pm.id === (group.paymentMethod || 'cash');
-                const pColor = pm.color || DEFAULT_METHOD_COLOR;
-                const pIcon = pm.icon || DEFAULT_METHOD_ICON;
-                const isCustom = !PAYMENT_METHODS.some((b) => b.id === pm.id);
-                return (
-                  <Pressable
-                    key={pm.id}
-                    onPress={() => onUpdateGroup(group.id, { paymentMethod: pm.id })}
-                    onLongPress={isCustom ? () => removePaymentMethod(pm.id) : undefined}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    accessibilityHint={isCustom ? t('split.longPressDelete') : undefined}
-                    style={({ pressed }) => [
-                      styles.chip,
-                      selected && { backgroundColor: `${pColor}1F`, borderColor: pColor },
-                      pressed && styles.pressedFade,
-                    ]}
-                  >
-                    <HIcon name={pIcon} size={15} color={pColor} />
-                    <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]} numberOfLines={1}>
-                      {getPaymentMethodLabel(pm.id, t, customPaymentMethods)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              <Pressable
-                onPress={() => setPaymentModalOpen(true)}
-                accessibilityRole="button"
-                accessibilityLabel={t('split.addPaymentMethod')}
-                style={({ pressed }) => [styles.chip, styles.chipAdd, pressed && styles.pressedFade]}
-              >
-                <HIcon name="plus-sign" size={12} color={colors.accent} />
-                <Text style={[styles.chipLabel, { color: colors.accent }]}>{t('split.addPaymentMethod')}</Text>
-              </Pressable>
-            </View>
-          </Animated.View>
-        </View>
 
         <View style={styles.billsHeaderRow}>
           <Text style={styles.sectionHeaderInline}>{t('split.bills')}</Text>
@@ -546,11 +601,6 @@ export default function GroupDetailScreen({
   );
 }
 
-function nameFor(id, group, t) {
-  if (id === YOU) return t('split.you');
-  return group.members.find((m) => m.id === id)?.name ?? t('split.someone');
-}
-
 const createStyles = (colors) =>
   StyleSheet.create({
     sheetOverride: {
@@ -592,6 +642,31 @@ const createStyles = (colors) =>
     headerPillText: {
       fontSize: 13,
     },
+    // Collapsed payment-method widget beside the currency pill: the method's
+    // label + a flip chevron on the animated method-color tint.
+    payPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      alignSelf: 'center',
+      borderWidth: 1.5,
+      borderRadius: 13,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: spacing.xs + 1,
+    },
+    payPillText: {
+      fontFamily: fonts.bold,
+      fontSize: 13,
+      maxWidth: 96,
+    },
+    // Expanding wrapper for the selector panel; height/opacity driven by payAnim.
+    payPanel: {
+      overflow: 'hidden',
+    },
+    payPanelInner: {
+      paddingTop: spacing.xs,
+      paddingBottom: spacing.sm,
+    },
     title: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
@@ -617,8 +692,7 @@ const createStyles = (colors) =>
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 1.2,
+      letterSpacing: 0.2,
       marginTop: spacing.md,
       marginBottom: spacing.sm,
     },
@@ -766,8 +840,7 @@ const createStyles = (colors) =>
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 1.2,
+      letterSpacing: 0.2,
     },
     addBillPill: {
       flexDirection: 'row',

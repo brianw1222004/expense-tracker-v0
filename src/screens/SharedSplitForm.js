@@ -12,6 +12,7 @@ import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { getCurrency } from '../currency';
 import { isValidAmountText, formatMoney, cleanAmountInput, dateKey } from '../format';
+import { getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
 import { confirmDestructive } from '../confirm';
 import EntryModeToggle from '../components/EntryModeToggle';
@@ -19,6 +20,7 @@ import CalendarField, { dateForOffset, offsetForDay } from '../components/Calend
 import CurrencyPill from '../components/CurrencyPill';
 import CurrencyPicker from '../components/CurrencyPicker';
 import OptionPicker from '../components/OptionPicker';
+import AnchorMenu from '../components/AnchorMenu';
 import { popupChromeStyles } from '../components/popupFormChrome';
 import {
   YOU,
@@ -44,6 +46,10 @@ const MODES = [
   { id: 'tax', labelKey: 'split.tax' },
 ];
 
+// Chips whose small option sets open the anchored iOS-style AnchorMenu;
+// category (a long, icon-badged list) opens the centered OptionPicker instead.
+const MENU_CHIP_KEYS = ['group', 'payer', 'split', 'members'];
+
 // Participants of a group: YOU (the implicit owner) plus the group's members.
 function peopleFor(group) {
   return group ? [{ id: YOU }, ...group.members] : [];
@@ -57,11 +63,12 @@ function normMap(m, ids) {
 
 // The Shared side of the add popup: create a split bill. Reuses the popup card
 // chrome (matching AddEntryScreen) so the Personal/Shared toggle swaps between
-// two forms in one widget. Lets you pick the group, who's in, the date, the
-// currency, who paid, and one of four split methods (equal, custom amounts,
-// percentages, or an itemized tax split). On save it computes per-person shares
-// and hands the bill up via onAdd; your share folds into personal spending
-// elsewhere (yourShareAsExpenses).
+// two forms in one widget. Lets you pick the group, the category, the date, the
+// currency, who paid, who's in (the Members chip's multi-select dropdown), and
+// one of four split methods (equal, custom amounts, percentages, or an itemized
+// tax split). On save it computes per-person shares and hands the bill up via
+// onAdd; your share folds into personal spending elsewhere
+// (yourShareAsExpenses), under the chosen category.
 //
 // Launched two ways:
 //   • from the + popup  → showToggle + group picker shown, group defaults to the first
@@ -73,6 +80,7 @@ export default function SharedSplitForm({
   initialGroupId = null,
   editBill = null,
   groups,
+  categories = [],
   displayCurrency,
   onAdd,
   onSave,
@@ -119,9 +127,9 @@ export default function SharedSplitForm({
   // food prices in `subtotals` must reconcile to it.
   const [amountText, setAmountText] = useState(() => (isEdit ? fmtNum(editBill.amount, editDec) : ''));
   const [description, setDescription] = useState(isEdit ? editBill.description || '' : '');
-  // Shared bills aren't categorized in the UI; keep an existing bill's category on
-  // edit and default new ones to 'other' so downstream consumers stay happy.
-  const category = isEdit ? editBill.category || 'other' : 'other';
+  // The bill's category (defaults to Other) — your share counts as spending
+  // under it (yourShareAsExpenses), so it feeds budgets and charts.
+  const [category, setCategory] = useState(isEdit ? editBill.category || 'other' : 'other');
   const [custom, setCustom] = useState(() =>
     isEdit && seedMode === 'custom'
       ? Object.fromEntries(Object.keys(seedShares).map((id) => [id, fmtNum(seedShares[id], editDec)]))
@@ -149,10 +157,28 @@ export default function SharedSplitForm({
     const d = new Date(editBill.createdAt);
     return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
   });
-  // Currency picker + the Group / Paid by / Split option popups. `picker` is
-  // which selector chip's popup is open (one at a time).
+  // Currency picker + the selector-chip popups. `picker` is which chip's popup
+  // is open (one at a time); `menuAnchor` is the tapped chip's window frame so
+  // the AnchorMenu opens attached to it.
   const [currencyOpen, setCurrencyOpen] = useState(false);
-  const [picker, setPicker] = useState(null); // 'group' | 'payer' | 'split' | null
+  const [picker, setPicker] = useState(null); // 'group' | 'category' | 'payer' | 'split' | 'members' | null
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const chipRefs = useRef({});
+
+  // Menu chips measure themselves on tap so the menu can anchor to the chip;
+  // if measuring isn't available the menu falls back to centered.
+  const openPicker = (key) => {
+    const node = MENU_CHIP_KEYS.includes(key) ? chipRefs.current[key] : null;
+    if (node?.measureInWindow) {
+      node.measureInWindow((x, y, width, height) => {
+        setMenuAnchor({ x, y, width, height });
+        setPicker(key);
+      });
+    } else {
+      setMenuAnchor(null);
+      setPicker(key);
+    }
+  };
 
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
   const currencyCode = manualCurrency ?? selectedGroup?.currency ?? displayCurrency;
@@ -164,6 +190,8 @@ export default function SharedSplitForm({
   );
   const payerName = people.find((p) => p.id === paidBy)?.name ?? '';
   const activeMode = MODES.find((m) => m.id === mode) ?? MODES[0];
+  const activeCategory =
+    categories.find((c) => c.id === category) ?? categories.find((c) => c.id === 'other') ?? null;
 
   // Switching groups resets the people-dependent fields (who's in, who paid,
   // per-person inputs) and lets the currency follow the new group again.
@@ -311,15 +339,15 @@ export default function SharedSplitForm({
     if (ok) onDelete(editBill.id);
   };
 
-  // The single OptionPicker is driven by `picker`; its props depend on which
-  // selector chip was tapped.
+  // One config per open popup, driven by `picker`. The menu chips (group /
+  // payer / split / members) feed the anchored AnchorMenu — no titles, iOS
+  // menus don't have them; category feeds the centered OptionPicker.
   const pickerProps =
     picker === 'group'
       ? {
-          title: t('split.group'),
           value: selectedGroupId,
           options: [
-            ...groups.map((g) => ({ id: g.id, label: g.name, icon: 'user-group' })),
+            ...groups.map((g) => ({ id: g.id, label: g.name })),
             { id: NEW_GROUP_OPTION_ID, label: `+ ${t('split.newGroup')}`, icon: 'plus-sign' },
           ],
           onSelect: (id) => {
@@ -331,35 +359,77 @@ export default function SharedSplitForm({
             selectGroup(id);
           },
         }
-      : picker === 'payer'
+      : picker === 'category'
         ? {
-            title: t('split.paidBy'),
-            value: paidBy,
-            options: people.map((p) => ({ id: p.id, label: p.name })),
-            onSelect: (id) => { setPaidBy(id); setPicker(null); },
+            title: t('split.category'),
+            value: category,
+            options: categories.map((c) => ({ id: c.id, label: getCategoryLabel(c, t), icon: c.emoji, color: c.color })),
+            onSelect: (id) => { setCategory(id); setPicker(null); },
           }
-        : picker === 'split'
+        : picker === 'payer'
           ? {
-              title: t('split.splitMethod'),
-              value: mode,
-              options: MODES.map((m) => ({ id: m.id, label: t(m.labelKey) })),
-              onSelect: (id) => { setMode(id); setPicker(null); },
+              value: paidBy,
+              options: people.map((p) => ({ id: p.id, label: p.name })),
+              onSelect: (id) => { setPaidBy(id); setPicker(null); },
             }
-          : null;
-  // Keep the last non-null config so the popup's content stays put while it fades
-  // out (picker flips to null on select/close before the fade finishes).
-  const lastPickerProps = useRef(null);
-  if (pickerProps) lastPickerProps.current = pickerProps;
-  const shownPicker = pickerProps ?? lastPickerProps.current;
+          : picker === 'split'
+            ? {
+                value: mode,
+                options: MODES.map((m) => ({ id: m.id, label: t(m.labelKey) })),
+                onSelect: (id) => { setMode(id); setPicker(null); },
+              }
+            : picker === 'members'
+              ? {
+                  // Multi-select: toggles stay open so several people can be
+                  // (un)checked in one visit; tapping outside closes it.
+                  multi: true,
+                  values: participantIds,
+                  options: people.map((p) => ({ id: p.id, label: p.name })),
+                  onSelect: (id) => setIncluded((prev) => ({ ...prev, [id]: !prev[id] })),
+                }
+              : null;
+  // Keep each popup's last non-null config so its content stays put while it
+  // fades out (picker flips to null on select/close before the fade finishes).
+  const menuProps = picker !== null && MENU_CHIP_KEYS.includes(picker) ? pickerProps : null;
+  const categoryProps = picker === 'category' ? pickerProps : null;
+  const lastMenuProps = useRef(null);
+  if (menuProps) lastMenuProps.current = menuProps;
+  const lastCategoryProps = useRef(null);
+  if (categoryProps) lastCategoryProps.current = categoryProps;
+  const shownMenu = menuProps ?? lastMenuProps.current;
+  const shownCategory = categoryProps ?? lastCategoryProps.current;
 
-  // The config selectors render as ONE row of compact label-over-value chips
-  // (group hidden when locked) instead of stacked full-width rows; each chip
-  // opens the OptionPicker above.
-  const selectorChips = [
-    showGroupPicker && selectedGroup && { key: 'group', label: t('split.group'), value: selectedGroup.name },
-    { key: 'payer', label: t('split.paidBy'), value: payerName },
-    { key: 'split', label: t('split.splitMethod'), value: t(activeMode.labelKey) },
-  ].filter(Boolean);
+  // The config selectors render as TWO rows of compact label-over-value chips:
+  // what & where (Group / Category — the category chip goes full-width when the
+  // group is locked), then who & how (Paid by / Split / Members). Menu chips
+  // open the anchored AnchorMenu; category opens the centered OptionPicker.
+  // The Members chip replaces the old avatar-chip participant lines: its
+  // multi-select dropdown decides who's in the split for every mode,
+  // summarized as "All" or "n/m".
+  const chipRows = [
+    [
+      showGroupPicker && selectedGroup && { key: 'group', label: t('split.group'), value: selectedGroup.name },
+      activeCategory && {
+        key: 'category',
+        label: t('split.category'),
+        value: getCategoryLabel(activeCategory, t),
+        iconName: activeCategory.emoji,
+        iconColor: activeCategory.color,
+      },
+    ].filter(Boolean),
+    [
+      { key: 'payer', label: t('split.paidBy'), value: payerName },
+      { key: 'split', label: t('split.splitMethod'), value: t(activeMode.labelKey) },
+      {
+        key: 'members',
+        label: t('split.members'),
+        value:
+          participantIds.length === people.length
+            ? t('split.allMembers')
+            : `${participantIds.length}/${people.length}`,
+      },
+    ],
+  ];
 
   return (
     <View style={styles.card}>
@@ -452,23 +522,32 @@ export default function SharedSplitForm({
               />
             </View>
 
-            <View style={styles.chipRow}>
-              {selectorChips.map((c) => (
-                <Pressable
-                  key={c.key}
-                  onPress={() => setPicker(c.key)}
-                  accessibilityRole="button"
-                  accessibilityLabel={c.label}
-                  style={({ pressed }) => [styles.chip, pressed && styles.pressedBg]}
+            {chipRows.map((row, rowIndex) =>
+              row.length > 0 ? (
+                <View
+                  key={rowIndex}
+                  style={[styles.chipRow, rowIndex < chipRows.length - 1 && styles.chipRowTight]}
                 >
-                  <Text style={styles.chipLabel} numberOfLines={1}>{c.label}</Text>
-                  <View style={styles.chipValueRow}>
-                    <Text style={styles.chipValue} numberOfLines={1}>{c.value}</Text>
-                    <HIcon name="chevron-down" size={14} color={colors.icon} />
-                  </View>
-                </Pressable>
-              ))}
-            </View>
+                  {row.map((c) => (
+                    <Pressable
+                      key={c.key}
+                      ref={(r) => { chipRefs.current[c.key] = r; }}
+                      onPress={() => openPicker(c.key)}
+                      accessibilityRole="button"
+                      accessibilityLabel={c.label}
+                      style={({ pressed }) => [styles.chip, pressed && styles.pressedBg]}
+                    >
+                      <Text style={styles.chipLabel} numberOfLines={1}>{c.label}</Text>
+                      <View style={styles.chipValueRow}>
+                        {c.iconName ? <HIcon name={c.iconName} size={14} color={c.iconColor ?? colors.icon} strokeWidth={2} /> : null}
+                        <Text style={styles.chipValue} numberOfLines={1}>{c.value}</Text>
+                        <HIcon name="chevron-down" size={14} color={colors.icon} strokeWidth={2} />
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null
+            )}
 
             {mode === 'tax' && (
               <>
@@ -509,56 +588,26 @@ export default function SharedSplitForm({
             )}
 
             {mode === 'equal' ? (
-              /* Equal (the default) shows participants as tappable avatar chips —
-                 far shorter than one row per person — plus the single per-person
-                 caption below instead of the same share repeated on every row. */
-              <>
-                <View style={styles.memberChips}>
-                  {people.map((p) => {
-                    const on = !!included[p.id];
-                    return (
-                      <Pressable
-                        key={p.id}
-                        onPress={() => setIncluded((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: on }}
-                        accessibilityLabel={p.name}
-                        style={[styles.memberChip, on && styles.memberChipOn]}
-                      >
-                        <MemberAvatar name={p.name} on={on} styles={styles} />
-                        <Text style={[styles.memberChipName, !on && styles.memberNameOff]} numberOfLines={1}>
-                          {p.name}
-                        </Text>
-                        <CheckBadge on={on} styles={styles} />
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                {equalShareLabel != null && <Text style={styles.eachShare}>{equalShareLabel}</Text>}
-              </>
+              /* Equal (the default) needs no per-person UI — the Members chip
+                 decides who's in, so all that's left is the single per-person
+                 share caption. */
+              equalShareLabel != null && <Text style={styles.eachShare}>{equalShareLabel}</Text>
             ) : (
-              /* Custom / percentage / tax need a per-person input, so those keep a
-                 row per person: the avatar+name toggles inclusion, the input sits
-                 on the right. */
+              /* Custom / percentage / tax need a per-person input, so those keep
+                 one slim row per INCLUDED person (exclusion happens in the
+                 Members dropdown, so no inline checkboxes). */
+              participantIds.length > 0 && (
               <View style={styles.peopleCard}>
-                {people.map((p, index) => {
-                  const on = !!included[p.id];
+                {people.filter((p) => included[p.id]).map((p, index) => {
                   const pct = parseFloat(String(percent[p.id] ?? '').replace(',', '.')) || 0;
                   return (
                     <View key={p.id} style={[styles.personRow, index > 0 && styles.rowDivider]}>
-                      <Pressable
-                        onPress={() => setIncluded((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: on }}
-                        accessibilityLabel={p.name}
-                        style={styles.personToggle}
-                      >
-                        <CheckBadge on={on} styles={styles} />
-                        <MemberAvatar name={p.name} on={on} styles={styles} />
-                        <Text style={[styles.personName, !on && styles.memberNameOff]} numberOfLines={1}>{p.name}</Text>
-                      </Pressable>
+                      <View style={styles.personLabel}>
+                        <MemberAvatar name={p.name} on styles={styles} />
+                        <Text style={styles.personName} numberOfLines={1}>{p.name}</Text>
+                      </View>
 
-                      {on && mode === 'custom' && (
+                      {mode === 'custom' && (
                         <View style={styles.inlineAmount}>
                           <Text style={styles.inlineSymbol}>{cur.symbol}</Text>
                           <TextInput
@@ -575,7 +624,7 @@ export default function SharedSplitForm({
                         </View>
                       )}
 
-                      {on && mode === 'percentage' && (
+                      {mode === 'percentage' && (
                         <View style={styles.inlineAmount}>
                           {percentPreview?.[p.id] != null && pct > 0 && (
                             <Text style={styles.sharePreviewMuted}>
@@ -597,7 +646,7 @@ export default function SharedSplitForm({
                         </View>
                       )}
 
-                      {on && mode === 'tax' && (
+                      {mode === 'tax' && (
                         <View style={styles.inlineAmount}>
                           <Text style={styles.inlineSymbol}>{cur.symbol}</Text>
                           <TextInput
@@ -620,6 +669,7 @@ export default function SharedSplitForm({
                   );
                 })}
               </View>
+              )
             )}
 
             {mode === 'custom' && amountValid && !customOk && (
@@ -674,30 +724,29 @@ export default function SharedSplitForm({
         onClose={() => setCurrencyOpen(false)}
       />
       <OptionPicker
-        visible={pickerProps !== null}
-        title={shownPicker?.title}
-        options={shownPicker?.options || []}
-        value={shownPicker?.value}
-        onSelect={shownPicker?.onSelect || (() => {})}
+        visible={categoryProps !== null}
+        title={shownCategory?.title}
+        options={shownCategory?.options || []}
+        value={shownCategory?.value}
+        onSelect={shownCategory?.onSelect || (() => {})}
+        onClose={() => setPicker(null)}
+      />
+      <AnchorMenu
+        visible={menuProps !== null}
+        anchor={menuAnchor}
+        options={shownMenu?.options || []}
+        value={shownMenu?.value}
+        multi={!!shownMenu?.multi}
+        values={shownMenu?.values || []}
+        onSelect={shownMenu?.onSelect || (() => {})}
         onClose={() => setPicker(null)}
       />
     </View>
   );
 }
 
-// Explicit checkbox affordance on every participant toggle: an accent-filled
-// ✓ circle while included, a hollow ring while excluded — so it reads as a
-// choice, not just a tint change.
-function CheckBadge({ on, styles }) {
-  return (
-    <View style={[styles.checkBadge, on && styles.checkBadgeOn]}>
-      {on && <Text style={styles.checkBadgeMark}>✓</Text>}
-    </View>
-  );
-}
-
-// Initial-letter avatar shared by the equal-mode member chips and the
-// input-mode rows; accent-filled while the person is included in the split.
+// Initial-letter avatar on the input-mode person rows; accent-filled while the
+// person is included in the split.
 function MemberAvatar({ name, on, styles }) {
   return (
     <View style={[styles.avatar, on && styles.avatarOn]}>
@@ -758,6 +807,10 @@ const createStyles = (colors) =>
       gap: spacing.sm,
       marginBottom: spacing.md,
     },
+    // Between the two selector rows — tighter than the gap to the next section.
+    chipRowTight: {
+      marginBottom: spacing.sm,
+    },
     chip: {
       flex: 1,
       backgroundColor: colors.card,
@@ -773,7 +826,7 @@ const createStyles = (colors) =>
     chipValueRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 2,
+      gap: 3,
       marginTop: 2,
     },
     chipValue: {
@@ -876,37 +929,6 @@ const createStyles = (colors) =>
       marginBottom: spacing.md,
     },
 
-    memberChips: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-    },
-    memberChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs + 2,
-      backgroundColor: colors.card,
-      borderRadius: 999,
-      borderWidth: 1.5,
-      borderColor: 'transparent',
-      paddingVertical: spacing.xs - 1.5,
-      paddingLeft: spacing.xs - 0.5,
-      paddingRight: spacing.sm + 2,
-      maxWidth: '100%',
-    },
-    memberChipOn: {
-      backgroundColor: `${colors.accent}15`,
-      borderColor: `${colors.accent}55`,
-    },
-    memberChipName: {
-      color: colors.textPrimary,
-      fontFamily: fonts.medium,
-      fontSize: 14,
-      flexShrink: 1,
-    },
-    memberNameOff: {
-      color: colors.textMuted,
-    },
     avatar: {
       width: 26,
       height: 26,
@@ -926,32 +948,12 @@ const createStyles = (colors) =>
     avatarTextOn: {
       color: colors.onAccent,
     },
-    checkBadge: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      borderWidth: 1.5,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    checkBadgeOn: {
-      backgroundColor: colors.accent,
-      borderColor: colors.accent,
-    },
-    checkBadgeMark: {
-      color: colors.onAccent,
-      fontFamily: fonts.bold,
-      fontSize: 11,
-      lineHeight: 13,
-    },
     eachShare: {
       color: colors.textSecondary,
       fontFamily: fonts.numRegular,
       fontSize: 13,
       fontVariant: ['tabular-nums'],
-      textAlign: 'right',
-      marginTop: spacing.sm,
+      textAlign: 'center',
     },
     peopleCard: {
       backgroundColor: colors.card,
@@ -969,7 +971,7 @@ const createStyles = (colors) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    personToggle: {
+    personLabel: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,

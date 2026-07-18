@@ -1107,6 +1107,7 @@ function ExpenseTracker() {
               categoryMonths={months}
               currentMonthKey={currentMonthKey}
               allCategories={allCategories}
+              categoryBudgets={settings.categoryBudgets}
               onCategoryDetail={() => changeTab('insight')}
             />
           </Animated.View>
@@ -1197,6 +1198,7 @@ function ExpenseTracker() {
               lockedGroupId={sharedLockedGroupId}
               initialGroupId={sharedInitialGroupId}
               groups={groups}
+              categories={allCategories}
               displayCurrency={displayCurrency}
               onAdd={addSplitExpense}
               onCreateGroup={openCreateGroupFromSharedAdd}
@@ -1243,6 +1245,7 @@ function ExpenseTracker() {
               editBill={editingSplit}
               lockedGroupId={editingSplit.groupId}
               groups={groups}
+              categories={allCategories}
               displayCurrency={displayCurrency}
               onSave={updateSplitExpense}
               onDelete={deleteSplitExpense}

@@ -352,8 +352,7 @@ const createStyles = (colors) =>
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 1.2,
+      letterSpacing: 0.2,
       marginTop: spacing.md,
       marginBottom: spacing.sm,
     },
@@ -361,8 +360,7 @@ const createStyles = (colors) =>
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 13,
-      textTransform: 'uppercase',
-      letterSpacing: 1.2,
+      letterSpacing: 0.2,
     },
     // Shadow on a wrapper without overflow; inner card clips rows. (overflow +
     // shadow on one node suppresses the iOS drop shadow — see GroupDetailScreen.)

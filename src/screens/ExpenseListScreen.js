@@ -438,8 +438,7 @@ const createStyles = (colors) =>
       color: colors.textSecondary,
       fontSize: 13,
       fontFamily: fonts.bold,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
+      letterSpacing: 0.2,
     },
     dayHeaderTotal: {
       color: colors.textMuted,

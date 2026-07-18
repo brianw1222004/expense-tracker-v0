@@ -62,6 +62,8 @@ import DollarCircleIcon from '@hugeicons/core-free-icons/DollarCircleIcon';
 import QrCodeIcon from '@hugeicons/core-free-icons/QrCodeIcon';
 import MoneySend01Icon from '@hugeicons/core-free-icons/MoneySend01Icon';
 import MoneyReceive01Icon from '@hugeicons/core-free-icons/MoneyReceive01Icon';
+import MoneyReceiveSquareIcon from '@hugeicons/core-free-icons/MoneyReceiveSquareIcon';
+import MoneySendSquareIcon from '@hugeicons/core-free-icons/MoneySendSquareIcon';
 // Group-avatar icons (minimal glyphs for split-bill groups, mirroring categories).
 import UserMultipleIcon from '@hugeicons/core-free-icons/UserMultipleIcon';
 import FavouriteIcon from '@hugeicons/core-free-icons/FavouriteIcon';
@@ -133,6 +135,8 @@ const REGISTRY = {
   'qr-code': QrCodeIcon,
   'money-send-01': MoneySend01Icon,
   'money-receive-01': MoneyReceive01Icon,
+  'money-receive-square': MoneyReceiveSquareIcon,
+  'money-send-square': MoneySendSquareIcon,
 
   'user-multiple': UserMultipleIcon,
   'favourite': FavouriteIcon,
