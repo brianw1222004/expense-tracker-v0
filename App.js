@@ -4,19 +4,16 @@ import {
   Animated,
   AppState,
   BackHandler,
-  Easing,
-  Keyboard,
-  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as HapticsModule from 'expo-haptics';
 import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
 
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddEntryScreen from './src/screens/AddEntryScreen';
@@ -30,16 +27,15 @@ import SharedSplitForm from './src/screens/SharedSplitForm';
 import BudgetScreen from './src/screens/BudgetScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
-import TabBar from './src/components/TabBar';
+import TabBar, { TAB_BAR_HEIGHT } from './src/components/TabBar';
 import AddExpenseModal from './src/components/AddExpenseModal';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import RewardCheck from './src/components/RewardCheck';
 import HeaderGlow from './src/components/HeaderGlow';
+import useTabSlide from './src/useTabSlide';
 import {
   loadExpenses,
   saveExpenses,
-  loadIncome,
-  saveIncome,
   loadSettings,
   saveSettings,
   loadGroups,
@@ -52,7 +48,6 @@ import {
 } from './src/storage';
 import {
   applyPendingOps,
-  applyPendingIncomeOps,
   applyPendingGroupOps,
   applyPendingSplitOps,
   clearQueues,
@@ -62,25 +57,23 @@ import {
   enqueueGroupDelete,
   enqueueGroupUpsert,
   enqueueGroupsReplace,
-  enqueueIncomeReplace,
   enqueueSettingsPush,
   enqueueSplitDelete,
   enqueueSplitUpsert,
   enqueueSplitsReplace,
   flush,
-  flushIncome,
   flushGroups,
   flushSplits,
   syncWithServer,
 } from './src/sync';
 import { supabase, isSupabaseConfigured } from './src/supabase';
-import { buildDemoExpenses, buildDemoIncome } from './src/demoData';
+import { buildDemoExpenses } from './src/demoData';
 import { redenominateBudgets, getCurrency } from './src/currency';
 import { getAllCategories, getRegularAll, getExternalAll, isPresetCategory } from './src/categories';
 import { dateKey, shiftMonthKey } from './src/format';
 import { deriveViewData } from './src/derive';
-import { overallBalance, yourShareAsExpenses, groupBalances, removeMemberFromBill, YOU } from './src/splits';
-import { ThemeProvider, getTheme, spacing, ACCOUNT_FAB_SIZE } from './src/theme';
+import { overallBalance, yourShareAsExpenses, groupBalances, removeMemberFromBill, YOU, DEFAULT_PAYMENT_METHOD_ID } from './src/splits';
+import { ThemeProvider, getTheme, spacing, fonts, panelShadow, ACCOUNT_FAB_SIZE } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 import { HIcon } from './src/icons';
 import { confirmDestructive } from './src/confirm';
@@ -89,17 +82,6 @@ const Haptics = Platform.OS === 'web'
   ? { notificationAsync: () => Promise.resolve(), impactAsync: () => Promise.resolve(), NotificationFeedbackType: HapticsModule.NotificationFeedbackType, ImpactFeedbackStyle: HapticsModule.ImpactFeedbackStyle }
   : HapticsModule;
 
-const TAB_INDEX = { dashboard: 0, list: 1, split: 2, insight: 3 };
-const TAB_NAMES = ['dashboard', 'list', 'split', 'insight'];
-
-// Tab-switch transition: the page background + HeaderGlow wash sit on a fixed
-// backdrop layer that never moves while the screens crossfade over it with a
-// small directional glide — since every tab paints the identical background +
-// wash, only the widgets appear to change, so a switch reads as one stationary
-// page swapping its content (the Copilot-app feel).
-// How far the widgets travel during the crossfade.
-const COPILOT_GLIDE = 28;
-
 // Entry ids. crypto.randomUUID isn't guaranteed: Hermes (RN) has no global
 // crypto and web only exposes it in a secure context, so a bare call can throw
 // and abort the whole add before state/sync. The id column is `text`, so a
@@ -107,6 +89,14 @@ const COPILOT_GLIDE = 28;
 const makeId = (prefix) =>
   globalThis.crypto?.randomUUID?.() ??
   `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+// Hold the native splash from auto-hiding at the first JS pass so it stays up
+// through the bundled-font load — without this the app shows a bare frame
+// between the splash disappearing and first paint (a white flash on slower
+// hardware). We hide it once fonts resolve. Called at module scope so the hold
+// is in place before React mounts; a late call (splash already gone) just
+// rejects harmlessly.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
   // Block first paint until loaded so no screen ever renders with the fallback
@@ -118,6 +108,11 @@ export default function App() {
     'Arimo-Medium': require('./assets/fonts/Arimo-Medium.ttf'),
     'LiberationSans-Bold': require('./assets/fonts/LiberationSans-Bold.ttf'),
   });
+  // Reveal the UI (drop the splash) only once fonts are ready — or errored, so a
+  // font failure can't strand the user on the splash forever.
+  useEffect(() => {
+    if (fontsLoaded || fontsError) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsLoaded, fontsError]);
   if (!fontsLoaded && !fontsError) return null;
 
   return (
@@ -129,7 +124,6 @@ export default function App() {
 
 function ExpenseTracker() {
   const [expenses, setExpenses] = useState([]);
-  const [income, setIncome] = useState([]);
   // Split-bills state — synced to Supabase via the separate groups/splits
   // lanes (tolerant pulls; see sync.js). `groups` hold members (typed names);
   // `splitExpenses` hold shared bills + settlement records.
@@ -144,14 +138,8 @@ function ExpenseTracker() {
   // skips auth entirely (sessionLoaded starts true, userId is LOCAL_USER).
   const [session, setSession] = useState(null);
   const [sessionLoaded, setSessionLoaded] = useState(!isSupabaseConfigured);
-  const [tab, setTab] = useState('dashboard');
-  const [prevTab, setPrevTab] = useState('dashboard');
-  const slideAnim = useRef(new Animated.Value(1)).current;
-  const slideDirRef = useRef(1);
-  const tabRef = useRef('dashboard');
-  const swipingRef = useRef(false);
-  const prevTabRef = useRef('dashboard');
-  const swipeDirRef = useRef(0);
+  // Tab navigation + the Copilot-style crossfade/swipe transition (see useTabSlide).
+  const { tab, changeTab, screenStyle, swipeHandlers } = useTabSlide();
   // The budget editor, account, and create-group sheets sit over the active tab.
   const [overlay, setOverlay] = useState(null); // null | 'budget' | 'account' | 'createGroup'
   // Split-bills: the open group's id (detail sheet). New bills are added through
@@ -183,13 +171,17 @@ function ExpenseTracker() {
   const [rewardNonce, setRewardNonce] = useState(0);
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
   const [dayStamp, setDayStamp] = useState(() => dateKey(Date.now()));
+  // True when the last full sync attempt (initial load or foreground resume)
+  // couldn't reach the server. Drives a dismissable retry pill; cleared on the
+  // next successful sync. Never set in local-only mode — there's no server.
+  const [syncError, setSyncError] = useState(false);
   const settingsVersionRef = useRef(0);
   // Monotonic sync sequence: bumped whenever a new account-switch load OR a
   // foreground re-sync begins. Each sync captures its value before the network
   // await and bails before applying any setState if the ref has since advanced,
   // so the latest-started sync wins across ALL lanes (not just settings).
   const syncSeqRef = useRef(0);
-  const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const userId = isSupabaseConfigured ? session?.user?.id ?? null : LOCAL_USER;
   const language = settings.language;
@@ -220,47 +212,17 @@ function ExpenseTracker() {
     };
   }, []);
 
-  // Cache-first load: AsyncStorage renders immediately, then the server's
-  // state (with any still-pending local ops re-applied) replaces it. Server
-  // settings only carry displayCurrency/monthlyBudget, so they MERGE over the
-  // local settings — theme, language and category budgets are device-local.
-  useEffect(() => {
-    let active = true;
-    // A new account-switch load supersedes any in-flight sync.
-    const seq = (syncSeqRef.current += 1);
-    setDataUser(null);
-    if (!userId) {
-      // Signed out: drop the previous account's data from memory.
-      setExpenses([]);
-      setIncome([]);
-      setGroups([]);
-      setSplitExpenses([]);
-      setSettings(DEFAULT_SETTINGS);
-      return;
-    }
-    (async () => {
-      const [cachedExpenses, cachedIncome, cachedSettings, cachedGroups, cachedSplits] = await Promise.all([
-        loadExpenses(userId),
-        loadIncome(userId),
-        loadSettings(userId),
-        loadGroups(userId),
-        loadSplitExpenses(userId),
-      ]);
-      if (!active) return;
-      setExpenses(cachedExpenses);
-      setIncome(cachedIncome);
-      setGroups(cachedGroups);
-      setSplitExpenses(cachedSplits);
-      setSettings(cachedSettings);
-      setDataUser(userId);
-
-      const versionBeforeSync = settingsVersionRef.current;
-      const result = await syncWithServer(userId);
-      // Bail if a newer load/re-sync started while we were awaiting the network,
-      // so a superseded pull can't clobber the latest account's data.
-      if (!active || !result || syncSeqRef.current !== seq) return;
+  // Reconcile a server pull into state — shared by the initial sign-in load and
+  // every foreground re-sync (they differ only in onboarding backfill). Callers
+  // MUST already have checked the supersession guard (syncSeqRef) before calling.
+  // `versionBeforeSync` is the settings-version captured before the network
+  // await: if a local settings edit bumped it meanwhile, the settings merge is
+  // skipped so the newer local value stands. `backfillOnboarding` (sign-in only)
+  // marks an already-established account (it has a server settings row OR
+  // expenses) as onboarded, so a fresh device/reinstall doesn't re-run setup.
+  const applySyncResult = useCallback(
+    (result, versionBeforeSync, { backfillOnboarding }) => {
       setExpenses(applyPendingOps(userId, result.expenses));
-      if (result.income) setIncome(applyPendingIncomeOps(userId, result.income));
       // group.icon and bill.meta are DEVICE-LOCAL (not in the Supabase mapping),
       // so a server reconcile would drop them. Preserve them from in-memory state
       // by id — same posture as theme/language.
@@ -282,10 +244,14 @@ function ExpenseTracker() {
           );
         });
       }
+      // An account with a server settings row OR any expenses has been set up
+      // before — key the backfill on that, not on expenses alone, so a user who
+      // onboarded but hasn't logged an expense yet isn't re-onboarded elsewhere.
+      const isEstablished = Boolean(result.settings) || result.expenses.length > 0;
       if (result.settings && settingsVersionRef.current === versionBeforeSync) {
         setSettings((prev) => {
           const merged = { ...prev, ...result.settings };
-          if (!merged.onboardingDone && result.expenses.length > 0) merged.onboardingDone = true;
+          if (backfillOnboarding && !merged.onboardingDone && isEstablished) merged.onboardingDone = true;
           return merged;
         });
         // Server row predates the extra settings columns (they pull as unset):
@@ -294,9 +260,60 @@ function ExpenseTracker() {
         if (result.settings.categoryBudgets === undefined) {
           enqueueSettingsPush(userId, { ...settingsRef.current, ...result.settings });
         }
-      } else if (!result.settings && result.expenses.length > 0) {
-        setSettings((prev) => prev.onboardingDone ? prev : { ...prev, onboardingDone: true });
+      } else if (backfillOnboarding && !result.settings && isEstablished) {
+        setSettings((prev) => (prev.onboardingDone ? prev : { ...prev, onboardingDone: true }));
       }
+    },
+    [userId]
+  );
+
+  // Cache-first load: AsyncStorage renders immediately, then the server's
+  // state (with any still-pending local ops re-applied) replaces it. Server
+  // settings only carry displayCurrency/monthlyBudget, so they MERGE over the
+  // local settings — theme, language and category budgets are device-local.
+  useEffect(() => {
+    let active = true;
+    // A new account-switch load supersedes any in-flight sync.
+    const seq = (syncSeqRef.current += 1);
+    setDataUser(null);
+    // Clear any prior account's sync-error pill so it can't flash over the next
+    // account's data before its first sync resolves.
+    setSyncError(false);
+    if (!userId) {
+      // Signed out: drop the previous account's data from memory.
+      setExpenses([]);
+      setGroups([]);
+      setSplitExpenses([]);
+      setSettings(DEFAULT_SETTINGS);
+      return;
+    }
+    (async () => {
+      const [cachedExpenses, cachedSettings, cachedGroups, cachedSplits] = await Promise.all([
+        loadExpenses(userId),
+        loadSettings(userId),
+        loadGroups(userId),
+        loadSplitExpenses(userId),
+      ]);
+      if (!active) return;
+      setExpenses(cachedExpenses);
+      setGroups(cachedGroups);
+      setSplitExpenses(cachedSplits);
+      setSettings(cachedSettings);
+      setDataUser(userId);
+
+      const versionBeforeSync = settingsVersionRef.current;
+      const result = await syncWithServer(userId);
+      // Bail if a newer load/re-sync started while we were awaiting the network,
+      // so a superseded pull can't clobber the latest account's data.
+      if (!active || syncSeqRef.current !== seq) return;
+      if (!result) {
+        // Offline or a failed pull — surface it, unless we're local-only (there
+        // is no server to reach, so "not synced" would be meaningless).
+        if (isSupabaseConfigured && userId !== LOCAL_USER) setSyncError(true);
+        return;
+      }
+      setSyncError(false);
+      applySyncResult(result, versionBeforeSync, { backfillOnboarding: true });
     })();
     return () => {
       active = false;
@@ -315,37 +332,14 @@ function ExpenseTracker() {
       const versionBeforeSync = settingsVersionRef.current;
       const result = await syncWithServer(userId);
       // Bail if a newer load/re-sync started while we were awaiting the network.
-      if (!active || !result || syncSeqRef.current !== seq) return;
-      setExpenses(applyPendingOps(userId, result.expenses));
-      if (result.income) setIncome(applyPendingIncomeOps(userId, result.income));
-      // group.icon and bill.meta are DEVICE-LOCAL (not in the Supabase mapping),
-      // so a server reconcile would drop them. Preserve them from in-memory state
-      // by id — same posture as theme/language.
-      if (result.groups) {
-        const pulled = applyPendingGroupOps(userId, result.groups);
-        setGroups((prev) => {
-          const byId = new Map(prev.map((g) => [g.id, g]));
-          return pulled.map((g) =>
-            g.icon == null && byId.get(g.id)?.icon != null ? { ...g, icon: byId.get(g.id).icon } : g
-          );
-        });
+      if (!active || syncSeqRef.current !== seq) return;
+      if (!result) {
+        setSyncError(true);
+        return;
       }
-      if (result.splits) {
-        const pulled = applyPendingSplitOps(userId, result.splits);
-        setSplitExpenses((prev) => {
-          const byId = new Map(prev.map((b) => [b.id, b]));
-          return pulled.map((b) =>
-            b.meta == null && byId.get(b.id)?.meta != null ? { ...b, meta: byId.get(b.id).meta } : b
-          );
-        });
-      }
-      if (result.settings && settingsVersionRef.current === versionBeforeSync) {
-        setSettings((prev) => ({ ...prev, ...result.settings }));
-        // Same migration seeding as the sign-in sync above.
-        if (result.settings.categoryBudgets === undefined) {
-          enqueueSettingsPush(userId, { ...settingsRef.current, ...result.settings });
-        }
-      }
+      setSyncError(false);
+      // No onboarding backfill on resume: it was already resolved on the load.
+      applySyncResult(result, versionBeforeSync, { backfillOnboarding: false });
     });
     return () => {
       active = false;
@@ -353,13 +347,24 @@ function ExpenseTracker() {
     };
   }, [userId]);
 
+  // Manual re-sync from the sync-failure pill — mirrors the foreground resume.
+  const retrySync = useCallback(async () => {
+    if (!isSupabaseConfigured || !userId || userId === LOCAL_USER) return;
+    const seq = (syncSeqRef.current += 1);
+    const versionBeforeSync = settingsVersionRef.current;
+    const result = await syncWithServer(userId);
+    if (syncSeqRef.current !== seq) return;
+    if (!result) {
+      setSyncError(true);
+      return;
+    }
+    setSyncError(false);
+    applySyncResult(result, versionBeforeSync, { backfillOnboarding: false });
+  }, [userId, applySyncResult]);
+
   useEffect(() => {
     if (dataUser && dataUser === userId) saveExpenses(dataUser, expenses);
   }, [expenses, dataUser, userId]);
-
-  useEffect(() => {
-    if (dataUser && dataUser === userId) saveIncome(dataUser, income);
-  }, [income, dataUser, userId]);
 
   useEffect(() => {
     if (dataUser && dataUser === userId) saveGroups(dataUser, groups);
@@ -627,7 +632,7 @@ function ExpenseTracker() {
   };
 
   const loadDemo = async () => {
-    // Replaces BOTH expenses and income with sample data — destructive and not
+    // Replaces the expense list with sample data — destructive and not
     // undoable, so confirm first.
     const ok = await confirmDestructive({
       title: translate(language, 'empty.confirmDemoTitle'),
@@ -639,9 +644,6 @@ function ExpenseTracker() {
     const demo = buildDemoExpenses();
     setExpenses(demo);
     enqueueExpensesReplace(userId, demo);
-    const demoIncome = buildDemoIncome();
-    setIncome(demoIncome);
-    enqueueIncomeReplace(userId, demoIncome);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
@@ -685,150 +687,6 @@ function ExpenseTracker() {
     [userId]
   );
 
-  const changeTab = useCallback(
-    (next) => {
-      const cur = tabRef.current;
-      if (next === cur) return;
-      swipingRef.current = false;
-      Keyboard.dismiss();
-      slideAnim.stopAnimation();
-      slideDirRef.current = TAB_INDEX[next] > TAB_INDEX[cur] ? 1 : -1;
-      setPrevTab(cur);
-      prevTabRef.current = cur;
-      setTab(next);
-      tabRef.current = next;
-      slideAnim.setValue(0);
-      Animated.timing(slideAnim, {
-        toValue: 1,
-        // The crossfade travels a few px, not a screen width — a slightly
-        // shorter run keeps it feeling snappy.
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start(() => {
-        setPrevTab(next);
-      });
-    },
-    [slideAnim]
-  );
-
-  const swipePanResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_, g) => {
-      if (swipingRef.current) return true;
-      if (Math.abs(g.dx) > 30 && Math.abs(g.dx) > Math.abs(g.dy) * 2) {
-        swipeDirRef.current = g.dx < 0 ? 1 : -1;
-        const nextIdx = TAB_INDEX[tabRef.current] + swipeDirRef.current;
-        if (nextIdx < 0 || nextIdx > TAB_NAMES.length - 1) return false;
-        return true;
-      }
-      return false;
-    },
-    onPanResponderGrant: () => {
-      const cur = tabRef.current;
-      const dir = swipeDirRef.current;
-      const nextIdx = TAB_INDEX[cur] + dir;
-      if (nextIdx < 0 || nextIdx > TAB_NAMES.length - 1) return;
-      swipingRef.current = true;
-      Keyboard.dismiss();
-      slideDirRef.current = dir;
-      prevTabRef.current = cur;
-      setPrevTab(cur);
-      setTab(TAB_NAMES[nextIdx]);
-      tabRef.current = TAB_NAMES[nextIdx];
-      slideAnim.setValue(0);
-    },
-    onPanResponderMove: (_, g) => {
-      if (!swipingRef.current) return;
-      const progress = Math.min(1, Math.max(0, Math.abs(g.dx) / screenWidth));
-      slideAnim.setValue(progress);
-    },
-    onPanResponderRelease: (_, g) => {
-      if (!swipingRef.current) return;
-      swipingRef.current = false;
-      const progress = Math.abs(g.dx) / screenWidth;
-      const velocity = Math.abs(g.vx);
-      if (progress > 0.3 || velocity > 0.5) {
-        Animated.timing(slideAnim, {
-          toValue: 1,
-          duration: Math.max(100, 200 * (1 - progress)),
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }).start(() => {
-          setPrevTab(tabRef.current);
-        });
-      } else {
-        const orig = prevTabRef.current;
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: Math.max(100, 200 * progress),
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }).start(() => {
-          setTab(orig);
-          tabRef.current = orig;
-          setPrevTab(orig);
-          slideAnim.setValue(1);
-        });
-      }
-    },
-    onPanResponderTerminate: () => {
-      if (!swipingRef.current) return;
-      swipingRef.current = false;
-      const orig = prevTabRef.current;
-      setTab(orig);
-      tabRef.current = orig;
-      setPrevTab(orig);
-      slideAnim.setValue(1);
-    },
-  }), [slideAnim, screenWidth]);
-
-  const screenStyle = (screenTab) => {
-    if (prevTab === tab) {
-      // The active screen must also win the stacking order, not just be
-      // visible: on react-native-web pointerEvents="none" on a hidden screen's
-      // container doesn't block its Pressable descendants (they carry an
-      // explicit pointer-events:auto), so a later-in-DOM hidden screen (e.g.
-      // Insight, mounted last) would swallow taps aimed at the screen below.
-      return screenTab === tab ? { opacity: 1, zIndex: 2 } : { opacity: 0, zIndex: 0 };
-    }
-    const dir = slideDirRef.current;
-    // Widgets-only motion: a crossfade plus a small directional glide. The
-    // wash is a vertical (row-uniform) gradient, so the glide is invisible
-    // on it, and the fixed backdrop behind the screens fills the strip a
-    // gliding screen exposes with identical pixels — the background never
-    // appears to move, only the widgets swap.
-    if (screenTab === tab) {
-      return {
-        zIndex: 2,
-        opacity: slideAnim,
-        transform: [
-          {
-            translateX: slideAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [dir * COPILOT_GLIDE, 0],
-            }),
-          },
-        ],
-      };
-    }
-    if (screenTab === prevTab) {
-      return {
-        zIndex: 1,
-        opacity: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-        transform: [
-          {
-            translateX: slideAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, -dir * COPILOT_GLIDE],
-            }),
-          },
-        ],
-      };
-    }
-    return { opacity: 0, zIndex: 0 };
-  };
-
   const signOut = useCallback(async () => {
     const confirmed = await confirmDestructive({
       title: translate(language, 'acct.signOut'),
@@ -838,11 +696,10 @@ function ExpenseTracker() {
     });
     if (!confirmed) return;
     setOverlay(null);
-    // best-effort push of anything still queued on ALL FOUR lanes (each lane
-    // has its own queue: expenses, income, groups, splits).
+    // best-effort push of anything still queued on ALL THREE lanes (each lane
+    // has its own queue: expenses/settings, groups, splits).
     await Promise.all([
       flush(userId),
-      flushIncome(userId),
       flushGroups(userId),
       flushSplits(userId),
     ]);
@@ -870,19 +727,23 @@ function ExpenseTracker() {
       // replace-with-empty deletes every row on each lane, scoped to this user
       // via RLS. Best-effort: if offline the ops stay queued and wipe on resync.
       enqueueExpensesReplace(wipeUser, []);
-      enqueueIncomeReplace(wipeUser, []);
       enqueueGroupsReplace(wipeUser, []);
       enqueueSplitsReplace(wipeUser, []);
       await Promise.all([
         flush(wipeUser),
-        flushIncome(wipeUser),
         flushGroups(wipeUser),
         flushSplits(wipeUser),
       ]).catch(() => {});
-      // The settings row isn't covered by the four lanes — delete it directly
+      // The settings row isn't covered by the three lanes — delete it directly
       // (RLS scopes it to this user) so budgets/custom categories/payment
       // methods don't survive the wipe and re-pull on a later sign-in.
       await supabase.from('settings').delete().eq('user_id', wipeUser).then(
+        () => {},
+        () => {}
+      );
+      // Legacy: the income feature was removed client-side, but accounts from
+      // older builds may still hold server income rows — wipe them the same way.
+      await supabase.from('income').delete().eq('user_id', wipeUser).then(
         () => {},
         () => {}
       );
@@ -897,7 +758,6 @@ function ExpenseTracker() {
 
     // Reset in-memory state so nothing stale lingers behind the sign-out.
     setExpenses([]);
-    setIncome([]);
     setGroups([]);
     setSplitExpenses([]);
     setSettings(DEFAULT_SETTINGS);
@@ -1000,7 +860,7 @@ function ExpenseTracker() {
       const next = prev.map((g) => {
         if (g.paymentMethod !== id) return g;
         changed = true;
-        const updated = { ...g, paymentMethod: 'cash' };
+        const updated = { ...g, paymentMethod: DEFAULT_PAYMENT_METHOD_ID };
         enqueueGroupUpsert(userId, updated);
         return updated;
       });
@@ -1079,7 +939,7 @@ function ExpenseTracker() {
       activeGroupId == null;
     content = (
       <>
-        <View style={styles.content} {...swipePanResponder.panHandlers}>
+        <View style={styles.content} {...swipeHandlers}>
           {/* The stationary page: the same background + wash every screen
               paints, kept fixed behind the crossfading screens so tab
               switches read as widgets swapping on one unmoving page. Idle
@@ -1131,6 +991,7 @@ function ExpenseTracker() {
               displayCurrency={displayCurrency}
               summary={splitSummary}
               currentMonthKey={currentMonthKey}
+              customCategories={settings.customCategories}
               customPaymentMethods={settings.customPaymentMethods}
               onOpenGroup={setActiveGroupId}
               onCreateGroup={() => {
@@ -1181,6 +1042,40 @@ function ExpenseTracker() {
           >
             <HIcon name="settings-01" size={22} color={theme.icon} />
           </Pressable>
+        )}
+
+        {/* Sync-failure pill: the one visible signal that a background sync
+            couldn't reach the server (all sync/storage errors are otherwise
+            swallowed by design). Sits above the tab bar; tap the body to retry,
+            the × to dismiss. Gated by chromeVisible so it never floats over a
+            popup/sheet. */}
+        {chromeVisible && syncError && (
+          <View
+            style={[styles.syncBannerWrap, { bottom: TAB_BAR_HEIGHT + insets.bottom + spacing.sm }]}
+            pointerEvents="box-none"
+          >
+            <View style={[styles.syncBanner, { backgroundColor: theme.warning }]}>
+              <Pressable
+                onPress={retrySync}
+                accessibilityRole="button"
+                accessibilityLabel={translate(language, 'sync.retry')}
+                style={({ pressed }) => [styles.syncBannerMain, pressed && styles.syncBannerPressed]}
+              >
+                <Text style={[styles.syncBannerText, { color: theme.onAccent }]} numberOfLines={1}>
+                  {translate(language, 'sync.failed')}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setSyncError(false)}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={translate(language, 'sync.dismiss')}
+                style={({ pressed }) => pressed && styles.syncBannerPressed}
+              >
+                <HIcon name="cancel-01" size={15} color={theme.onAccent} />
+              </Pressable>
+            </View>
+          </View>
         )}
 
         <TabBar tab={tab} onChange={changeTab} onAdd={() => openAdd()} />
@@ -1293,6 +1188,7 @@ function ExpenseTracker() {
           visible={activeGroupId != null}
           group={activeGroup}
           splitExpenses={splitExpenses}
+          customCategories={settings.customCategories}
           customPaymentMethods={settings.customPaymentMethods}
           onAddPaymentMethod={addCustomPaymentMethod}
           onRemovePaymentMethod={removeCustomPaymentMethod}
@@ -1370,5 +1266,36 @@ const styles = StyleSheet.create({
   },
   accountFabPressed: {
     opacity: 0.7,
+  },
+  // Sync-failure pill — a centered snackbar just above the tab bar (its `bottom`
+  // is set inline from the tab-bar height + safe-area inset). The wrap is
+  // box-none so only the pill itself is tappable, not the strip around it.
+  syncBannerWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 11,
+  },
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    maxWidth: '90%',
+    paddingVertical: spacing.xs + 3,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm + 2,
+    borderRadius: 999,
+    ...panelShadow,
+  },
+  syncBannerMain: {
+    flexShrink: 1,
+  },
+  syncBannerText: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+  syncBannerPressed: {
+    opacity: 0.6,
   },
 });

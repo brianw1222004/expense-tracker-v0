@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { fonts, radius, spacing, useTheme, panelShadow } from '../theme';
+import { fonts, radius, spacing, useTheme, panelShadow, popupShadow } from '../theme';
 import CurrencyPill from '../components/CurrencyPill';
 import CurrencyPicker from '../components/CurrencyPicker';
 import IconPickerSheet from '../components/IconPickerSheet';
@@ -22,6 +22,7 @@ import {
   getPaymentMethodColor,
   DEFAULT_METHOD_COLOR,
   DEFAULT_METHOD_ICON,
+  DEFAULT_PAYMENT_METHOD_ID,
   DEFAULT_GROUP_ICON,
 } from '../splits';
 import { HIcon } from '../icons';
@@ -45,7 +46,7 @@ export default function CreateGroupScreen({
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_GROUP_ICON);
   const [currency, setCurrency] = useState(defaultCurrency);
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD_ID);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -58,7 +59,7 @@ export default function CreateGroupScreen({
       setName('');
       setIcon(DEFAULT_GROUP_ICON);
       setCurrency(defaultCurrency);
-      setPaymentMethod('cash');
+      setPaymentMethod(DEFAULT_PAYMENT_METHOD_ID);
       setMembers([{ id: makeMemberId(), name: '' }]);
       setPaymentModalOpen(false);
       setCurrencyOpen(false);
@@ -317,11 +318,7 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
       paddingBottom: spacing.md,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.25,
-      shadowRadius: 16,
-      elevation: 8,
+      ...popupShadow,
     },
     scrollContent: {
       paddingBottom: spacing.sm,

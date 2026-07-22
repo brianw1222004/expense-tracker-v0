@@ -14,17 +14,18 @@ so nothing breaks in the meantime.
 1. In the dashboard, open **SQL Editor → New query**.
 2. Paste the contents of [`supabase/schema.sql`](supabase/schema.sql) and **Run**.
 
-This creates the `expenses`, `income`, and `settings` tables with Row Level
-Security, so each signed-in user can only ever read/write their own rows.
+This creates the `expenses`, `groups`, `split_expenses`, and `settings` tables
+with Row Level Security, so each signed-in user can only ever read/write their
+own rows.
 
 > Already have an older database? Run
 > [`supabase/migrate-settings-sync.sql`](supabase/migrate-settings-sync.sql)
 > the same way to add the newer settings columns (category budgets, custom
-> categories/payment methods, profile name). Until it's run, only the display
-> currency and overall budget sync — everything else keeps working on-device.
-> Missing the `income` table entirely? Re-run its block from `schema.sql`;
-> income uses a separate, tolerant sync lane, so expense sync is unaffected
-> either way.
+> categories/payment methods). Until it's run, only the display currency and
+> overall budget sync — everything else keeps working on-device.
+> Upgrading from a build that still had the income feature? Run
+> [`supabase/migrate-drop-income-and-names.sql`](supabase/migrate-drop-income-and-names.sql)
+> to drop the now-unused `income` table and the vestigial name columns.
 
 ## 3. Configure auth
 

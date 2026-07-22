@@ -28,8 +28,6 @@ export const THEMES = {
     glowStart: '#A9CBE8',
     glowEnd: '#9FD3C8',
     glowWashTop: '#dce9f3',
-    headerText: '#f6f8f9',
-    headerTextSecondary: 'rgba(246, 248, 249, 0.65)',
     icon: '#638394',
   },
   sand: {
@@ -57,8 +55,6 @@ export const THEMES = {
     glowStart: '#F3C6A4',
     glowEnd: '#E6CF9A',
     glowWashTop: '#f4e4d5',
-    headerText: '#f5f3ee',
-    headerTextSecondary: 'rgba(245, 243, 238, 0.65)',
     icon: '#948461',
   },
   neutral: {
@@ -87,8 +83,6 @@ export const THEMES = {
     glowStart: '#F8B6D2',
     glowEnd: '#BCA9F5',
     glowWashTop: '#f9e3ec',
-    headerText: '#fafafa',
-    headerTextSecondary: 'rgba(250, 250, 250, 0.65)',
     icon: '#727272',
   },
 };
@@ -147,6 +141,17 @@ export const panelShadow = {
   shadowOpacity: 0.3,
   shadowRadius: 8,
   elevation: 3,
+};
+
+// The deep drop used by centered popup cards (CurrencyPicker, OptionPicker,
+// CreateGroup) — heavier than panelShadow because these float over a dimmed
+// backdrop rather than sitting in the page.
+export const popupShadow = {
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.25,
+  shadowRadius: 16,
+  elevation: 8,
 };
 
 const ThemeContext = createContext({ themeName: 'neutral', colors: THEMES.neutral });

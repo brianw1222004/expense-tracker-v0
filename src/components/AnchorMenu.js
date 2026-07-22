@@ -42,7 +42,7 @@ export default function AnchorMenu({ visible, anchor, options = [], value, value
 
   return (
     <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
       {/* Shadow on the wrapper, overflow:'hidden' on the inner card so the
           edge-to-edge row highlights + hairlines clip to the rounded corners
           without suppressing the iOS shadow. */}
@@ -84,6 +84,11 @@ export default function AnchorMenu({ visible, anchor, options = [], value, value
 
 const createStyles = (colors) =>
   StyleSheet.create({
+    // A whisper of dim so a first-time user reads the rest of the screen as a
+    // dismiss target, without the heavy scrim of a full modal.
+    backdrop: {
+      backgroundColor: 'rgba(0, 0, 0, 0.04)',
+    },
     menuWrap: {
       position: 'absolute',
       backgroundColor: colors.background,

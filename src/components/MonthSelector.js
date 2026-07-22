@@ -20,7 +20,7 @@ export default function MonthSelector({ monthKey, currentMonthKey, onShift, styl
     <View style={[styles.row, style]}>
       <Pressable
         onPress={() => onShift(-1)}
-        hitSlop={10}
+        hitSlop={13}
         accessibilityRole="button"
         accessibilityLabel={t('add.prevMonth')}
       >
@@ -30,7 +30,7 @@ export default function MonthSelector({ monthKey, currentMonthKey, onShift, styl
       <Pressable
         onPress={() => onShift(1)}
         disabled={!canGoNext}
-        hitSlop={10}
+        hitSlop={13}
         accessibilityRole="button"
         accessibilityLabel={t('add.nextMonth')}
         style={!canGoNext ? styles.disabled : undefined}

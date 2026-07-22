@@ -15,14 +15,11 @@ describe('deriveViewData()', () => {
   it('returns zeroed aggregates for no expenses', () => {
     const v = deriveViewData([], 'USD', 'en', [], NOW);
     expect(v.monthTotal).toBe(0);
-    expect(v.todayTotal).toBe(0);
     expect(v.lastMonthTotal).toBe(0);
-    expect(v.monthCount).toBe(0);
     expect(v.sections).toEqual([]);
     expect(v.months).toEqual([]);
     expect(v.dailyTotals).toHaveLength(30); // June
     expect(v.dailyTotals.every((n) => n === 0)).toBe(true);
-    expect(v.avgPerDay).toBe(0); // 0 / 15
     expect(v.hasSpending).toBe(false);
   });
 
@@ -34,19 +31,18 @@ describe('deriveViewData()', () => {
     const v = deriveViewData(expenses, 'USD', 'en', [], NOW);
     const expected = convert(100, 'USD', 'USD') + convert(100, 'EUR', 'USD');
     expect(v.monthTotal).toBeCloseTo(expected, 6);
-    expect(v.monthCount).toBe(2);
     expect(v.totalsByCategory.food).toBeCloseTo(expected, 6);
-    expect(v.avgPerDay).toBeCloseTo(expected / 15, 6);
     expect(v.hasSpending).toBe(true);
   });
 
-  it('buckets today separately from earlier this month', () => {
+  it('buckets each day separately in dailyTotals', () => {
     const expenses = [
       make('today', 50, 'USD', 'food', ts(2026, 5, 15)),
       make('earlier', 20, 'USD', 'food', ts(2026, 5, 3)),
     ];
     const v = deriveViewData(expenses, 'USD', 'en', [], NOW);
-    expect(v.todayTotal).toBe(50);
+    expect(v.dailyTotals[14]).toBe(50); // today = June 15, indexed day-1
+    expect(v.dailyTotals[2]).toBe(20); // earlier = June 3
     expect(v.monthTotal).toBe(70);
   });
 
@@ -169,16 +165,6 @@ describe('deriveViewData() extraSpending arg', () => {
     expect(v.monthTotal).toBeCloseTo(70, 5);
   });
 
-  it('monthCount counts only direct expenses, not extraSpending', () => {
-    const expenses = [make('e1', 30, 'USD', 'food', ts(2026, 5, 10))];
-    const extra = [
-      splitItem('b1', 40, 'USD', 'food', ts(2026, 5, 10)),
-      splitItem('b2', 20, 'USD', 'food', ts(2026, 5, 11)),
-    ];
-    const v = deriveViewData(expenses, 'USD', 'en', [], NOW, extra);
-    expect(v.monthCount).toBe(1); // only the direct expense counts
-  });
-
   it('extraSpending outside current month does not affect monthTotal', () => {
     // Item is in May (previous month)
     const extra = [splitItem('b1', 50, 'USD', 'food', ts(2026, 4, 10))];
@@ -207,13 +193,12 @@ describe('deriveViewData() extraSpending arg', () => {
     const v1 = deriveViewData(expenses, 'USD', 'en', [], NOW);
     const v2 = deriveViewData(expenses, 'USD', 'en', [], NOW, []);
     expect(v1.monthTotal).toBeCloseTo(v2.monthTotal, 10);
-    expect(v1.monthCount).toBe(v2.monthCount);
     expect(v1.sections).toHaveLength(v2.sections.length);
   });
 
-  it('todayTotal includes extraSpending for today', () => {
+  it('extraSpending for today folds into dailyTotals', () => {
     const extra = [splitItem('b1', 35, 'USD', 'food', ts(2026, 5, 15))]; // today = June 15
     const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
-    expect(v.todayTotal).toBeCloseTo(35, 5);
+    expect(v.dailyTotals[14]).toBeCloseTo(35, 5); // June 15, indexed day-1
   });
 });

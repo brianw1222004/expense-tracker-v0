@@ -46,10 +46,8 @@ import ChevronRightIcon from '@hugeicons/core-free-icons/ChevronRightIcon';
 import ChevronDownIcon from '@hugeicons/core-free-icons/ChevronDownIcon';
 import CircleDashedIcon from '@hugeicons/core-free-icons/CircleDashedIcon';
 import Settings01Icon from '@hugeicons/core-free-icons/Settings01Icon';
-import Calendar01Icon from '@hugeicons/core-free-icons/Calendar01Icon';
 import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import PlusSignIcon from '@hugeicons/core-free-icons/PlusSignIcon';
-import Search01Icon from '@hugeicons/core-free-icons/Search01Icon';
 import Analytics01Icon from '@hugeicons/core-free-icons/Analytics01Icon';
 // Payment-method icons (for split-bill payment methods, mirroring categories).
 import Cash01Icon from '@hugeicons/core-free-icons/Cash01Icon';
@@ -83,7 +81,6 @@ const REGISTRY = {
   'sparkles': SparklesIcon,
 
   'receipt-text': ReceiptTextIcon,
-  'grid-view': GridViewIcon,
   'user-circle': UserCircleIcon,
   'wallet-01': Wallet01Icon,
 
@@ -119,10 +116,8 @@ const REGISTRY = {
   'chevron-down': ChevronDownIcon,
   'circle-dashed': CircleDashedIcon,
   'settings-01': Settings01Icon,
-  'calendar-01': Calendar01Icon,
   'user-group': UserGroupIcon,
   'plus-sign': PlusSignIcon,
-  'search-01': Search01Icon,
   'analytics-01': Analytics01Icon,
 
   'cash-01': Cash01Icon,

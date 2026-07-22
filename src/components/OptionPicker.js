@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { fonts, radius, spacing, useTheme } from '../theme';
+import { fonts, popupShadow, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { HIcon } from '../icons';
 
@@ -91,11 +91,7 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
       paddingBottom: spacing.sm,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.25,
-      shadowRadius: 16,
-      elevation: 8,
+      ...popupShadow,
     },
     headerRow: {
       flexDirection: 'row',

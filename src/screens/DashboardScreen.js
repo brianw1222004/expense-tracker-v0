@@ -1,17 +1,25 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CategorySummaryCard from '../components/CategorySummaryCard';
 import EmptyState from '../components/EmptyState';
+import EntryModeToggle from '../components/EntryModeToggle';
 import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import SpendingChart from '../components/SpendingChart';
 import { HIcon } from '../icons';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
-import { useT } from '../i18n';
-import { formatMoney, formatMoneyShort } from '../format';
+import { useT, useLanguage, getDateNames } from '../i18n';
+import { formatMoney, formatMoneyShort, shiftMonthKey } from '../format';
+
+// The hero chart's granularity toggle: the selected month's per-day line
+// (default) vs. the cross-month trend of the last six months' totals.
+const CHART_MODES = [
+  { id: 'daily', labelKey: 'dash.chartDaily' },
+  { id: 'monthly', labelKey: 'dash.chartMonthly' },
+];
 
 export default function DashboardScreen({
   loaded,
@@ -37,6 +45,24 @@ export default function DashboardScreen({
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isCurrentMonth = monthKey === currentMonthKey;
+  const [chartMode, setChartMode] = useState('daily');
+  const language = useLanguage();
+
+  // The chart's Monthly series: the last six months ending at the selected
+  // month, zero-filled where there's no data. Labels are the language's month
+  // names, truncated to 3 chars for the latin scripts (CJK are already short).
+  const monthlyTotals = useMemo(() => {
+    const totalByKey = new Map((categoryMonths ?? []).map((m) => [m.key, m.total]));
+    const names = getDateNames(language).months;
+    const out = [];
+    let key = monthKey;
+    for (let i = 0; i < 6; i++) {
+      const name = names[Number(key.slice(5, 7)) - 1];
+      out.unshift({ label: name.length > 4 ? name.slice(0, 3) : name, value: totalByKey.get(key) ?? 0 });
+      key = shiftMonthKey(key, -1);
+    }
+    return out;
+  }, [categoryMonths, monthKey, language]);
 
   const delta = monthTotal - (lastMonthTotal ?? 0);
   const hasLastMonth = (lastMonthTotal ?? 0) > 0;
@@ -65,9 +91,20 @@ export default function DashboardScreen({
         style={styles.monthSelector}
       />
 
-      {/* Monthly Spending — total, month-over-month delta, trend chart. */}
+      {/* Monthly Spending — total, month-over-month delta, trend chart with a
+          Daily/Monthly granularity toggle in the heading row. */}
       <View style={styles.spendCard}>
-        <Text style={[styles.sectionHeading, styles.spendHeading]}>{t('dash.monthlySpending')}</Text>
+        <View style={styles.spendHeader}>
+          <Text style={styles.sectionHeading} numberOfLines={1}>{t('dash.monthlySpending')}</Text>
+          {hasExpenses && dailyTotals && (
+            <EntryModeToggle
+              compact
+              options={CHART_MODES}
+              value={chartMode}
+              onChange={setChartMode}
+            />
+          )}
+        </View>
 
         <View style={styles.heroNumberRow}>
           <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
@@ -84,6 +121,8 @@ export default function DashboardScreen({
               dailyTotals={dailyTotals}
               displayCurrency={displayCurrency}
               endDay={isCurrentMonth ? undefined : dailyTotals.length}
+              mode={chartMode}
+              monthlyTotals={monthlyTotals}
             />
           </View>
         )}
@@ -223,7 +262,11 @@ const createStyles = (colors) =>
       letterSpacing: 0.2,
       flexShrink: 1,
     },
-    spendHeading: {
+    spendHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
       marginBottom: spacing.sm,
     },
     heroNumberRow: {

@@ -55,6 +55,13 @@ export default function AuthScreen() {
       setError(t('auth.missingFields'));
       return;
     }
+    // Catch obvious typos before a round-trip (Supabase would reject them with a
+    // generic message; this is clearer and instant). Deliberately permissive —
+    // just "something@something.something", no attempt to fully RFC-validate.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError(t('auth.invalidEmail'));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {

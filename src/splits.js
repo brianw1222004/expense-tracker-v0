@@ -1,7 +1,7 @@
 // Split-bills domain — groups, shared bills, and the balance math. Bills and
 // groups SYNC to Supabase via two separate lanes (`groups` and `split_expenses`
-// tables, queue keys `${userId}::groups` / `${userId}::splits`), tolerant pulls
-// like income; the AsyncStorage cache is just the offline-first local copy. "you"
+// tables, queue keys `${userId}::groups` / `${userId}::splits`) with tolerant
+// pulls; the AsyncStorage cache is just the offline-first local copy. "you"
 // (the YOU sentinel) is the implicit owner of every group; `members` are the
 // OTHER people, stored as typed names — this is a personal ledger of who owes
 // whom, Splitwise-style. Bill amounts live in the bill's ENTRY currency and are
@@ -49,6 +49,25 @@ export const PAYMENT_METHODS = [
 // the unknown-id fallback, so every caller can always read a color/icon.
 export const DEFAULT_METHOD_COLOR = '#8A9AA8';
 export const DEFAULT_METHOD_ICON = 'wallet-01';
+// The fallback method id — every "unknown/unset payment method" path resolves
+// to this. Import it instead of hand-typing 'cash' so the sites can't drift.
+export const DEFAULT_PAYMENT_METHOD_ID = 'cash';
+
+// Per-person avatar palette (soft mid-tones in the payment-method color
+// family). A member's color is a stable hash of their id so it never shifts
+// as the group is edited. YOU is deliberately not mapped here — screens
+// render the owner in the theme accent so "you" reads as the app's identity.
+export const MEMBER_COLORS = [
+  '#5B7FC4', '#4F9D8F', '#C28A4E', '#9B7FC0',
+  '#C4707E', '#6BA05E', '#4E97C2', '#C46B5B',
+];
+
+export function memberColor(id) {
+  const s = String(id ?? '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return MEMBER_COLORS[h % MEMBER_COLORS.length];
+}
 
 // Curated hugeicon set for the "add payment method" picker (all registered in
 // icons.js — 14 fit one page, mirroring categories' EMOJI_OPTIONS).
@@ -289,6 +308,44 @@ export function removeMemberFromBill(bill, memberId, strategy = 'unassign') {
   const shares = {};
   restIds.forEach((id, i) => { shares[id] = unitShares[i] / factor; });
   return { ...base, mode: 'custom', shares };
+}
+
+// Your position on one bill, in the bill's currency:
+//  - 'lent'     → you paid; `amount` is what the others owe you (the rest).
+//  - 'self'     → you paid but only for your own share.
+//  - 'borrowed' → someone else paid; `amount` is your share of it.
+//  - 'none'     → you're not part of this bill.
+// Shares sum exactly to the bill by construction; rounding just shaves float
+// noise off the subtraction.
+export function yourBillPosition(bill) {
+  const yourShare = bill.shares?.[YOU] || 0;
+  const factor = 10 ** getCurrency(bill.currency).decimals;
+  const lent = Math.round((bill.amount - yourShare) * factor) / factor;
+  if (bill.paidBy === YOU) {
+    return lent > 0 ? { kind: 'lent', amount: lent } : { kind: 'self', amount: yourShare };
+  }
+  return yourShare > 0 ? { kind: 'borrowed', amount: yourShare } : { kind: 'none', amount: 0 };
+}
+
+// The toned caption for a bill's preview/list row (you-lent / you-borrowed /
+// your-share / not-involved), shared by the Split tab's group cards and the
+// group sheet's bill list. Kept in the domain layer but presentation-free: the
+// formatter, translator, and palette are injected, so `formatAmount` is either
+// formatMoney or formatMoneyShort depending on the caller's density.
+export function billPositionCaption(bill, { formatAmount, t, colors }) {
+  const pos = yourBillPosition(bill);
+  const tone =
+    pos.kind === 'lent' ? colors.success : pos.kind === 'borrowed' ? colors.danger : colors.textMuted;
+  const amount = formatAmount(pos.amount, bill.currency);
+  const text =
+    pos.kind === 'lent'
+      ? t('split.youLent', { amount })
+      : pos.kind === 'borrowed'
+      ? t('split.youBorrowed', { amount })
+      : pos.kind === 'self'
+      ? t('split.yourShareShort', { amount })
+      : t('split.notInvolved');
+  return { pos, tone, text };
 }
 
 // A bill's undistributed residual (amount minus the sum of its shares) in the

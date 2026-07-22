@@ -5,6 +5,7 @@ import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT } from '../i18n';
 import { formatMoneyShort } from '../format';
 import { getCategoryLabel } from '../categories';
+import { budgetZoneTone } from '../budget';
 import { HIcon } from '../icons';
 
 const DONUT_SIZE = 132;
@@ -187,8 +188,7 @@ function TopCategoryRow({ seg, total, budget, displayCurrency, colors, styles, t
   const hasBudget = budget > 0;
   const ratio = hasBudget ? seg.value / budget : seg.value / total;
   const fillPct = Math.min(ratio * 100, 100);
-  const tone =
-    hasBudget && ratio > 1 ? colors.danger : hasBudget && ratio >= 0.85 ? colors.warning : colors.success;
+  const tone = budgetZoneTone(ratio, hasBudget, colors);
   return (
     <View style={styles.statRow}>
       <View style={[styles.statIconBox, { backgroundColor: `${seg.category.color}1A` }]}>

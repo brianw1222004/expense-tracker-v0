@@ -1,6 +1,7 @@
 const {
   budgetAmountPercent,
   budgetAmountToRatio,
+  budgetZoneTone,
   clampBudgetRatio,
   clampCategoryBudgetAmount,
   fitAllocatedBudgetsToOverall,
@@ -98,5 +99,33 @@ describe('budget slider helpers', () => {
     const budgets = { food: 300, transport: 200, bills: 1200 };
     expect(fitAllocatedBudgetsToOverall(budgets, ['food', 'transport'], 0, 2)).toEqual(budgets);
     expect(fitAllocatedBudgetsToOverall(budgets, ['food', 'transport'], 700, 2)).toEqual(budgets);
+  });
+});
+
+describe('budgetZoneTone', () => {
+  const colors = { success: 'green', warning: 'orange', danger: 'red' };
+
+  test('an unbudgeted category is always green (no limit to breach)', () => {
+    expect(budgetZoneTone(0, false, colors)).toBe('green');
+    // The ratio is ignored when hasBudget is false (it's share-of-total there).
+    expect(budgetZoneTone(0.95, false, colors)).toBe('green');
+    expect(budgetZoneTone(5, false, colors)).toBe('green');
+  });
+
+  test('green under 85% of budget', () => {
+    expect(budgetZoneTone(0, true, colors)).toBe('green');
+    expect(budgetZoneTone(0.5, true, colors)).toBe('green');
+    expect(budgetZoneTone(0.8499, true, colors)).toBe('green');
+  });
+
+  test('orange from 85% through exactly 100%', () => {
+    expect(budgetZoneTone(0.85, true, colors)).toBe('orange');
+    expect(budgetZoneTone(0.99, true, colors)).toBe('orange');
+    expect(budgetZoneTone(1, true, colors)).toBe('orange');
+  });
+
+  test('red once over budget (ratio > 1)', () => {
+    expect(budgetZoneTone(1.0001, true, colors)).toBe('red');
+    expect(budgetZoneTone(2, true, colors)).toBe('red');
   });
 });

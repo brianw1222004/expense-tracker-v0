@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_CURRENCY } from './currency';
+import { DEFAULT_PAYMENT_METHOD_ID } from './splits';
 
 const STORAGE_KEY = '@expense-tracker/expenses';
-const INCOME_KEY = '@expense-tracker/income';
 const SETTINGS_KEY = '@expense-tracker/settings';
 const GROUPS_KEY = '@expense-tracker/groups';
 const SPLITS_KEY = '@expense-tracker/splits';
@@ -56,33 +56,6 @@ export async function saveExpenses(userId, expenses) {
     await AsyncStorage.setItem(scopedKey(STORAGE_KEY, userId), JSON.stringify(expenses));
   } catch {
     // Persistence is best-effort in this demo; in-memory state stays correct.
-  }
-}
-
-// Income entries mirror expenses: client-generated ids, amount in the ENTRY
-// currency, createdAt epoch-ms, plus a `source` and optional `note`.
-export async function loadIncome(userId) {
-  try {
-    const raw = await AsyncStorage.getItem(scopedKey(INCOME_KEY, userId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((e) => ({
-      ...e,
-      currency: e.currency || DEFAULT_CURRENCY,
-      source: e.source || 'other',
-      note: e.note ?? '',
-    }));
-  } catch {
-    return [];
-  }
-}
-
-export async function saveIncome(userId, income) {
-  try {
-    await AsyncStorage.setItem(scopedKey(INCOME_KEY, userId), JSON.stringify(income));
-  } catch {
-    // Best-effort, same as expenses.
   }
 }
 
@@ -141,7 +114,7 @@ export async function loadGroups(userId) {
     return parsed.map((g) => ({
       ...g,
       currency: g.currency || DEFAULT_CURRENCY,
-      paymentMethod: g.paymentMethod || 'cash',
+      paymentMethod: g.paymentMethod || DEFAULT_PAYMENT_METHOD_ID,
       members: Array.isArray(g.members) ? g.members : [],
     }));
   } catch {
@@ -177,16 +150,17 @@ export async function saveSplitExpenses(userId, splits) {
   }
 }
 
-// Legacy key from the retired category drag-reorder feature — kept only so
-// clearUserStorage still wipes it from old installs.
+// Legacy keys from retired features (category drag-reorder, income tracking) —
+// kept only so clearUserStorage still wipes them from old installs.
 const CATEGORY_ORDER_KEY = '@expense-tracker/category-order';
+const LEGACY_INCOME_KEY = '@expense-tracker/income';
 
 // Wipe every cached key for one user (used by "delete account"). Best-effort,
 // like the rest of this layer — in-memory state is reset separately by the caller.
 export async function clearUserStorage(userId) {
   const keys = [
     STORAGE_KEY,
-    INCOME_KEY,
+    LEGACY_INCOME_KEY,
     SETTINGS_KEY,
     GROUPS_KEY,
     SPLITS_KEY,
