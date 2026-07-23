@@ -4,28 +4,41 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
-import { fonts, spacing, radius, useTheme, ACCOUNT_FAB_SIZE, cardShadow } from '../theme';
+import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT, useLanguage } from '../i18n';
 import { formatMoney, formatMoneyShort, shiftMonthKey, dayLabel } from '../format';
 import { convert } from '../currency';
-import { groupNet, billsForGroup, nameFor, getPaymentMethodLabel, getPaymentMethodColor, getGroupIcon, YOU } from '../splits';
+import { getCategory } from '../categories';
+import {
+  groupNet,
+  billsForGroup,
+  nameFor,
+  getPaymentMethodLabel,
+  getPaymentMethodColor,
+  getGroupIcon,
+  memberColor,
+  billPositionCaption,
+  YOU,
+} from '../splits';
 import { HIcon } from '../icons';
 
 // The Split Bills tab: an overall owed/owe summary, then a stack of full-width
-// group widget cards — the left half is the group identity (avatar, name,
-// members · method, net balance), the right half previews the group's most
-// recent bills, each card tinted to its payment-method color with a deeper
-// colored left edge (the expense-row treatment). Tapping a card opens the group's
-// detail sheet; the "+" opens the create-group sheet. Net balances are shown in
-// the DISPLAY currency (each group's net is converted from its own currency) so
-// the summary and the cards agree; per-member balances stay in the GROUP
-// currency, matching the group sheet they preview.
+// group widget cards mirroring the group sheet's hero — a header row (method-
+// tinted group icon, name, members · method, avatar stack), the group's
+// all-time total spent with a toned net line, then icon-badged recent-bill
+// preview rows on a nested surface — each card tinted to its payment-method
+// color with a deeper colored left edge (the expense-row treatment). Tapping a
+// card opens the group's detail sheet; the "+" opens the create-group sheet.
+// The card's total and net are shown in the DISPLAY currency (converted from
+// the group's own currency) so the summary and the cards agree; per-member
+// balances stay in the GROUP currency, matching the group sheet they preview.
 export default function SplitBillsScreen({
   groups,
   splitExpenses,
   displayCurrency,
   summary,
   currentMonthKey,
+  customCategories,
   customPaymentMethods,
   onOpenGroup,
   onCreateGroup,
@@ -51,9 +64,7 @@ export default function SplitBillsScreen({
       contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + TAB_BAR_HEIGHT + insets.bottom }]}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.titleRow}>
-        <Text style={styles.title} numberOfLines={1}>{t('split.title')}</Text>
-      </View>
+      <Text style={styles.title} numberOfLines={1}>{t('split.title')}</Text>
 
       <MonthSelector
         monthKey={monthKey}
@@ -63,7 +74,7 @@ export default function SplitBillsScreen({
       />
 
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryLabel}>{t('split.netBalance')}</Text>
+        <Text style={styles.summaryTitle} numberOfLines={1}>{t('split.netBalance')}</Text>
         <Text
           style={[
             styles.summaryNet,
@@ -84,20 +95,38 @@ export default function SplitBillsScreen({
             : t('split.allSettled')}
         </Text>
 
-        <View style={styles.summarySplitRow}>
-          <View style={styles.summaryCol}>
-            <Text style={styles.summaryColLabel}>{t('split.owedToYou')}</Text>
-            <Text style={[styles.summaryColValue, { color: colors.success }]} numberOfLines={1}>
-              {formatMoney(summary.owed, displayCurrency)}
-            </Text>
+        {(summary.owed > 0 || summary.owe > 0) && (
+          <View style={styles.summaryBar}>
+            {summary.owed > 0 && (
+              <View style={[styles.summaryBarSeg, { flex: summary.owed, backgroundColor: colors.success }]} />
+            )}
+            {summary.owe > 0 && (
+              <View style={[styles.summaryBarSeg, { flex: summary.owe, backgroundColor: colors.danger }]} />
+            )}
           </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryCol}>
-            <Text style={styles.summaryColLabel}>{t('split.youOwe')}</Text>
-            <Text style={[styles.summaryColValue, { color: colors.danger }]} numberOfLines={1}>
-              {formatMoney(summary.owe, displayCurrency)}
-            </Text>
-          </View>
+        )}
+
+        <View style={styles.summaryTileRow}>
+          <SummaryTile
+            label={t('split.owedToYou')}
+            amount={summary.owed}
+            count={summary.owedCount}
+            tone={colors.success}
+            icon="money-receive-square"
+            displayCurrency={displayCurrency}
+            styles={styles}
+            t={t}
+          />
+          <SummaryTile
+            label={t('split.youOwe')}
+            amount={summary.owe}
+            count={summary.oweCount}
+            tone={colors.danger}
+            icon="money-send-square"
+            displayCurrency={displayCurrency}
+            styles={styles}
+            t={t}
+          />
         </View>
       </View>
 
@@ -122,6 +151,7 @@ export default function SplitBillsScreen({
               group={group}
               splitExpenses={splitExpenses}
               displayCurrency={displayCurrency}
+              customCategories={customCategories}
               customPaymentMethods={customPaymentMethods}
               onOpenGroup={onOpenGroup}
               styles={styles}
@@ -149,10 +179,32 @@ export default function SplitBillsScreen({
   );
 }
 
+// One tinted half of the summary card: toned amount over its label and a
+// person-count caption (same caption rule as the Dashboard split widget), with
+// a toned icon chip on the right. Tone wash + chip colors come inline.
+function SummaryTile({ label, amount, count, tone, icon, displayCurrency, styles, t }) {
+  const caption =
+    count <= 0 ? t('split.noDebts') : count === 1 ? t('split.personOne') : t('split.personCount', { n: count });
+  return (
+    <View style={[styles.summaryTile, { backgroundColor: `${tone}12` }]}>
+      <View style={styles.summaryTileText}>
+        <Text style={[styles.summaryTileValue, { color: tone }]} numberOfLines={1}>
+          {formatMoneyShort(amount, displayCurrency)}
+        </Text>
+        <Text style={styles.summaryTileLabel} numberOfLines={1}>{label}</Text>
+        <Text style={styles.summaryTileCaption} numberOfLines={1}>{caption}</Text>
+      </View>
+      <View style={[styles.summaryTileChip, { backgroundColor: `${tone}1F` }]}>
+        <HIcon name={icon} size={18} color={tone} strokeWidth={1.8} />
+      </View>
+    </View>
+  );
+}
+
 // How many bill tiles a card previews before collapsing into "+N more".
 const MAX_CARD_BILLS = 2;
 
-const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayCurrency, customPaymentMethods, onOpenGroup, styles, colors, t }) {
+const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayCurrency, customCategories, customPaymentMethods, onOpenGroup, styles, colors, t }) {
   const language = useLanguage();
   const handlePress = useCallback(() => onOpenGroup(group.id), [onOpenGroup, group.id]);
   const net = convert(groupNet(group, splitExpenses), group.currency, displayCurrency);
@@ -165,6 +217,12 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
     () => billsForGroup(group.id, splitExpenses).filter((b) => !b.settlement).sort((a, b) => b.createdAt - a.createdAt),
     [group.id, splitExpenses]
   );
+  // The group-sheet hero's figure, converted to the display currency so it
+  // agrees with the net line under it (and the summary card above).
+  const totalSpent = useMemo(
+    () => bills.reduce((sum, b) => sum + convert(b.amount, b.currency, displayCurrency), 0),
+    [bills, displayCurrency]
+  );
   const balanceText =
     net > 0
       ? t('split.owesYouShort', { amount: formatMoney(net, displayCurrency) })
@@ -174,6 +232,12 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
 
   const shownBills = bills.slice(0, MAX_CARD_BILLS);
   const extraBills = bills.length - shownBills.length;
+  const stackPeople = [
+    { id: YOU, name: t('split.you'), color: colors.accent },
+    ...group.members.map((m) => ({ id: m.id, name: m.name, color: memberColor(m.id) })),
+  ];
+  const shownStack = stackPeople.slice(0, 5);
+  const stackOverflow = stackPeople.length - shownStack.length;
 
   return (
     <Pressable
@@ -185,52 +249,84 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
         pressed && styles.groupTilePressed,
       ]}
     >
-      <View style={styles.groupLeft}>
+      <View style={styles.groupHeaderRow}>
         <View style={[styles.groupIcon, { backgroundColor: `${pmColor}26` }]}>
-          <HIcon name={getGroupIcon(group.icon)} size={24} color={pmColor} />
+          <HIcon name={getGroupIcon(group.icon)} size={22} color={pmColor} />
         </View>
-        <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
-        <Text style={styles.groupMeta} numberOfLines={1}>
-          {t('split.memberCount', { count: group.members.length })} · {getPaymentMethodLabel(group.paymentMethod, t, customPaymentMethods)}
-        </Text>
+        <View style={styles.groupHeaderText}>
+          <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
+          <Text style={styles.groupMeta} numberOfLines={1}>
+            {group.members.length === 1 ? t('split.memberOne') : t('split.memberCount', { count: group.members.length })} · {getPaymentMethodLabel(group.paymentMethod, t, customPaymentMethods)}
+          </Text>
+        </View>
+        <View style={styles.avatarStack}>
+          {shownStack.map((p, i) => (
+            <View
+              key={p.id}
+              style={[styles.stackAvatar, { backgroundColor: p.color }, i > 0 && styles.stackOverlap]}
+            >
+              <Text style={styles.stackAvatarText}>{(p.name || '?').slice(0, 1).toUpperCase()}</Text>
+            </View>
+          ))}
+          {stackOverflow > 0 && (
+            <View style={[styles.stackAvatar, styles.stackAvatarMore, styles.stackOverlap]}>
+              <Text style={styles.stackAvatarMoreText}>+{stackOverflow}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      <Text style={styles.groupTotalLabel}>{t('split.totalSpent')}</Text>
+      <Text style={styles.groupTotal} numberOfLines={1} adjustsFontSizeToFit>
+        {formatMoney(totalSpent, displayCurrency)}
+      </Text>
+      <View style={styles.groupNetRow}>
+        <View style={[styles.groupNetDot, { backgroundColor: tone }]} />
         <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>{balanceText}</Text>
       </View>
-      <View style={styles.groupBillsCol}>
-        {shownBills.length === 0 ? (
-          <Text style={styles.groupBillEmpty}>{t('split.noBills')}</Text>
-        ) : (
-          <>
-            {shownBills.map((bill) => {
-              const yourShare = bill.shares?.[YOU] || 0;
-              return (
-                <View key={bill.id} style={styles.groupBillTile}>
-                  <View style={styles.groupBillLine}>
-                    <Text style={styles.groupBillName} numberOfLines={1}>
-                      {bill.description || t('split.bill')}
-                    </Text>
-                    <Text style={styles.groupBillAmount} numberOfLines={1}>
-                      {formatMoneyShort(bill.amount, bill.currency)}
-                    </Text>
-                  </View>
-                  <View style={styles.groupBillLine}>
-                    <Text style={styles.groupBillMeta} numberOfLines={1}>
-                      {t('split.paidByName', { name: nameFor(bill.paidBy, group, t) })} · {dayLabel(bill.createdAt, language)}
-                    </Text>
-                    {yourShare > 0 && (
-                      <Text style={styles.groupBillShare} numberOfLines={1}>
-                        {t('split.yourShareShort', { amount: formatMoneyShort(yourShare, bill.currency) })}
-                      </Text>
-                    )}
-                  </View>
+
+      {shownBills.length === 0 ? (
+        <Text style={styles.groupBillEmpty}>{t('split.noBills')}</Text>
+      ) : (
+        <View style={styles.groupBillPanel}>
+          {shownBills.map((bill, i) => {
+            const cat = getCategory(bill.category, customCategories);
+            const { tone: posTone, text: posText } = billPositionCaption(bill, {
+              formatAmount: formatMoneyShort,
+              t,
+              colors,
+            });
+            // The card total is in the display currency; a bill logged in a
+            // different currency gets its ISO code so its native amount can't
+            // be misread against that converted total.
+            const foreignCurrency = bill.currency !== displayCurrency;
+            return (
+              <View key={bill.id} style={[styles.groupBillRow, i > 0 && styles.groupBillDivider]}>
+                <View style={[styles.groupBillIcon, { backgroundColor: `${cat.color}1F` }]}>
+                  <HIcon name={cat.emoji} size={14} color={cat.color} strokeWidth={1.8} />
                 </View>
-              );
-            })}
-            {extraBills > 0 && (
-              <Text style={styles.groupBillMore}>{t('split.moreMembers', { count: extraBills })}</Text>
-            )}
-          </>
-        )}
-      </View>
+                <View style={styles.groupBillInfo}>
+                  <Text style={styles.groupBillName} numberOfLines={1}>
+                    {bill.description || t('split.bill')}
+                  </Text>
+                  <Text style={styles.groupBillMeta} numberOfLines={1}>
+                    {t('split.paidByName', { name: nameFor(bill.paidBy, group, t) })} · {dayLabel(bill.createdAt, language)}
+                  </Text>
+                </View>
+                <View style={styles.groupBillRight}>
+                  <Text style={styles.groupBillAmount} numberOfLines={1}>
+                    {formatMoneyShort(bill.amount, bill.currency)}{foreignCurrency ? ` ${bill.currency}` : ''}
+                  </Text>
+                  <Text style={[styles.groupBillShare, { color: posTone }]} numberOfLines={1}>{posText}</Text>
+                </View>
+              </View>
+            );
+          })}
+          {extraBills > 0 && (
+            <Text style={styles.groupBillMore}>{t('split.moreMembers', { count: extraBills })}</Text>
+          )}
+        </View>
+      )}
     </Pressable>
   );
 });
@@ -250,79 +346,101 @@ const createStyles = (colors) =>
       // paddingBottom is set inline (needs the safe-area inset).
       flexGrow: 1,
     },
-    titleRow: {
-      minHeight: ACCOUNT_FAB_SIZE,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: spacing.sm,
-      marginBottom: spacing.xs,
-      marginHorizontal: spacing.md,
-      // Symmetric horizontal padding (clears the top-left account FAB) so the
-      // title reads visually centered on screen.
-      paddingHorizontal: ACCOUNT_FAB_SIZE,
-    },
+    // Same title treatment as the Dashboard page (the reference for the
+    // title → month selector → first card rhythm on every tab).
     title: {
       color: colors.textPrimary,
+      fontSize: 26,
       fontFamily: fonts.bold,
-      fontSize: 22,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
       textAlign: 'center',
     },
     monthSelector: {
       marginBottom: spacing.md,
     },
+    // Mirrors the Insight Budget card: same card chrome, a left-aligned bold
+    // card title, then the centered hero + bar + tiles body.
     summaryCard: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
-      padding: spacing.lg,
+      padding: spacing.md,
       ...cardShadow,
     },
-    summaryLabel: {
-      color: colors.textMuted,
-      fontFamily: fonts.medium,
-      fontSize: 12,
-      letterSpacing: 0.2,
+    summaryTitle: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 15,
+      marginBottom: spacing.sm,
     },
     summaryNet: {
       fontFamily: fonts.numBold,
-      fontSize: 36,
+      fontSize: 30,
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.5,
       marginTop: spacing.xs,
+      textAlign: 'center',
     },
     summaryCaption: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
-      fontSize: 13,
-      marginTop: 2,
+      fontSize: 12,
+      marginTop: 1,
+      textAlign: 'center',
     },
-    summarySplitRow: {
+    // Owed-vs-owe proportion bar: two pill segments whose flex weights are the
+    // raw amounts; minWidth keeps a lopsided side visible as a dot.
+    summaryBar: {
       flexDirection: 'row',
-      alignItems: 'center',
+      height: 6,
       marginTop: spacing.md,
-      paddingTop: spacing.md,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
+      gap: 3,
     },
-    summaryCol: {
+    summaryBarSeg: {
+      borderRadius: 3,
+      minWidth: 6,
+    },
+    summaryTileRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    summaryTile: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: spacing.xs,
+      borderRadius: radius.sm + 2,
+      padding: spacing.sm + 4,
+    },
+    summaryTileText: {
       flex: 1,
     },
-    summaryColLabel: {
-      color: colors.textMuted,
+    summaryTileValue: {
+      fontFamily: fonts.numBold,
+      fontSize: 17,
+      fontVariant: ['tabular-nums'],
+    },
+    summaryTileLabel: {
+      color: colors.textPrimary,
       fontFamily: fonts.regular,
       fontSize: 12,
-    },
-    summaryColValue: {
-      fontFamily: fonts.numBold,
-      fontSize: 18,
-      fontVariant: ['tabular-nums'],
       marginTop: 2,
     },
-    summaryDivider: {
-      width: StyleSheet.hairlineWidth,
-      alignSelf: 'stretch',
-      backgroundColor: colors.border,
-      marginHorizontal: spacing.md,
+    summaryTileCaption: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 11,
+      marginTop: 1,
+    },
+    summaryTileChip: {
+      width: 30,
+      height: 30,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     sectionRow: {
       flexDirection: 'row',
@@ -354,87 +472,157 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 13,
     },
-    // Stack of full-width group widget cards: identity on the left, nested
-    // recent-bill tiles on the right. The payment-method wash + deeper left
-    // edge come inline (per-group color).
+    // Stack of full-width group widget cards mirroring the group sheet's hero:
+    // header row (icon, name+meta, avatar stack), total + net line, then the
+    // recent-bill preview rows on a nested solid surface. The payment-method
+    // wash + deeper left edge come inline (per-group color).
     groupGrid: {
       gap: spacing.sm,
       marginHorizontal: spacing.md,
     },
     groupTile: {
-      flexDirection: 'row',
       backgroundColor: colors.card,
       borderRadius: radius.md,
       borderLeftWidth: 3,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.md,
+      padding: spacing.md,
       ...cardShadow,
     },
     groupTilePressed: {
       backgroundColor: colors.cardPressed,
     },
-    groupLeft: {
-      width: '42%',
+    groupHeaderRow: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      paddingRight: spacing.sm + 2,
+      gap: spacing.sm + 2,
     },
     groupIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: `${colors.accent}18`,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      // No base fill: the render site always overrides with the group's
+      // payment-method tint (`${pmColor}26`).
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    groupHeaderText: {
+      flex: 1,
     },
     groupName: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 15,
-      textAlign: 'center',
-      marginTop: spacing.sm,
+      fontSize: 16,
     },
     groupMeta: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
       fontSize: 12,
-      textAlign: 'center',
-      marginTop: 2,
+      marginTop: 1,
     },
-    groupBalance: {
-      fontFamily: fonts.numBold,
-      fontSize: 13,
-      fontVariant: ['tabular-nums'],
-      textAlign: 'center',
-      marginTop: spacing.sm,
-    },
-    // The bills preview: each bill is a nested surface tile (solid card color
-    // floating on the payment-method wash) — desc + total on the first line,
-    // payer · date and your share on the second.
-    groupBillsCol: {
-      flex: 1,
-      justifyContent: 'center',
-      gap: spacing.xs + 2,
-      paddingLeft: spacing.sm + 2,
-    },
-    groupBillTile: {
-      backgroundColor: colors.card,
-      borderRadius: radius.sm,
-      paddingVertical: spacing.xs + 2,
-      paddingHorizontal: spacing.sm,
-      gap: 2,
-    },
-    groupBillLine: {
+    // Overlapping people stack (you in the accent, members in their palette
+    // colors) — sized to MATCH the group sheet's hero stack so the card→sheet
+    // transition doesn't visibly resize the avatars.
+    avatarStack: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.xs,
+    },
+    stackAvatar: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      borderWidth: 2,
+      borderColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stackOverlap: {
+      marginLeft: -8,
+    },
+    stackAvatarText: {
+      color: colors.card,
+      fontFamily: fonts.bold,
+      fontSize: 10,
+    },
+    stackAvatarMore: {
+      backgroundColor: colors.cardPressed,
+    },
+    stackAvatarMoreText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.numBold,
+      fontSize: 9,
+      fontVariant: ['tabular-nums'],
+    },
+    groupTotalLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 12,
+      letterSpacing: 0.2,
+      marginTop: spacing.md,
+    },
+    groupTotal: {
+      color: colors.textPrimary,
+      fontFamily: fonts.numBold,
+      fontSize: 24,
+      fontVariant: ['tabular-nums'],
+      letterSpacing: -0.5,
+      marginTop: 2,
+    },
+    groupNetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs + 2,
+      marginTop: 2,
+    },
+    groupNetDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+    },
+    groupBalance: {
+      fontFamily: fonts.numRegular,
+      fontSize: 13,
+      fontVariant: ['tabular-nums'],
+    },
+    // The bills preview: icon-badged rows (the group sheet's bill-row format,
+    // compacted) on a solid surface floating over the payment-method wash.
+    groupBillPanel: {
+      backgroundColor: colors.card,
+      borderRadius: radius.sm + 2,
+      paddingHorizontal: spacing.sm + 2,
+      marginTop: spacing.sm + 4,
+    },
+    groupBillRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    groupBillDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    groupBillIcon: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    groupBillInfo: {
+      flex: 1,
     },
     groupBillName: {
-      flex: 1,
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 13,
+    },
+    groupBillMeta: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 11,
+      marginTop: 1,
+    },
+    groupBillRight: {
+      alignItems: 'flex-end',
     },
     groupBillAmount: {
       color: colors.textPrimary,
@@ -442,29 +630,25 @@ const createStyles = (colors) =>
       fontSize: 13,
       fontVariant: ['tabular-nums'],
     },
-    groupBillMeta: {
-      flex: 1,
-      color: colors.textMuted,
-      fontFamily: fonts.regular,
-      fontSize: 11,
-    },
     groupBillShare: {
-      color: colors.textMuted,
       fontFamily: fonts.numRegular,
       fontSize: 11,
       fontVariant: ['tabular-nums'],
+      marginTop: 1,
     },
     groupBillMore: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
       fontSize: 12,
       textAlign: 'center',
+      paddingBottom: spacing.sm,
     },
     groupBillEmpty: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
       fontSize: 12,
       lineHeight: 17,
+      marginTop: spacing.sm + 4,
     },
     empty: {
       alignItems: 'center',

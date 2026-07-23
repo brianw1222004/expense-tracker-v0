@@ -3,7 +3,7 @@
 //   coalesceGroups, coalesceSplits   — queue coalescing reducers
 //   applyGroupOps, applySplitOps     — offline-edit re-application reducers
 //
-// The pattern mirrors sync.test.js and income-sync.test.js exactly:
+// The pattern mirrors sync.test.js exactly:
 // Jest auto-injects globals; require the module directly; no Supabase calls.
 
 const {

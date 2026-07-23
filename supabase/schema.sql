@@ -20,25 +20,8 @@ create table public.expenses (
 -- The app's pull is "all of my expenses, newest first".
 create index expenses_user_created_idx on public.expenses (user_id, created_at desc);
 
--- Income entries mirror the expenses table 1:1 (client string ids, epoch-ms
--- created_at). `source` is the income category (salary/freelance/...), `note`
--- is the optional description. Balance is always derived (SUM(income) -
--- SUM(expenses)) — never stored.
-create table public.income (
-  id text not null,
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  amount numeric not null,
-  currency text not null,
-  source text not null default 'other',
-  note text not null default '',
-  created_at bigint not null, -- epoch milliseconds, same as the app's createdAt
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
-
--- The app's pull is "all of my income, newest first"; also covers the
--- (user_id, date) lookup pattern from the spec since created_at IS the entry date.
-create index income_user_created_idx on public.income (user_id, created_at desc);
+-- (The income feature was removed; existing databases can drop its table with
+--  supabase/migrate-drop-income-and-names.sql. Fresh setups never create it.)
 
 -- Split-bills groups — each user's groups are independent (personal ledger, not
 -- shared-access). Members are stored as a jsonb array of {id, name} objects
@@ -95,8 +78,6 @@ create table public.settings (
   category_order jsonb,          -- Insight grid tile order; null = spend-sorted
   custom_categories jsonb,       -- user-created categories
   custom_payment_methods jsonb,  -- user-created split-bill payment methods
-  first_name text,
-  last_name text,
   updated_at timestamptz not null default now()
 );
 
@@ -104,15 +85,11 @@ create table public.settings (
 -- touch rows whose user_id matches. The client never sends user_id; the
 -- column default (auth.uid()) fills it on insert.
 alter table public.expenses enable row level security;
-alter table public.income enable row level security;
 alter table public.groups enable row level security;
 alter table public.split_expenses enable row level security;
 alter table public.settings enable row level security;
 
 create policy "Users manage their own expenses" on public.expenses
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users manage their own income" on public.income
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "Users manage their own groups" on public.groups
@@ -128,9 +105,6 @@ create policy "Users manage their own settings" on public.settings
 create extension if not exists moddatetime schema extensions;
 
 create trigger expenses_updated_at before update on public.expenses
-  for each row execute procedure extensions.moddatetime (updated_at);
-
-create trigger income_updated_at before update on public.income
   for each row execute procedure extensions.moddatetime (updated_at);
 
 create trigger groups_updated_at before update on public.groups

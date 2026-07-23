@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { DEFAULT_CURRENCY } from './currency';
 import { DEFAULT_SETTINGS, LOCAL_USER } from './storage';
+import { DEFAULT_PAYMENT_METHOD_ID } from './splits';
 
 // Offline-first sync between the in-memory state (cached in AsyncStorage by
 // storage.js) and Supabase. Every mutation is applied to local state first and
@@ -11,28 +12,23 @@ import { DEFAULT_SETTINGS, LOCAL_USER } from './storage';
 // are never lost. Conflict policy between devices: last write to the server
 // wins, per row.
 //
-// Expenses and income use SEPARATE queues (keyed `userId` and `userId::income`)
-// so a problem on one lane — e.g. the income table not yet created — can never
-// wedge the other. The income pull is also tolerant: if it errors, the rest of
-// the sync still succeeds and the local income cache stands.
+// Expenses/settings, groups, and splits use SEPARATE queues (keyed `userId`,
+// `userId::groups`, `userId::splits`) so a problem on one lane — e.g. a table
+// not yet created — can never wedge the others. The groups/splits pulls are
+// tolerant: if one errors, the rest of the sync still succeeds and that local
+// cache stands.
 //
 // Expense/settings ops: { type:'upsert', expense } | { type:'delete', id }
 //                       | { type:'replace', expenses } | { type:'settings', settings }
-// Income ops:           { type:'upsert', income } | { type:'delete', id }
-//                       | { type:'replace', incomes }
 
 const QUEUE_KEY = '@expense-tracker/pending-ops';
 
 // In-memory queues are the source of truth once loaded; AsyncStorage mirrors
 // them so ops survive a restart. Keyed per lane (expense lane key = userId, so
-// its storage key is unchanged from before; income lane key = `${userId}::income`).
+// its storage key is unchanged from before; groups lane key = `${userId}::groups`).
 const queues = new Map();
 const queueLoads = new Map();
 const flushes = new Map();
-
-function incomeKey(userId) {
-  return `${userId}::income`;
-}
 
 function groupsKey(userId) {
   return `${userId}::groups`;
@@ -84,7 +80,9 @@ async function persistQueue(key) {
 // account recreated on another device in the meantime. Lanes are set to empty
 // rather than deleted so an in-flight ensureQueueLoaded can't resurrect old ops.
 export async function clearQueues(userId) {
-  const laneKeys = [userId, incomeKey(userId), groupsKey(userId), splitsKey(userId)];
+  // `${userId}::income` is the retired income feature's queue — kept in the
+  // wipe list so old installs' durable mirrors still get cleared.
+  const laneKeys = [userId, `${userId}::income`, groupsKey(userId), splitsKey(userId)];
   for (const key of laneKeys) {
     queues.set(key, []);
     queueLoads.delete(key);
@@ -106,20 +104,6 @@ export function coalesce(queue, op) {
     if (existing.type !== 'upsert') return true;
     if (op.type === 'upsert') return existing.expense.id !== op.expense.id;
     if (op.type === 'delete') return existing.expense.id !== op.id;
-    return true;
-  };
-  for (let i = queue.length - 1; i >= 0; i--) {
-    if (!keep(queue[i])) queue.splice(i, 1);
-  }
-}
-
-// Same coalescing for the income lane (no settings op exists there).
-export function coalesceIncome(queue, op) {
-  const keep = (existing) => {
-    if (op.type === 'replace') return false;
-    if (existing.type !== 'upsert') return true;
-    if (op.type === 'upsert') return existing.income.id !== op.income.id;
-    if (op.type === 'delete') return existing.income.id !== op.id;
     return true;
   };
   for (let i = queue.length - 1; i >= 0; i--) {
@@ -162,16 +146,6 @@ async function enqueue(userId, op) {
   flush(userId); // fire-and-forget; failures stay queued for the next trigger
 }
 
-async function enqueueIncome(userId, op) {
-  if (!canSync(userId)) return;
-  const key = incomeKey(userId);
-  const queue = await ensureQueueLoaded(key);
-  coalesceIncome(queue, op);
-  queue.push(op);
-  await persistQueue(key);
-  flushIncome(userId); // fire-and-forget
-}
-
 export function enqueueExpenseUpsert(userId, expense) {
   return enqueue(userId, { type: 'upsert', expense });
 }
@@ -199,18 +173,6 @@ export function pickSyncedSettings(settings) {
 
 export function enqueueSettingsPush(userId, settings) {
   return enqueue(userId, { type: 'settings', settings: pickSyncedSettings(settings) });
-}
-
-export function enqueueIncomeUpsert(userId, income) {
-  return enqueueIncome(userId, { type: 'upsert', income });
-}
-
-export function enqueueIncomeDelete(userId, id) {
-  return enqueueIncome(userId, { type: 'delete', id });
-}
-
-export function enqueueIncomeReplace(userId, incomes) {
-  return enqueueIncome(userId, { type: 'replace', incomes });
 }
 
 async function enqueueGroup(userId, op) {
@@ -281,28 +243,6 @@ function fromRow(row) {
   };
 }
 
-function toIncomeRow(income) {
-  return {
-    id: income.id,
-    amount: income.amount,
-    currency: income.currency,
-    source: income.source ?? 'other',
-    note: income.note ?? '',
-    created_at: income.createdAt,
-  };
-}
-
-function fromIncomeRow(row) {
-  return {
-    id: row.id,
-    amount: Number(row.amount),
-    currency: row.currency || DEFAULT_CURRENCY,
-    source: row.source || 'other',
-    note: row.note ?? '',
-    createdAt: Number(row.created_at),
-  };
-}
-
 function toSettingsRow(settings) {
   return {
     display_currency: settings.displayCurrency,
@@ -340,7 +280,7 @@ function toGroupRow(group) {
     id: group.id,
     name: group.name,
     currency: group.currency,
-    payment_method: group.paymentMethod ?? 'cash',
+    payment_method: group.paymentMethod ?? DEFAULT_PAYMENT_METHOD_ID,
     members: group.members ?? [],
     created_at: group.createdAt,
   };
@@ -351,7 +291,7 @@ function fromGroupRow(row) {
     id: row.id,
     name: row.name,
     currency: row.currency || DEFAULT_CURRENCY,
-    paymentMethod: row.payment_method || 'cash',
+    paymentMethod: row.payment_method || DEFAULT_PAYMENT_METHOD_ID,
     members: Array.isArray(row.members) ? row.members : [],
     createdAt: Number(row.created_at),
   };
@@ -401,6 +341,30 @@ function fromSplitRow(row) {
   };
 }
 
+// Replace an entire lane's server rows with `rows` (already wire-mapped),
+// scoped to this user. Atomic-by-effect: upsert the new rows FIRST, then delete
+// only the rows NOT in the new set (or all of them when the set is empty). If
+// the upsert fails nothing is deleted (old server state stands); if the delete
+// fails the new rows are already in place and the queued op simply retries.
+// Shared by the expense/groups/splits replace ops (identical except the table).
+async function replaceRows(table, rows, userId) {
+  if (rows.length > 0) {
+    const inserted = await supabase.from(table).upsert(rows);
+    if (inserted.error) throw inserted.error;
+    // Invariant: ids must contain no commas or quote characters — this
+    // string-interpolated PostgREST filter would silently corrupt otherwise.
+    // True today because generateCategoryId / Date.now().toString(36) ids are
+    // alphanumeric only; if the id charset ever changes, switch to a parameterised
+    // filter instead of building the list by hand.
+    const keepIds = rows.map((r) => `"${r.id}"`).join(',');
+    const cleared = await supabase.from(table).delete().eq('user_id', userId).not('id', 'in', `(${keepIds})`);
+    if (cleared.error) throw cleared.error;
+  } else {
+    const cleared = await supabase.from(table).delete().eq('user_id', userId);
+    if (cleared.error) throw cleared.error;
+  }
+}
+
 async function runOp(op, userId) {
   if (op.type === 'upsert') {
     const { error } = await supabase.from('expenses').upsert(toRow(op.expense));
@@ -409,31 +373,7 @@ async function runOp(op, userId) {
     const { error } = await supabase.from('expenses').delete().eq('id', op.id).eq('user_id', userId);
     if (error) throw error;
   } else if (op.type === 'replace') {
-    // Atomic-by-effect: upsert the new rows FIRST, then delete only the rows
-    // that aren't in the new set. If the upsert fails nothing is deleted (the
-    // old server state stands); if the delete fails the new rows are already in
-    // place and the still-queued op simply retries. Every write is scoped to
-    // this user via user_id (also PostgREST's required delete filter).
-    if (op.expenses.length > 0) {
-      const rows = op.expenses.map(toRow);
-      const inserted = await supabase.from('expenses').upsert(rows);
-      if (inserted.error) throw inserted.error;
-      // Invariant: ids must contain no commas or quote characters — this
-      // string-interpolated PostgREST filter would silently corrupt otherwise.
-      // True today because generateCategoryId / Date.now().toString(36) ids are
-      // alphanumeric only; if the id charset ever changes, switch to a parameterised
-      // filter instead of building the list by hand.
-      const keepIds = rows.map((r) => `"${r.id}"`).join(',');
-      const cleared = await supabase
-        .from('expenses')
-        .delete()
-        .eq('user_id', userId)
-        .not('id', 'in', `(${keepIds})`);
-      if (cleared.error) throw cleared.error;
-    } else {
-      const cleared = await supabase.from('expenses').delete().eq('user_id', userId);
-      if (cleared.error) throw cleared.error;
-    }
+    await replaceRows('expenses', op.expenses.map(toRow), userId);
   } else if (op.type === 'settings') {
     const { error } = await supabase.from('settings').upsert(toSettingsRow(op.settings));
     if (error) {
@@ -452,34 +392,6 @@ async function runOp(op, userId) {
   }
 }
 
-async function runIncomeOp(op, userId) {
-  if (op.type === 'upsert') {
-    const { error } = await supabase.from('income').upsert(toIncomeRow(op.income));
-    if (error) throw error;
-  } else if (op.type === 'delete') {
-    const { error } = await supabase.from('income').delete().eq('id', op.id).eq('user_id', userId);
-    if (error) throw error;
-  } else if (op.type === 'replace') {
-    // Atomic-by-effect, mirroring the expense lane: upsert first, then delete
-    // only the rows not in the new set (or all rows when the new set is empty).
-    if (op.incomes.length > 0) {
-      const rows = op.incomes.map(toIncomeRow);
-      const inserted = await supabase.from('income').upsert(rows);
-      if (inserted.error) throw inserted.error;
-      const keepIds = rows.map((r) => `"${r.id}"`).join(',');
-      const cleared = await supabase
-        .from('income')
-        .delete()
-        .eq('user_id', userId)
-        .not('id', 'in', `(${keepIds})`);
-      if (cleared.error) throw cleared.error;
-    } else {
-      const cleared = await supabase.from('income').delete().eq('user_id', userId);
-      if (cleared.error) throw cleared.error;
-    }
-  }
-}
-
 async function runGroupOp(op, userId) {
   if (op.type === 'upsert') {
     const { error } = await supabase.from('groups').upsert(toGroupRow(op.group));
@@ -488,21 +400,7 @@ async function runGroupOp(op, userId) {
     const { error } = await supabase.from('groups').delete().eq('id', op.id).eq('user_id', userId);
     if (error) throw error;
   } else if (op.type === 'replace') {
-    if (op.groups.length > 0) {
-      const rows = op.groups.map(toGroupRow);
-      const inserted = await supabase.from('groups').upsert(rows);
-      if (inserted.error) throw inserted.error;
-      const keepIds = rows.map((r) => `"${r.id}"`).join(',');
-      const cleared = await supabase
-        .from('groups')
-        .delete()
-        .eq('user_id', userId)
-        .not('id', 'in', `(${keepIds})`);
-      if (cleared.error) throw cleared.error;
-    } else {
-      const cleared = await supabase.from('groups').delete().eq('user_id', userId);
-      if (cleared.error) throw cleared.error;
-    }
+    await replaceRows('groups', op.groups.map(toGroupRow), userId);
   }
 }
 
@@ -514,21 +412,7 @@ async function runSplitOp(op, userId) {
     const { error } = await supabase.from('split_expenses').delete().eq('id', op.id).eq('user_id', userId);
     if (error) throw error;
   } else if (op.type === 'replace') {
-    if (op.splits.length > 0) {
-      const rows = op.splits.map(toSplitRow);
-      const inserted = await supabase.from('split_expenses').upsert(rows);
-      if (inserted.error) throw inserted.error;
-      const keepIds = rows.map((r) => `"${r.id}"`).join(',');
-      const cleared = await supabase
-        .from('split_expenses')
-        .delete()
-        .eq('user_id', userId)
-        .not('id', 'in', `(${keepIds})`);
-      if (cleared.error) throw cleared.error;
-    } else {
-      const cleared = await supabase.from('split_expenses').delete().eq('user_id', userId);
-      if (cleared.error) throw cleared.error;
-    }
+    await replaceRows('split_expenses', op.splits.map(toSplitRow), userId);
   }
 }
 
@@ -561,10 +445,6 @@ export function flush(userId) {
   return flushQueue(userId, userId, runOp);
 }
 
-export function flushIncome(userId) {
-  return flushQueue(incomeKey(userId), userId, runIncomeOp);
-}
-
 export function flushGroups(userId) {
   return flushQueue(groupsKey(userId), userId, runGroupOp);
 }
@@ -592,27 +472,8 @@ export function applyExpenseOps(queue, expenses) {
   return result;
 }
 
-export function applyIncomeOps(queue, income) {
-  if (!queue || queue.length === 0) return income;
-  let result = income;
-  for (const op of queue) {
-    if (op.type === 'upsert') {
-      result = [op.income, ...result.filter((e) => e.id !== op.income.id)];
-    } else if (op.type === 'delete') {
-      result = result.filter((e) => e.id !== op.id);
-    } else if (op.type === 'replace') {
-      result = op.incomes;
-    }
-  }
-  return result;
-}
-
 export function applyPendingOps(userId, expenses) {
   return applyExpenseOps(queues.get(userId), expenses);
-}
-
-export function applyPendingIncomeOps(userId, income) {
-  return applyIncomeOps(queues.get(incomeKey(userId)), income);
 }
 
 export function applyGroupOps(queue, groups) {
@@ -654,22 +515,20 @@ export function applyPendingSplitOps(userId, splits) {
 }
 
 // Full sync: push what we owe (all lanes), then pull the server's truth.
-// Returns { expenses, settings, income, groups, splits } on success (settings
-// is null when the server has no row and none is queued; income/groups/splits
-// are null when their pull errors, e.g. the table isn't created yet — the
-// cached data then stands), or null when sync isn't possible.
+// Returns { expenses, settings, groups, splits } on success (settings is null
+// when the server has no row and none is queued; groups/splits are null when
+// their pull errors, e.g. the table isn't created yet — the cached data then
+// stands), or null when sync isn't possible.
 export async function syncWithServer(userId) {
   if (!canSync(userId)) return null;
   await ensureQueueLoaded(userId);
-  await ensureQueueLoaded(incomeKey(userId));
   await ensureQueueLoaded(groupsKey(userId));
   await ensureQueueLoaded(splitsKey(userId));
   try {
     await flush(userId);
-    await flushIncome(userId);
     await flushGroups(userId);
     await flushSplits(userId);
-    const [expensesRes, settingsRes, incomeRes, groupsRes, splitsRes] = await Promise.all([
+    const [expensesRes, settingsRes, groupsRes, splitsRes] = await Promise.all([
       supabase
         .from('expenses')
         .select('id, amount, currency, note, category, created_at')
@@ -677,10 +536,6 @@ export async function syncWithServer(userId) {
       // `*` instead of a column list so the pull works with or without the
       // extra settings columns (see fromSettingsRow's NULL handling).
       supabase.from('settings').select('*').maybeSingle(),
-      supabase
-        .from('income')
-        .select('id, amount, currency, source, note, created_at')
-        .order('created_at', { ascending: false }),
       supabase
         .from('groups')
         .select('id, name, currency, payment_method, members, created_at')
@@ -693,7 +548,7 @@ export async function syncWithServer(userId) {
     if (expensesRes.error) return null;
 
     // Settings pull is tolerant: a missing settings table or column error leaves
-    // settings null (the local cache stands) without aborting the expense/income/
+    // settings null (the local cache stands) without aborting the expense/
     // groups/splits data that already pulled successfully.
     const queue = queues.get(userId) ?? [];
     const queuedSettings = [...queue].reverse().find((op) => op.type === 'settings');
@@ -709,14 +564,12 @@ export async function syncWithServer(userId) {
 
     // Tolerant pulls: a missing table or any error leaves the field null so
     // the expense/settings sync still succeeds and the local cache stands.
-    const income =
-      !incomeRes.error && Array.isArray(incomeRes.data) ? incomeRes.data.map(fromIncomeRow) : null;
     const groups =
       !groupsRes.error && Array.isArray(groupsRes.data) ? groupsRes.data.map(fromGroupRow) : null;
     const splits =
       !splitsRes.error && Array.isArray(splitsRes.data) ? splitsRes.data.map(fromSplitRow) : null;
 
-    return { expenses: expensesRes.data.map(fromRow), settings, income, groups, splits };
+    return { expenses: expensesRes.data.map(fromRow), settings, groups, splits };
   } catch {
     return null; // offline — cache and queue carry on
   }

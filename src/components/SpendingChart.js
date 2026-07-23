@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Path, Circle, G, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { fonts, spacing, useTheme } from '../theme';
 import { formatMoneyShort } from '../format';
 
@@ -15,6 +15,16 @@ const PADDING_BOTTOM = 28;
 // overlapped into "3031" at the chart's right edge.
 const X_TICKS = [1, 5, 10, 15, 20, 25];
 
+// The floating-pill drop shared by the latest-value badge and the scrub
+// tooltip (lighter than the theme's popupShadow — these sit on the card).
+const pillShadow = {
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.14,
+  shadowRadius: 6,
+  elevation: 4,
+};
+
 function gridSteps(maxVal) {
   if (maxVal <= 0) return [];
   const rough = maxVal / 4;
@@ -27,13 +37,20 @@ function gridSteps(maxVal) {
   return lines;
 }
 
-// A bare daily-spending line chart, rendered inside the dashboard hero card.
+// The hero-card spending line chart: a thick smoothed line in a light accent
+// tint with the newest segment overdrawn in full accent, dashed HORIZONTAL
+// gridlines (one per y value label), dot markers, and a floating pill badge
+// on the latest point. No area fill or baseline.
 // `dailyTotals` holds one entry per day of the current month; only days up to
 // today are plotted, but the x-axis spans the whole month.
 // `endDay` caps how many days are plotted (1-based, inclusive). Omitted, it
 // defaults to today — the current-month behavior. Pass `dailyTotals.length`
 // when rendering a fully elapsed (past) month so the whole month plots.
-export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) {
+// `mode` ('daily' | 'monthly') picks the series: the month's per-day values
+// (the default), or `monthlyTotals` — [{label, value}], one point per month —
+// for the cross-month trend view. Monthly plots every slot with a dot; daily
+// keeps dots off the line except the newest point.
+export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mode = 'daily', monthlyTotals }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
@@ -43,84 +60,114 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
     setChartWidth(e.nativeEvent.layout.width);
   };
 
-  // All data-derived geometry. Recomputed only when the data or width changes —
-  // not on every pointer move (the tooltip reads `activeIndex` separately) or
-  // parent re-render (currency change, budget toggle, tab slide).
+  const monthly = mode === 'monthly' && monthlyTotals && monthlyTotals.length > 0;
+
+  // All data-derived geometry. Recomputed only when the data, width or mode
+  // changes — not on every pointer move (the tooltip reads `activeIndex`
+  // separately) or parent re-render (currency change, tab slide).
   const geom = useMemo(() => {
     const daysInMonth = dailyTotals.length;
     // getDate() is the day-of-month (1..31); clamp so it can never index past
     // the array near a month boundary.
     const today = Math.min(endDay ?? new Date().getDate(), daysInMonth);
-    const totalsUpToToday = dailyTotals.slice(0, today);
-    const maxVal = Math.max(...totalsUpToToday, 1);
+
+    // One x slot per day (daily — the axis spans the WHOLE month so it stays
+    // put as days accrue) or per month (monthly — every slot is plotted).
+    let values;
+    let slotCount;
+    let labelSlots; // [{ index, label }] — the x-axis tick labels
+    if (monthly) {
+      slotCount = monthlyTotals.length;
+      values = monthlyTotals.map((m) => m.value);
+      labelSlots = monthlyTotals.map((m, i) => ({ index: i, label: m.label }));
+    } else {
+      slotCount = daysInMonth;
+      values = dailyTotals.slice(0, today);
+      labelSlots = [...X_TICKS.filter((d) => d < daysInMonth), daysInMonth].map((d) => ({
+        index: d - 1,
+        label: String(d),
+      }));
+    }
+
+    const maxVal = Math.max(...values, 1);
 
     const drawWidth = chartWidth - PADDING_LEFT - PADDING_RIGHT;
     const drawHeight = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
     const baselineY = PADDING_TOP + drawHeight;
 
-    const getX = (dayIndex) =>
-      daysInMonth <= 1 ? PADDING_LEFT + drawWidth / 2 : PADDING_LEFT + (dayIndex / (daysInMonth - 1)) * drawWidth;
+    const getX = (i) =>
+      slotCount <= 1 ? PADDING_LEFT + drawWidth / 2 : PADDING_LEFT + (i / (slotCount - 1)) * drawWidth;
     const getY = (value) => PADDING_TOP + drawHeight - (value / maxVal) * drawHeight;
 
-    const points = totalsUpToToday.map((val, i) => ({ x: getX(i), y: getY(val) }));
+    const points = values.map((val, i) => ({ x: getX(i), y: getY(val) }));
+
+    const cps = (prev, curr) => {
+      const cpx1 = prev.x + (curr.x - prev.x) * 0.4;
+      const cpx2 = curr.x - (curr.x - prev.x) * 0.4;
+      return `C${cpx1},${prev.y} ${cpx2},${curr.y} ${curr.x},${curr.y}`;
+    };
 
     let linePath = '';
     if (points.length > 1) {
       linePath = `M${points[0].x},${points[0].y}`;
       for (let i = 1; i < points.length; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        const cpx1 = prev.x + (curr.x - prev.x) * 0.4;
-        const cpx2 = curr.x - (curr.x - prev.x) * 0.4;
-        linePath += ` C${cpx1},${prev.y} ${cpx2},${curr.y} ${curr.x},${curr.y}`;
+        linePath += ` ${cps(points[i - 1], points[i])}`;
       }
-    } else if (points.length === 1) {
-      linePath = `M${points[0].x},${points[0].y} L${points[0].x},${points[0].y}`;
     }
 
-    const areaPath = linePath
-      ? `${linePath} L${points[points.length - 1].x},${baselineY} L${points[0].x},${baselineY} Z`
-      : '';
+    // The newest segment, overdrawn in full accent on top of the tinted line
+    // (the reference design's emphasized "current" stretch).
+    const lastSegPath =
+      points.length > 1
+        ? `M${points[points.length - 2].x},${points[points.length - 2].y} ${cps(points[points.length - 2], points[points.length - 1])}`
+        : '';
 
-    const xLabels = [...X_TICKS.filter((d) => d < daysInMonth), daysInMonth].map((d) => ({ day: d, x: getX(d - 1) }));
+    const xLabels = labelSlots.map(({ index, label }) => ({ x: getX(index), label }));
 
-    const peakIndex = totalsUpToToday.reduce(
-      (best, val, i) => (val > totalsUpToToday[best] ? i : best),
-      0
-    );
-    const peakPoint = points.length > 0 ? points[peakIndex] : null;
-    const peakVal = totalsUpToToday[peakIndex] ?? 0;
+    // Dot markers: every point in monthly mode (few, well-spaced slots); in
+    // daily mode only the newest point — a dot per gridline day read as noise.
+    const dotIndexes = new Set();
+    if (monthly) points.forEach((_, i) => dotIndexes.add(i));
+    if (points.length > 0) dotIndexes.add(points.length - 1);
+
     const lastPoint = points.length > 0 ? points[points.length - 1] : null;
+    const lastVal = values.length > 0 ? values[values.length - 1] : 0;
 
-    const gridLines = gridSteps(maxVal).map((v) => ({ value: v, y: getY(v) }));
+    const yLabels = gridSteps(maxVal).map((v) => ({ value: v, y: getY(v) }));
 
     return {
-      daysInMonth, totalsUpToToday, drawWidth, baselineY,
-      points, linePath, areaPath, xLabels, peakIndex, peakPoint, peakVal, lastPoint, gridLines,
+      values, slotCount, drawWidth, baselineY,
+      points, linePath, lastSegPath, xLabels, dotIndexes, lastPoint, lastVal, yLabels,
     };
-  }, [dailyTotals, chartWidth, endDay]);
+  }, [dailyTotals, chartWidth, endDay, monthly, monthlyTotals]);
 
   const {
-    daysInMonth, totalsUpToToday, drawWidth, baselineY,
-    points, linePath, areaPath, xLabels, peakIndex, peakPoint, peakVal, lastPoint, gridLines,
+    values, slotCount, drawWidth, baselineY,
+    points, linePath, lastSegPath, xLabels, dotIndexes, lastPoint, lastVal, yLabels,
   } = geom;
 
   const handleInteraction = (e) => {
     const localX = e.nativeEvent.locationX ?? e.nativeEvent.offsetX;
-    if (localX == null || drawWidth <= 0 || totalsUpToToday.length === 0) {
+    if (localX == null || drawWidth <= 0 || values.length === 0) {
       setActiveIndex(null);
       return;
     }
     const ratio = (localX - PADDING_LEFT) / drawWidth;
-    // Snap to the nearest plotted day, capped at today — so the whole chart
-    // width is interactive instead of going dead past the last point.
-    const idx = Math.max(0, Math.min(Math.round(ratio * (daysInMonth - 1)), totalsUpToToday.length - 1));
+    // Snap to the nearest plotted slot, capped at the newest — so the whole
+    // chart width is interactive instead of going dead past the last point.
+    const idx = Math.max(0, Math.min(Math.round(ratio * (slotCount - 1)), values.length - 1));
     setActiveIndex((cur) => (cur === idx ? cur : idx));
   };
 
   const clearActive = () => setActiveIndex((cur) => (cur === null ? cur : null));
 
   const activePoint = activeIndex != null && activeIndex < points.length ? points[activeIndex] : null;
+  const tooltipLabel =
+    activeIndex == null
+      ? ''
+      : monthly
+      ? monthlyTotals[activeIndex]?.label ?? ''
+      : String(activeIndex + 1);
 
   return (
     <View style={styles.container}>
@@ -137,48 +184,50 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
       >
         {chartWidth > 0 && (
           <Svg width={chartWidth} height={CHART_HEIGHT}>
-            {gridLines.map((g) => (
-              <G key={g.value}>
-                <Line
-                  x1={PADDING_LEFT}
-                  y1={g.y}
-                  x2={PADDING_LEFT + drawWidth}
-                  y2={g.y}
-                  stroke={colors.border}
-                  strokeWidth={StyleSheet.hairlineWidth}
-                  strokeDasharray="4,4"
-                />
-                <SvgText
-                  x={PADDING_LEFT - 6}
-                  y={g.y + 3}
-                  textAnchor="end"
-                  fontSize={9}
-                  fontFamily={fonts.numRegular}
-                  fill={colors.textMuted}
-                >
-                  {formatMoneyShort(g.value, displayCurrency)}
-                </SvgText>
-              </G>
+            {/* Dashed horizontal gridline per y value label (the reference look). */}
+            {yLabels.map((g) => (
+              <Line
+                key={`grid-${g.value}`}
+                x1={PADDING_LEFT}
+                y1={g.y}
+                x2={chartWidth - PADDING_RIGHT}
+                y2={g.y}
+                stroke={colors.border}
+                strokeWidth={1}
+                strokeDasharray="3,5"
+              />
             ))}
 
-            <Line
-              x1={PADDING_LEFT}
-              y1={baselineY}
-              x2={PADDING_LEFT + drawWidth}
-              y2={baselineY}
-              stroke={colors.border}
-              strokeWidth={StyleSheet.hairlineWidth * 2}
-            />
+            {yLabels.map((g) => (
+              <SvgText
+                key={g.value}
+                x={PADDING_LEFT - 6}
+                y={g.y + 3}
+                textAnchor="end"
+                fontSize={9}
+                fontFamily={fonts.numRegular}
+                fill={colors.textMuted}
+              >
+                {formatMoneyShort(g.value, displayCurrency)}
+              </SvgText>
+            ))}
 
-            {areaPath ? (
-              <Path d={areaPath} fill={`${colors.accent}15`} />
-            ) : null}
             {linePath ? (
               <Path
                 d={linePath}
                 fill="none"
+                stroke={`${colors.accent}4D`}
+                strokeWidth={3.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ) : null}
+            {lastSegPath ? (
+              <Path
+                d={lastSegPath}
+                fill="none"
                 stroke={colors.accent}
-                strokeWidth={2.5}
+                strokeWidth={3.5}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -197,34 +246,19 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
               />
             )}
 
-            {peakPoint && peakVal > 0 && activeIndex !== peakIndex && (
-              <>
+            {/* Ringed dot markers: every point (monthly) + the newest point. */}
+            {points.map((p, i) =>
+              dotIndexes.has(i) && i !== activeIndex ? (
                 <Circle
-                  cx={peakPoint.x}
-                  cy={peakPoint.y}
+                  key={`dot-${i}`}
+                  cx={p.x}
+                  cy={p.y}
                   r={3.5}
-                  fill={colors.danger}
+                  fill={colors.accent}
+                  stroke={colors.card}
+                  strokeWidth={2}
                 />
-                <SvgText
-                  x={peakPoint.x}
-                  y={peakPoint.y - 8}
-                  textAnchor="middle"
-                  fontSize={11}
-                  fontFamily={fonts.numBold}
-                  fill={colors.danger}
-                >
-                  {formatMoneyShort(peakVal, displayCurrency)}
-                </SvgText>
-              </>
-            )}
-
-            {lastPoint && activeIndex !== points.length - 1 && (
-              <Circle
-                cx={lastPoint.x}
-                cy={lastPoint.y}
-                r={3.5}
-                fill={colors.accent}
-              />
+              ) : null
             )}
 
             {activePoint && (
@@ -240,7 +274,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
 
             {xLabels.map((l) => (
               <SvgText
-                key={l.day}
+                key={`label-${l.label}`}
                 x={l.x}
                 y={baselineY + 18}
                 textAnchor="middle"
@@ -248,10 +282,30 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
                 fontFamily={fonts.numRegular}
                 fill={colors.textMuted}
               >
-                {l.day}
+                {l.label}
               </SvgText>
             ))}
           </Svg>
+        )}
+
+        {/* Floating badge on the newest point (hidden while scrubbing, and
+            when the latest value is 0 — a "$0" pill on the baseline is noise,
+            e.g. a past month whose final days had no spending). */}
+        {lastPoint && lastVal > 0 && !activePoint && (
+          <View
+            style={[
+              styles.lastBadge,
+              {
+                left: Math.max(4, Math.min(chartWidth - 76, lastPoint.x - 66)),
+                top: lastPoint.y > 44 ? lastPoint.y - 36 : lastPoint.y + 12,
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <Text style={styles.lastBadgeText}>
+              {formatMoneyShort(lastVal, displayCurrency)}
+            </Text>
+          </View>
         )}
 
         {activePoint && (
@@ -267,9 +321,9 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay }) 
             ]}
             pointerEvents="none"
           >
-            <Text style={styles.tooltipDay}>{activeIndex + 1}</Text>
+            <Text style={styles.tooltipDay}>{tooltipLabel}</Text>
             <Text style={styles.tooltipValue}>
-              {formatMoneyShort(totalsUpToToday[activeIndex], displayCurrency)}
+              {formatMoneyShort(values[activeIndex], displayCurrency)}
             </Text>
           </View>
         )}
@@ -287,6 +341,23 @@ const createStyles = (colors) =>
     chartWrap: {
       position: 'relative',
     },
+    // Shared floating-pill chrome for the latest-value badge and the tooltip.
+    lastBadge: {
+      position: 'absolute',
+      backgroundColor: colors.card,
+      borderRadius: 999,
+      paddingHorizontal: spacing.sm + 4,
+      paddingVertical: spacing.xs + 1,
+      ...pillShadow,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    lastBadgeText: {
+      color: colors.accent,
+      fontFamily: fonts.numBold,
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+    },
     tooltip: {
       position: 'absolute',
       alignItems: 'center',
@@ -294,11 +365,7 @@ const createStyles = (colors) =>
       borderRadius: 10,
       paddingHorizontal: spacing.sm + 4,
       paddingVertical: spacing.xs + 2,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.14,
-      shadowRadius: 6,
-      elevation: 4,
+      ...pillShadow,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
     },

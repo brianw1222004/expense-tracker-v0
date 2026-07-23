@@ -367,15 +367,17 @@ const createStyles = (colors) =>
     },
 
     monthSelector: {
-      marginTop: spacing.sm,
+      marginBottom: spacing.md,
     },
     calendarCard: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
-      marginTop: spacing.md,
-      paddingTop: spacing.sm,
-      paddingBottom: spacing.xs,
+      // Visual bottom gap = this padding + 4px cell slack + 6px dot strip; keep
+      // paddingTop equal to that sum so the weekday row and last day row sit
+      // the same distance from the card edges.
+      paddingTop: spacing.sm + 4,
+      paddingBottom: 2,
       paddingHorizontal: spacing.xs,
       ...cardShadow,
     },

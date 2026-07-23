@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, spacing, useTheme } from '../theme';
@@ -12,8 +12,8 @@ export const TAB_BAR_HEIGHT = 72;
 // The "+" is NOT a tab — it opens the add popup and doesn't change `tab`, so it
 // stays out of TABS/TAB_INDEX/TAB_NAMES. The Categories tab was retired (its
 // summary card moved to the Dashboard, its breakdown to a page opened from
-// there). Keep this order in sync with TAB_INDEX/TAB_NAMES in App.js so the
-// slide-transition direction stays correct.
+// there). Keep this order in sync with TAB_INDEX/TAB_NAMES in src/useTabSlide.js
+// so the slide-transition direction stays correct.
 const TABS = [
   { id: 'dashboard', icon: 'home-01', labelKey: 'tabs.dashboard' },
   { id: 'list', icon: 'receipt-text', labelKey: 'tabs.list' },
@@ -46,7 +46,15 @@ export default function TabBar({ tab, onChange, onAdd }) {
   return (
     <View style={[styles.outer, { paddingBottom: insets.bottom }]}>
       <View style={styles.capsule}>
-        <BlurView intensity={50} tint="light" style={styles.blurLayer} />
+        {/* Android's expo-blur has no real blur without the experimental
+            dimezisBlurView (a documented scroll frame-drop cliff on mid/low-end
+            devices), so we skip BlurView there and lean on blurLayer's solid
+            translucent fill. iOS/web keep the real frosted blur. */}
+        {Platform.OS === 'android' ? (
+          <View style={styles.blurLayer} />
+        ) : (
+          <BlurView intensity={50} tint="light" style={styles.blurLayer} />
+        )}
 
         {TABS.slice(0, half).map(renderTab)}
 

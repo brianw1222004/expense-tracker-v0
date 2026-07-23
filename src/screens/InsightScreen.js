@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AddCategoryModal from '../components/AddCategoryModal';
@@ -13,6 +13,7 @@ import { useT } from '../i18n';
 import { formatMoney, formatMoneyShort, shiftMonthKey } from '../format';
 import { getCurrency } from '../currency';
 import { getCategoryLabel } from '../categories';
+import { budgetZoneTone } from '../budget';
 import { HIcon } from '../icons';
 
 // The Insight tab: the budget view compressed into two cards. A "Budget" card
@@ -285,9 +286,10 @@ export default function InsightScreen({
   );
 }
 
-// Compact horizontal replacement for the old BudgetGauge donut: remaining (or
-// over-by) figure with % used beside it, a slim zone-colored progress bar and
-// the spent-of-budget line — same semantics at a third of the height.
+// The Budget card body, in the Split summary card's design language: a
+// centered remaining (or over-by) hero figure, a two-segment spent/remaining
+// proportion bar, then two tinted stat tiles (Spent in the budget-zone tone
+// with % used, Budget in the accent tone) with toned icon chips.
 function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t }) {
   if (empty) {
     return (
@@ -311,33 +313,66 @@ function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t })
 
   return (
     <View>
-      <View style={styles.gaugeTopRow}>
-        <Text
-          style={[styles.gaugeAmount, { color: over ? colors.danger : colors.textPrimary }]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-        >
-          {over ? `-${formatMoney(remaining, displayCurrency)}` : formatMoney(remaining, displayCurrency)}
-        </Text>
-        <Text style={[styles.gaugePct, { color: zoneColor }]}>{pctLabel}</Text>
-      </View>
-      <Text style={[styles.gaugeCaption, { color: over ? colors.danger : colors.textMuted }]}>
+      {/* Toned like the Split page's net-balance figure: the hero number takes
+          the budget-zone color, the caption stays muted. */}
+      <Text
+        style={[styles.gaugeAmount, { color: zoneColor }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {over ? `-${formatMoney(remaining, displayCurrency)}` : formatMoney(remaining, displayCurrency)}
+      </Text>
+      <Text style={styles.gaugeCaption}>
         {t(over ? 'budget.overBy' : 'budget.remaining')}
       </Text>
-      <View style={styles.gaugeTrack}>
-        <View
-          style={[
-            styles.gaugeFill,
-            { width: `${Math.min(100, ratio * 100)}%`, backgroundColor: zoneColor },
-          ]}
+      <View style={styles.gaugeBar}>
+        {rounded > 0 && (
+          <View
+            style={[
+              styles.gaugeBarSeg,
+              { flex: over ? 1 : Math.min(rounded, budget), backgroundColor: zoneColor },
+            ]}
+          />
+        )}
+        {!over && remaining > 0 && (
+          <View style={[styles.gaugeBarSeg, { flex: remaining, backgroundColor: colors.background }]} />
+        )}
+      </View>
+      <View style={styles.gaugeTileRow}>
+        <GaugeTile
+          tone={zoneColor}
+          icon="money-send-square"
+          value={formatMoneyShort(rounded, displayCurrency)}
+          label={t('budget.spentLabel')}
+          caption={t('budget.pctUsed', { pct: pctLabel })}
+          styles={styles}
+        />
+        <GaugeTile
+          tone={colors.accent}
+          icon="wallet-01"
+          value={formatMoneyShort(budget, displayCurrency)}
+          label={t('budget.title')}
+          caption={t('budget.perMonth')}
+          styles={styles}
         />
       </View>
-      <Text style={styles.gaugeSpentLine}>
-        {t('budget.spentOf', {
-          spent: formatMoney(rounded, displayCurrency),
-          budget: formatMoney(budget, displayCurrency),
-        })}
-      </Text>
+    </View>
+  );
+}
+
+// One tinted half of the Budget card (the Split summary-tile treatment): toned
+// amount over its label and caption, with a toned icon chip on the right.
+function GaugeTile({ tone, icon, value, label, caption, styles }) {
+  return (
+    <View style={[styles.gaugeTile, { backgroundColor: `${tone}12` }]}>
+      <View style={styles.gaugeTileText}>
+        <Text style={[styles.gaugeTileValue, { color: tone }]} numberOfLines={1}>{value}</Text>
+        <Text style={styles.gaugeTileLabel} numberOfLines={1}>{label}</Text>
+        <Text style={styles.gaugeTileCaption} numberOfLines={1}>{caption}</Text>
+      </View>
+      <View style={[styles.gaugeTileChip, { backgroundColor: `${tone}1F` }]}>
+        <HIcon name={icon} size={18} color={tone} strokeWidth={1.8} />
+      </View>
     </View>
   );
 }
@@ -436,7 +471,7 @@ function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, o
   return (
     <View style={styles.catList} {...panResponder.panHandlers}>
       {rows.map((row, i) => (
-        <CategoryTile
+        <CategoryRow
           key={row.category.id}
           {...row}
           displayCurrency={displayCurrency}
@@ -468,7 +503,7 @@ function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, o
 // The MoM delta was dropped in this decluttering. Tapping a row opens the
 // edit modal (presets included — edits/deletes are stored as
 // overrides/tombstones in customCategories); long-press drags to reorder.
-function CategoryTile({
+function CategoryRow({
   category,
   budget,
   thisVal,
@@ -489,9 +524,9 @@ function CategoryTile({
   const hasBudget = budget > 0;
   const ratio = hasBudget ? spent / budget : 0;
   const over = hasBudget && spent > budget;
-  // Budget-zone tone shared with the Dashboard's top-category rows and the
-  // budget gauge: green under budget, orange within 15% of it, red over.
-  const zone = over ? colors.danger : ratio >= 0.85 ? colors.warning : colors.success;
+  // Shared zone tone (green/orange/red) — see budgetZoneTone. `over` is kept
+  // separately because it also tones the amount text above the bar.
+  const zone = budgetZoneTone(ratio, hasBudget, colors);
 
   const dragStyle = dragging
     ? { transform: pan.getTranslateTransform(), zIndex: 10, elevation: 10, opacity: 0.9 }
@@ -561,12 +596,9 @@ const createStyles = (colors) =>
       fontSize: 26,
       fontFamily: fonts.bold,
       textAlign: 'center',
-      marginBottom: spacing.xs,
     },
-    // A touch more air than the other tabs' md so the first card's border
-    // doesn't crowd the ‹ month › selector.
     monthSelector: {
-      marginBottom: spacing.lg,
+      marginBottom: spacing.md,
     },
     card: {
       backgroundColor: colors.card,
@@ -616,31 +648,23 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 13,
     },
-    // Compact overall budget bar (the BudgetBar component).
-    gaugeTopRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'space-between',
-      marginTop: spacing.xs,
-    },
+    // The Budget card body (the BudgetBar component, Split summary design).
     gaugeAmount: {
       fontFamily: fonts.numBold,
-      fontSize: 26,
+      fontSize: 30,
       fontVariant: ['tabular-nums'],
-      flexShrink: 1,
-      marginRight: spacing.sm,
-    },
-    gaugePct: {
-      fontFamily: fonts.numBold,
-      fontSize: 15,
-      fontVariant: ['tabular-nums'],
-      marginBottom: 3,
+      letterSpacing: -0.5,
+      marginTop: spacing.xs,
+      textAlign: 'center',
     },
     gaugeCaption: {
+      color: colors.textMuted,
       fontFamily: fonts.regular,
       fontSize: 12,
       marginTop: 1,
+      textAlign: 'center',
     },
+    // Neutral strip shown under the empty "No budget set" state.
     gaugeTrack: {
       height: 10,
       borderRadius: 5,
@@ -648,16 +672,58 @@ const createStyles = (colors) =>
       overflow: 'hidden',
       marginTop: spacing.sm + 2,
     },
-    gaugeFill: {
-      height: '100%',
-      borderRadius: 5,
+    // Spent-vs-remaining proportion bar: two pill segments whose flex weights
+    // are the raw amounts; minWidth keeps a tiny spent sliver visible as a dot.
+    gaugeBar: {
+      flexDirection: 'row',
+      height: 6,
+      marginTop: spacing.md,
+      gap: 3,
     },
-    gaugeSpentLine: {
-      color: colors.textSecondary,
-      fontFamily: fonts.numRegular,
-      fontSize: 12.5,
+    gaugeBarSeg: {
+      borderRadius: 3,
+      minWidth: 6,
+    },
+    gaugeTileRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    gaugeTile: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: spacing.xs,
+      borderRadius: radius.sm + 2,
+      padding: spacing.sm + 4,
+    },
+    gaugeTileText: {
+      flex: 1,
+    },
+    gaugeTileValue: {
+      fontFamily: fonts.numBold,
+      fontSize: 17,
       fontVariant: ['tabular-nums'],
-      marginTop: spacing.sm,
+    },
+    gaugeTileLabel: {
+      color: colors.textPrimary,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      marginTop: 2,
+    },
+    gaugeTileCaption: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 11,
+      marginTop: 1,
+    },
+    gaugeTileChip: {
+      width: 30,
+      height: 30,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     gaugeEmptyRow: {
       flexDirection: 'row',

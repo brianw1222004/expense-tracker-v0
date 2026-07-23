@@ -12,6 +12,7 @@ import { useT, useLanguage, translate } from '../i18n';
 import { confirmDestructive, alertInfo } from '../confirm';
 import { convert, getCurrency } from '../currency';
 import { formatMoney, dayLabel } from '../format';
+import { getCategory } from '../categories';
 import {
   groupBalances,
   billsForGroup,
@@ -22,17 +23,22 @@ import {
   PAYMENT_METHODS,
   DEFAULT_METHOD_COLOR,
   DEFAULT_METHOD_ICON,
+  DEFAULT_PAYMENT_METHOD_ID,
   getGroupIcon,
+  memberColor,
   nameFor,
+  billPositionCaption,
   YOU,
 } from '../splits';
 import { HIcon } from '../icons';
 
 const TINT_MS = 350;
 
-// Group-detail sheet, members first: combined per-member balances + editing
-// lead the sheet (they're what you open a group to see), then the bill list
-// (tap to edit, long-press to delete), and the group's avatar (a dedicated
+// Group-detail sheet. A method-tinted hero card leads — the group's all-time
+// total spent, your net position, and an overlapping avatar stack of everyone
+// involved — then the combined per-member balances + editing card, then the
+// bill list (category icon badge + toned you-lent/you-borrowed caption; tap
+// to edit, long-press to delete), and the group's avatar (a dedicated
 // icon-picker page). The payment method lives in the title row as a compact
 // widget pill (beside the currency pill, tinted to the method's color) that
 // expands into the themed chip panel on tap and collapses back after a pick.
@@ -42,6 +48,7 @@ export default function GroupDetailScreen({
   visible,
   group,
   splitExpenses,
+  customCategories,
   customPaymentMethods,
   onAddPaymentMethod,
   onRemovePaymentMethod,
@@ -117,6 +124,13 @@ export default function GroupDetailScreen({
   const bills = useMemo(
     () => (group ? billsForGroup(group.id, splitExpenses).filter((b) => !b.settlement).sort((a, b) => b.createdAt - a.createdAt) : []),
     [group, splitExpenses]
+  );
+  // Hero figure: every bill converted into the GROUP currency, all-time — the
+  // sheet has no month scope, matching the outstanding-debts posture of the
+  // balances. (bills is empty while group is null, so the reduce never runs.)
+  const totalSpent = useMemo(
+    () => bills.reduce((sum, b) => sum + convert(b.amount, b.currency, group.currency), 0),
+    [bills, group?.currency]
   );
 
   // Member ids referenced by ANY bill/settlement — removing one affects the
@@ -252,6 +266,24 @@ export default function GroupDetailScreen({
   const cur = getCurrency(group.currency);
   const minUnit = 1 / 10 ** cur.decimals;
 
+  // Net position for the hero (balances are already rounded to the group
+  // currency's precision) and the avatar stack: you first in the theme accent,
+  // then members in their stable per-person colors, capped with a +N chip.
+  const net = Object.values(balances).reduce((s, v) => s + v, 0);
+  const netSettled = Math.abs(net) < minUnit;
+  const netTone = netSettled ? colors.textMuted : net > 0 ? colors.success : colors.danger;
+  const netText = netSettled
+    ? t('split.settled')
+    : net > 0
+    ? t('split.owesYouShort', { amount: formatMoney(net, group.currency) })
+    : t('split.youOweShort', { amount: formatMoney(-net, group.currency) });
+  const stackPeople = [
+    { id: YOU, name: t('split.you'), color: colors.accent },
+    ...group.members.map((m) => ({ id: m.id, name: m.name, color: memberColor(m.id) })),
+  ];
+  const shownStack = stackPeople.slice(0, 5);
+  const stackOverflow = stackPeople.length - shownStack.length;
+
   const confirm = async (title, body, onYes) => {
     const ok = await confirmDestructive({
       title,
@@ -282,7 +314,7 @@ export default function GroupDetailScreen({
           <View style={styles.titleText}>
             <Text style={styles.title} numberOfLines={1}>{group.name}</Text>
             <Text style={styles.subtitle} numberOfLines={1}>
-              {t('split.memberCount', { count: group.members.length })}
+              {group.members.length === 1 ? t('split.memberOne') : t('split.memberCount', { count: group.members.length })}
             </Text>
           </View>
           <CurrencyPill
@@ -297,12 +329,12 @@ export default function GroupDetailScreen({
             onPress={() => togglePay(!payExpanded)}
             accessibilityRole="button"
             accessibilityState={{ expanded: payExpanded }}
-            accessibilityLabel={`${t('split.paymentMethod')}: ${getPaymentMethodLabel(group.paymentMethod || 'cash', t, customPaymentMethods)}`}
+            accessibilityLabel={`${t('split.paymentMethod')}: ${getPaymentMethodLabel(group.paymentMethod || DEFAULT_PAYMENT_METHOD_ID, t, customPaymentMethods)}`}
             style={({ pressed }) => [pressed && styles.pressedFade]}
           >
             <Animated.View style={[styles.payPill, { borderColor: tintBorder, backgroundColor: tintAvatar }]}>
               <Text style={[styles.payPillText, { color: methodColor }]} numberOfLines={1}>
-                {getPaymentMethodLabel(group.paymentMethod || 'cash', t, customPaymentMethods)}
+                {getPaymentMethodLabel(group.paymentMethod || DEFAULT_PAYMENT_METHOD_ID, t, customPaymentMethods)}
               </Text>
               <Animated.View style={{ transform: [{ rotate: chevronSpin }] }}>
                 <HIcon name="chevron-down" size={12} color={methodColor} strokeWidth={2} />
@@ -347,7 +379,7 @@ export default function GroupDetailScreen({
                 </View>
                 <View style={styles.chipRow}>
                   {allMethods.map((pm) => {
-                    const selected = pm.id === (group.paymentMethod || 'cash');
+                    const selected = pm.id === (group.paymentMethod || DEFAULT_PAYMENT_METHOD_ID);
                     const pColor = pm.color || DEFAULT_METHOD_COLOR;
                     const pIcon = pm.icon || DEFAULT_METHOD_ICON;
                     const isCustom = !PAYMENT_METHODS.some((b) => b.id === pm.id);
@@ -390,8 +422,40 @@ export default function GroupDetailScreen({
           </View>
         </Animated.View>
 
-        {/* Members lead the sheet — the balances are what you open a group to
-            see. */}
+        {/* Hero summary — the group's all-time total with your net position
+            and everyone involved, washed in the payment-method tint (it
+            crossfades with the method, like the selector card below it). */}
+        <View style={[styles.cardShadowWrap, styles.heroWrap]}>
+          <Animated.View style={[styles.heroCard, { borderColor: tintBorder }]}>
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tintWash }]} />
+            <View style={styles.heroTopRow}>
+              <Text style={styles.heroLabel}>{t('split.totalSpent')}</Text>
+              <View style={styles.avatarStack}>
+                {shownStack.map((p, i) => (
+                  <View
+                    key={p.id}
+                    style={[styles.stackAvatar, { backgroundColor: p.color }, i > 0 && styles.stackOverlap]}
+                  >
+                    <Text style={styles.stackAvatarText}>{(p.name || '?').slice(0, 1).toUpperCase()}</Text>
+                  </View>
+                ))}
+                {stackOverflow > 0 && (
+                  <View style={[styles.stackAvatar, styles.stackAvatarMore, styles.stackOverlap]}>
+                    <Text style={styles.stackAvatarMoreText}>+{stackOverflow}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
+              {formatMoney(totalSpent, group.currency)}
+            </Text>
+            <View style={styles.heroNetRow}>
+              <View style={[styles.heroNetDot, { backgroundColor: netTone }]} />
+              <Text style={[styles.heroNetText, { color: netTone }]} numberOfLines={1}>{netText}</Text>
+            </View>
+          </Animated.View>
+        </View>
+
         <Text style={styles.sectionHeader}>{t('split.members')}</Text>
         <View style={styles.cardShadowWrap}>
           <View style={styles.card}>
@@ -399,6 +463,7 @@ export default function GroupDetailScreen({
               const bal = balances[member.id] ?? 0;
               const settled = Math.abs(bal) < minUnit;
               const tone = settled ? colors.textMuted : bal > 0 ? colors.success : colors.danger;
+              const mColor = memberColor(member.id);
               const balText = settled
                 ? t('split.settled')
                 : bal > 0
@@ -413,8 +478,10 @@ export default function GroupDetailScreen({
                     duplicateIds.has(member.id) && styles.memberRowDup,
                   ]}
                 >
-                  <View style={styles.memberAvatar}>
-                    <Text style={styles.memberInitial}>{(member.name || '?').slice(0, 1).toUpperCase()}</Text>
+                  <View style={[styles.memberAvatar, { backgroundColor: `${mColor}26` }]}>
+                    <Text style={[styles.memberInitial, { color: mColor }]}>
+                      {(member.name || '?').slice(0, 1).toUpperCase()}
+                    </Text>
                   </View>
                   <View style={styles.memberInfo}>
                     <TextInput
@@ -493,6 +560,16 @@ export default function GroupDetailScreen({
                 // Residual left by a remove-member "reassign manually" — shown
                 // until the user opens the bill and distributes it.
                 const undistributed = billUndistributed(bill);
+                const cat = getCategory(bill.category, customCategories);
+                // Your position on this bill (the reference rows' toned caption).
+                const { tone: posTone, text: posText } = billPositionCaption(bill, {
+                  formatAmount: formatMoney,
+                  t,
+                  colors,
+                });
+                // The hero total is in the group currency; a bill in another
+                // currency shows its ISO code so its native amount is unambiguous.
+                const foreignCurrency = bill.currency !== group.currency;
                 return (
                   <Pressable
                     key={bill.id}
@@ -509,6 +586,9 @@ export default function GroupDetailScreen({
                     accessibilityHint={t('split.longPressDelete')}
                     style={({ pressed }) => [styles.billRow, index > 0 && styles.rowDivider, pressed && styles.rowPressed]}
                   >
+                    <View style={[styles.billIcon, { backgroundColor: `${cat.color}1F` }]}>
+                      <HIcon name={cat.emoji} size={18} color={cat.color} strokeWidth={1.8} />
+                    </View>
                     <View style={styles.billInfo}>
                       <Text style={styles.billDesc} numberOfLines={1}>
                         {bill.description || t('split.bill')}
@@ -522,9 +602,14 @@ export default function GroupDetailScreen({
                         </Text>
                       )}
                     </View>
-                    <Text style={styles.billAmount} numberOfLines={1}>
-                      {formatMoney(bill.amount, bill.currency)}
-                    </Text>
+                    <View style={styles.billRight}>
+                      <Text style={styles.billAmount} numberOfLines={1}>
+                        {formatMoney(bill.amount, bill.currency)}{foreignCurrency ? ` ${bill.currency}` : ''}
+                      </Text>
+                      <Text style={[styles.billPosition, { color: posTone }]} numberOfLines={1}>
+                        {posText}
+                      </Text>
+                    </View>
                   </Pressable>
                 );
               })}
@@ -696,6 +781,85 @@ const createStyles = (colors) =>
       marginTop: spacing.md,
       marginBottom: spacing.sm,
     },
+    // Hero summary card: method-tinted border + wash (animated inline), the
+    // big all-time total, a toned net line, and the avatar stack up top.
+    heroWrap: {
+      marginTop: spacing.sm,
+    },
+    heroCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      borderWidth: 1.5,
+      overflow: 'hidden',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    heroTopRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    heroLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.bold,
+      fontSize: 13,
+      letterSpacing: 0.2,
+    },
+    avatarStack: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    stackAvatar: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      borderWidth: 2,
+      borderColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stackOverlap: {
+      marginLeft: -8,
+    },
+    stackAvatarText: {
+      color: colors.card,
+      fontFamily: fonts.bold,
+      fontSize: 11,
+    },
+    stackAvatarMore: {
+      backgroundColor: colors.cardPressed,
+    },
+    stackAvatarMoreText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.numBold,
+      fontSize: 10,
+      fontVariant: ['tabular-nums'],
+    },
+    heroTotal: {
+      color: colors.textPrimary,
+      fontFamily: fonts.numBold,
+      fontSize: 30,
+      fontVariant: ['tabular-nums'],
+      letterSpacing: -0.5,
+      marginTop: spacing.sm,
+    },
+    heroNetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs + 2,
+      marginTop: 2,
+    },
+    heroNetDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+    },
+    heroNetText: {
+      fontFamily: fonts.numRegular,
+      fontSize: 13,
+      fontVariant: ['tabular-nums'],
+    },
     // Shadow wrapper (no overflow) — see comment at the card usage.
     cardShadowWrap: {
       borderRadius: radius.md,
@@ -768,16 +932,15 @@ const createStyles = (colors) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
+    // Avatar bg/initial colors come inline (per-member palette color).
     memberAvatar: {
       width: 36,
       height: 36,
       borderRadius: 18,
-      backgroundColor: `${colors.accent}18`,
       alignItems: 'center',
       justifyContent: 'center',
     },
     memberInitial: {
-      color: colors.accent,
       fontFamily: fonts.bold,
       fontSize: 15,
     },
@@ -871,8 +1034,25 @@ const createStyles = (colors) =>
       paddingVertical: spacing.sm + 2,
       gap: spacing.sm,
     },
+    // Category icon badge leading each bill row (tint wash comes inline).
+    billIcon: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     billInfo: {
       flex: 1,
+    },
+    billRight: {
+      alignItems: 'flex-end',
+    },
+    billPosition: {
+      fontFamily: fonts.numRegular,
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+      marginTop: 1,
     },
     billDesc: {
       color: colors.textPrimary,

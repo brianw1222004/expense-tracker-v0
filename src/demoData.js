@@ -39,20 +39,6 @@ const PAST_SEED = [
   { monthsAgo: 2, day: 23, hour: 13, amount: 33.0, currency: 'USD', note: 'Gas', category: 'transport' },
 ];
 
-// Income across the same three months so the Balance screen's chart, balance,
-// and month-over-month delta always have something to show.
-const INCOME_RECENT_SEED = [
-  { daysAgo: 1, hour: 9, amount: 4200, currency: 'USD', source: 'salary', note: 'Monthly salary' },
-  { daysAgo: 4, hour: 15, amount: 650, currency: 'USD', source: 'freelance', note: 'Logo design' },
-  { daysAgo: 9, hour: 12, amount: 120, currency: 'USD', source: 'reimbursement', note: 'Travel reimbursement' },
-];
-const INCOME_PAST_SEED = [
-  { monthsAgo: 1, day: 1, hour: 9, amount: 4200, currency: 'USD', source: 'salary', note: 'Monthly salary' },
-  { monthsAgo: 1, day: 12, hour: 14, amount: 300, currency: 'EUR', source: 'side_income', note: 'Course sales' },
-  { monthsAgo: 2, day: 1, hour: 9, amount: 4000, currency: 'USD', source: 'salary', note: 'Monthly salary' },
-  { monthsAgo: 2, day: 18, hour: 18, amount: 100, currency: 'USD', source: 'gift', note: 'Birthday gift' },
-];
-
 export function buildDemoExpenses() {
   const now = new Date();
   const expenses = [];
@@ -80,36 +66,6 @@ function toExpense(item, id, date) {
     currency: item.currency,
     note: item.note,
     category: item.category,
-    createdAt: date.getTime(),
-  };
-}
-
-export function buildDemoIncome() {
-  const now = new Date();
-  const income = [];
-
-  INCOME_RECENT_SEED.forEach((item, index) => {
-    const d = new Date(now);
-    d.setDate(now.getDate() - item.daysAgo);
-    d.setHours(item.hour, (index * 13) % 60, 0, 0);
-    income.push(toIncome(item, `demo-income-${index}`, d));
-  });
-
-  INCOME_PAST_SEED.forEach((item, index) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - item.monthsAgo, item.day, item.hour, (index * 19) % 60, 0, 0);
-    income.push(toIncome(item, `demo-income-past-${index}`, d));
-  });
-
-  return income;
-}
-
-function toIncome(item, id, date) {
-  return {
-    id,
-    amount: item.amount,
-    currency: item.currency,
-    source: item.source,
-    note: item.note,
     createdAt: date.getTime(),
   };
 }

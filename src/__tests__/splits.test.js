@@ -25,6 +25,9 @@ const {
   groupNet,
   overallBalance,
   yourShareAsExpenses,
+  yourBillPosition,
+  billPositionCaption,
+  DEFAULT_PAYMENT_METHOD_ID,
 } = require('../splits');
 
 const { convert } = require('../currency');
@@ -1101,5 +1104,72 @@ describe('billUndistributed', () => {
   test('rounds away sub-unit float noise and never goes negative', () => {
     expect(billUndistributed({ amount: 0.3, currency: 'USD', shares: { [YOU]: 0.1, m1: 0.2 } })).toBe(0);
     expect(billUndistributed({ amount: 100, currency: 'USD', shares: { [YOU]: 120 } })).toBe(0);
+  });
+});
+
+describe('yourBillPosition', () => {
+  test('you paid and the rest is owed back to you → lent', () => {
+    const bill = { amount: 100, currency: 'USD', paidBy: YOU, shares: { [YOU]: 40, m1: 60 } };
+    expect(yourBillPosition(bill)).toEqual({ kind: 'lent', amount: 60 });
+  });
+
+  test('you paid but only covered your own share → self', () => {
+    const bill = { amount: 40, currency: 'USD', paidBy: YOU, shares: { [YOU]: 40 } };
+    expect(yourBillPosition(bill)).toEqual({ kind: 'self', amount: 40 });
+  });
+
+  test('someone else paid and you owe a share → borrowed', () => {
+    const bill = { amount: 100, currency: 'USD', paidBy: 'm1', shares: { [YOU]: 30, m1: 70 } };
+    expect(yourBillPosition(bill)).toEqual({ kind: 'borrowed', amount: 30 });
+  });
+
+  test('someone else paid and you have no share → none', () => {
+    const bill = { amount: 100, currency: 'USD', paidBy: 'm1', shares: { m1: 100 } };
+    expect(yourBillPosition(bill)).toEqual({ kind: 'none', amount: 0 });
+  });
+
+  test('rounds the lent figure to the currency decimals (JPY = 0)', () => {
+    const bill = { amount: 1000, currency: 'JPY', paidBy: YOU, shares: { [YOU]: 333, m1: 667 } };
+    expect(yourBillPosition(bill)).toEqual({ kind: 'lent', amount: 667 });
+  });
+});
+
+describe('billPositionCaption', () => {
+  // Presentation deps are injected; stub them so the pure mapping is testable.
+  const colors = { success: 'green', danger: 'red', textMuted: 'grey' };
+  const t = (key, vars) => (vars ? `${key}:${vars.amount}` : key);
+  const formatAmount = (amt, cur) => `${cur}${amt}`;
+  const caption = (bill) => billPositionCaption(bill, { formatAmount, t, colors });
+
+  test('lent → success tone and the youLent string', () => {
+    const r = caption({ amount: 100, currency: 'USD', paidBy: YOU, shares: { [YOU]: 40, m1: 60 } });
+    expect(r.pos.kind).toBe('lent');
+    expect(r.tone).toBe('green');
+    expect(r.text).toBe('split.youLent:USD60');
+  });
+
+  test('borrowed → danger tone and the youBorrowed string', () => {
+    const r = caption({ amount: 100, currency: 'USD', paidBy: 'm1', shares: { [YOU]: 30, m1: 70 } });
+    expect(r.tone).toBe('red');
+    expect(r.text).toBe('split.youBorrowed:USD30');
+  });
+
+  test('self → muted tone and the yourShareShort string', () => {
+    const r = caption({ amount: 40, currency: 'USD', paidBy: YOU, shares: { [YOU]: 40 } });
+    expect(r.tone).toBe('grey');
+    expect(r.text).toBe('split.yourShareShort:USD40');
+  });
+
+  test('none → muted tone and the notInvolved string (no amount)', () => {
+    const r = caption({ amount: 100, currency: 'USD', paidBy: 'm1', shares: { m1: 100 } });
+    expect(r.tone).toBe('grey');
+    expect(r.text).toBe('split.notInvolved');
+  });
+});
+
+describe('DEFAULT_PAYMENT_METHOD_ID', () => {
+  test("is 'cash' and names a real built-in method", () => {
+    expect(DEFAULT_PAYMENT_METHOD_ID).toBe('cash');
+    expect(PAYMENT_METHODS.some((m) => m.id === DEFAULT_PAYMENT_METHOD_ID)).toBe(true);
   });
 });

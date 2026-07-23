@@ -15,8 +15,6 @@ const {
   saveSettings,
   loadExpenses,
   saveExpenses,
-  loadIncome,
-  saveIncome,
 } = require('../storage');
 
 // ---------------------------------------------------------------------------
@@ -288,19 +286,6 @@ describe('per-user key scoping', () => {
     expect(userSettings.theme).toBe('sand');
   });
 
-  test('LOCAL_USER income key is un-suffixed (@expense-tracker/income)', async () => {
-    await saveIncome(LOCAL_USER, [{ id: 'i1', amount: 500, currency: 'USD', source: 'salary', note: '', createdAt: 1 }]);
-
-    const calls = AsyncStorage.setItem.mock.calls;
-    expect(calls[0][0]).toBe('@expense-tracker/income');
-  });
-
-  test('a real userId income uses a suffixed key', async () => {
-    await saveIncome('user-def', []);
-
-    const calls = AsyncStorage.setItem.mock.calls;
-    expect(calls[0][0]).toBe('@expense-tracker/income:user-def');
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -390,111 +375,6 @@ describe('saveExpenses() + loadExpenses() round-trip', () => {
 });
 
 // ---------------------------------------------------------------------------
-// loadIncome — legacy normalization
-// ---------------------------------------------------------------------------
-describe('loadIncome() — legacy normalization', () => {
-  test('returns empty array when nothing is cached', async () => {
-    const result = await loadIncome(LOCAL_USER);
-    expect(result).toEqual([]);
-  });
-
-  test('entries missing currency are defaulted to USD', async () => {
-    const legacy = [{ id: 'i1', amount: 3000, source: 'salary', note: 'paycheck', createdAt: 1 }];
-    await AsyncStorage.setItem('@expense-tracker/income', JSON.stringify(legacy));
-
-    const result = await loadIncome(LOCAL_USER);
-
-    expect(result[0].currency).toBe('USD');
-  });
-
-  test('entries missing source are defaulted to "other"', async () => {
-    const legacy = [{ id: 'i1', amount: 100, currency: 'USD', createdAt: 1 }];
-    await AsyncStorage.setItem('@expense-tracker/income', JSON.stringify(legacy));
-
-    const result = await loadIncome(LOCAL_USER);
-
-    expect(result[0].source).toBe('other');
-  });
-
-  test('entries missing note are defaulted to empty string', async () => {
-    const legacy = [{ id: 'i1', amount: 100, currency: 'USD', source: 'salary', createdAt: 1 }];
-    await AsyncStorage.setItem('@expense-tracker/income', JSON.stringify(legacy));
-
-    const result = await loadIncome(LOCAL_USER);
-
-    expect(result[0].note).toBe('');
-  });
-
-  test('entries with an explicit null note are defaulted to empty string', async () => {
-    // note: null — the ?? '' operator converts null to ''.
-    const data = [{ id: 'i1', amount: 200, currency: 'EUR', source: 'freelance', note: null, createdAt: 2 }];
-    await AsyncStorage.setItem('@expense-tracker/income', JSON.stringify(data));
-
-    const result = await loadIncome(LOCAL_USER);
-
-    expect(result[0].note).toBe('');
-  });
-
-  test('entries with an explicit empty-string note preserve the empty string', async () => {
-    const data = [{ id: 'i1', amount: 200, currency: 'EUR', source: 'freelance', note: '', createdAt: 2 }];
-    await AsyncStorage.setItem('@expense-tracker/income', JSON.stringify(data));
-
-    const result = await loadIncome(LOCAL_USER);
-
-    expect(result[0].note).toBe('');
-  });
-
-  test('fully-populated income entries are passed through unchanged', async () => {
-    const full = [{ id: 'i1', amount: 999, currency: 'GBP', source: 'side_income', note: 'gig', createdAt: 3 }];
-    await AsyncStorage.setItem('@expense-tracker/income', JSON.stringify(full));
-
-    const result = await loadIncome(LOCAL_USER);
-
-    expect(result[0].currency).toBe('GBP');
-    expect(result[0].source).toBe('side_income');
-    expect(result[0].note).toBe('gig');
-  });
-
-  test('returns empty array when cached value is not an array', async () => {
-    await AsyncStorage.setItem('@expense-tracker/income', JSON.stringify('bad'));
-    const result = await loadIncome(LOCAL_USER);
-    expect(result).toEqual([]);
-  });
-
-  test('returns empty array on malformed JSON', async () => {
-    await AsyncStorage.setItem('@expense-tracker/income', '{bad json');
-    const result = await loadIncome(LOCAL_USER);
-    expect(result).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// saveIncome / loadIncome — round-trip
-// ---------------------------------------------------------------------------
-describe('saveIncome() + loadIncome() round-trip', () => {
-  test('saved income entries are loaded back accurately', async () => {
-    const income = [
-      { id: 'i1', amount: 5000, currency: 'USD', source: 'salary', note: 'june', createdAt: 1 },
-      { id: 'i2', amount: 200, currency: 'EUR', source: 'freelance', note: '', createdAt: 2 },
-    ];
-    await saveIncome(LOCAL_USER, income);
-    const result = await loadIncome(LOCAL_USER);
-
-    expect(result).toHaveLength(2);
-    expect(result[0].id).toBe('i1');
-    expect(result[0].source).toBe('salary');
-    expect(result[1].currency).toBe('EUR');
-    expect(result[1].note).toBe('');
-  });
-
-  test('saving an empty income array is loaded back as empty', async () => {
-    await saveIncome(LOCAL_USER, []);
-    const result = await loadIncome(LOCAL_USER);
-    expect(result).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Boundary values
 // ---------------------------------------------------------------------------
 describe('boundary values', () => {
@@ -505,11 +385,11 @@ describe('boundary values', () => {
     expect(result[0].amount).toBe(0);
   });
 
-  test('income with very large amount survives round-trip without precision loss', async () => {
+  test('an expense with a very large amount survives round-trip without precision loss', async () => {
     // Use a value safely representable as a JS float.
-    const income = [{ id: 'i1', amount: 9999999, currency: 'JPY', source: 'salary', note: '', createdAt: 1 }];
-    await saveIncome(LOCAL_USER, income);
-    const result = await loadIncome(LOCAL_USER);
+    const expenses = [{ id: 'e1', amount: 9999999, currency: 'JPY', note: '', category: 'other', createdAt: 1 }];
+    await saveExpenses(LOCAL_USER, expenses);
+    const result = await loadExpenses(LOCAL_USER);
     expect(result[0].amount).toBe(9999999);
   });
 

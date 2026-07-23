@@ -14,8 +14,6 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
   const monthPrefix = todayKey.slice(0, 7); // YYYY-MM
 
   let monthTotal = 0;
-  let todayTotal = 0;
-  let monthCount = 0;
   const totalsByCategory = {};
   const byDay = new Map();      // expenses only → the Expenses list `sections`
   const spendByDay = new Map(); // expenses + extra → the dashboard daily chart
@@ -37,7 +35,6 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
       monthTotal += displayAmount;
       totalsByCategory[catId] = (totalsByCategory[catId] ?? 0) + displayAmount;
     }
-    if (key === todayKey) todayTotal += displayAmount;
     spendByDay.set(key, (spendByDay.get(key) ?? 0) + displayAmount);
 
     if (!byMonth.has(mKey)) {
@@ -55,8 +52,6 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
   for (const expense of sorted) {
     const displayAmount = accrue(expense);
     const key = dateKey(expense.createdAt);
-    // monthCount tracks direct expense entries only (not synthetic split shares).
-    if (key.slice(0, 7) === monthPrefix) monthCount += 1;
 
     if (!byDay.has(key)) {
       byDay.set(key, { total: 0, data: [] });
@@ -99,10 +94,7 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
     months: [...byMonth.values()].sort((a, b) => (a.key < b.key ? 1 : -1)),
     monthTotal,
     lastMonthTotal,
-    todayTotal,
-    avgPerDay: monthTotal / now.getDate(),
     totalsByCategory,
-    monthCount,
     dailyTotals,
     hasSpending: byMonth.size > 0,
   };

@@ -4,6 +4,20 @@ export function clampBudgetRatio(ratio) {
   return Math.max(0, Math.min(1, n));
 }
 
+// The zone tone for a category's spent-of-budget bar, shared by the Dashboard's
+// top-category rows and the Insight category rows so the thresholds can't drift
+// apart: green under budget, orange within 15% of it (>=85%), red over. An
+// unbudgeted category is always green (there's no limit to breach — the caller
+// fills the bar by share-of-total instead). `colors` is injected to keep this
+// module palette-free. (The overall budget gauge deliberately uses its own,
+// earlier 75% warning and does NOT go through here.)
+export function budgetZoneTone(ratio, hasBudget, colors) {
+  if (!hasBudget) return colors.success;
+  if (ratio > 1) return colors.danger;
+  if (ratio >= 0.85) return colors.warning;
+  return colors.success;
+}
+
 export function hasUsableOverallBudget(overallBudget) {
   const n = Number(overallBudget);
   return Number.isFinite(n) && n > 0;
