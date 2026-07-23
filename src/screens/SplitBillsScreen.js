@@ -217,12 +217,6 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
     () => billsForGroup(group.id, splitExpenses).filter((b) => !b.settlement).sort((a, b) => b.createdAt - a.createdAt),
     [group.id, splitExpenses]
   );
-  // When a group's bills span more than one currency, the card's converted
-  // total (display currency) and the per-bill preview amounts (each in the
-  // bill's own currency) are different units — tag the previews with their ISO
-  // code so the two figures can't be misread as the same currency. Single-
-  // currency groups (the common case) show no code.
-  const mixedCurrency = useMemo(() => new Set(bills.map((b) => b.currency)).size > 1, [bills]);
   // The group-sheet hero's figure, converted to the display currency so it
   // agrees with the net line under it (and the summary card above).
   const totalSpent = useMemo(
@@ -302,6 +296,10 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
               t,
               colors,
             });
+            // The card total is in the display currency; a bill logged in a
+            // different currency gets its ISO code so its native amount can't
+            // be misread against that converted total.
+            const foreignCurrency = bill.currency !== displayCurrency;
             return (
               <View key={bill.id} style={[styles.groupBillRow, i > 0 && styles.groupBillDivider]}>
                 <View style={[styles.groupBillIcon, { backgroundColor: `${cat.color}1F` }]}>
@@ -317,7 +315,7 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
                 </View>
                 <View style={styles.groupBillRight}>
                   <Text style={styles.groupBillAmount} numberOfLines={1}>
-                    {formatMoneyShort(bill.amount, bill.currency)}{mixedCurrency ? ` ${bill.currency}` : ''}
+                    {formatMoneyShort(bill.amount, bill.currency)}{foreignCurrency ? ` ${bill.currency}` : ''}
                   </Text>
                   <Text style={[styles.groupBillShare, { color: posTone }]} numberOfLines={1}>{posText}</Text>
                 </View>

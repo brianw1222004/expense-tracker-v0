@@ -125,10 +125,6 @@ export default function GroupDetailScreen({
     () => (group ? billsForGroup(group.id, splitExpenses).filter((b) => !b.settlement).sort((a, b) => b.createdAt - a.createdAt) : []),
     [group, splitExpenses]
   );
-  // When bills span more than one currency, the hero total (group currency) and
-  // the per-bill amounts (each in its own currency) are different units — tag
-  // the bill amounts with their ISO code. Single-currency groups show no code.
-  const mixedCurrency = useMemo(() => new Set(bills.map((b) => b.currency)).size > 1, [bills]);
   // Hero figure: every bill converted into the GROUP currency, all-time — the
   // sheet has no month scope, matching the outstanding-debts posture of the
   // balances. (bills is empty while group is null, so the reduce never runs.)
@@ -571,6 +567,9 @@ export default function GroupDetailScreen({
                   t,
                   colors,
                 });
+                // The hero total is in the group currency; a bill in another
+                // currency shows its ISO code so its native amount is unambiguous.
+                const foreignCurrency = bill.currency !== group.currency;
                 return (
                   <Pressable
                     key={bill.id}
@@ -605,7 +604,7 @@ export default function GroupDetailScreen({
                     </View>
                     <View style={styles.billRight}>
                       <Text style={styles.billAmount} numberOfLines={1}>
-                        {formatMoney(bill.amount, bill.currency)}{mixedCurrency ? ` ${bill.currency}` : ''}
+                        {formatMoney(bill.amount, bill.currency)}{foreignCurrency ? ` ${bill.currency}` : ''}
                       </Text>
                       <Text style={[styles.billPosition, { color: posTone }]} numberOfLines={1}>
                         {posText}
