@@ -195,7 +195,7 @@ function CategoryBudgetRow({
         onChange={(nextRatio) => onCommit(ratioToBudgetAmount(nextRatio, overallBudget, currency.decimals))}
         styles={styles}
         colors={colors}
-        accessibilityLabel={`${label} budget proportion`}
+        accessibilityLabel={t('budget.categoryAccessibility', { category: label })}
       />
       <View style={styles.categoryAmountWrap}>
         <Text style={styles.categorySymbol}>{currency.symbol}</Text>
@@ -312,10 +312,15 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
             {canAllocate && (
               <View style={styles.allocationSummary}>
                 <Text style={styles.allocationText}>
-                  Allocated: {formatMoney(allocated, settings.displayCurrency)} / {formatMoney(overallBudget, settings.displayCurrency)}
+                  {t('budget.allocatedSummary', {
+                    allocated: formatMoney(allocated, settings.displayCurrency),
+                    total: formatMoney(overallBudget, settings.displayCurrency),
+                  })}
                 </Text>
                 <Text style={[styles.allocationText, remaining === 0 && styles.allocationTextEmpty]}>
-                  Remaining: {formatMoney(remaining, settings.displayCurrency)}
+                  {t('budget.unallocatedSummary', {
+                    amount: formatMoney(remaining, settings.displayCurrency),
+                  })}
                 </Text>
               </View>
             )}

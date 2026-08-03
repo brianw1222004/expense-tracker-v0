@@ -174,7 +174,7 @@ export default function InsightScreen({
                   <CurrencyPill
                     value={displayCurrency}
                     onPress={() => setCurrencyOpen(true)}
-                    accessibilityLabel={t('currency.choose')}
+                    accessibilityLabel={t('currency.chooseDisplay')}
                   />
                   <Pressable
                     onPress={onEditBudgets}
