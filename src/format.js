@@ -65,6 +65,25 @@ export function dayLabel(timestamp, language = DEFAULT_LANGUAGE) {
   });
 }
 
+// dayLabel's compact sibling ("Jul 29" instead of "Wednesday, July 29") for
+// rows too narrow for the full form — the Split tab's group-card bill preview,
+// which shares its line with "paid by {name}". Today/Yesterday still win.
+export function shortDayLabel(timestamp, language = DEFAULT_LANGUAGE) {
+  const now = new Date();
+  if (dateKey(timestamp) === dateKey(now.getTime())) return translate(language, 'date.today');
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (dateKey(timestamp) === dateKey(yesterday.getTime())) {
+    return translate(language, 'date.yesterday');
+  }
+  const d = new Date(timestamp);
+  const names = getDateNames(language);
+  return interpolate(names.shortDayLabel, {
+    month: names.shortMonths[d.getMonth()],
+    day: d.getDate(),
+  });
+}
+
 export function monthLabel(date = new Date(), language = DEFAULT_LANGUAGE) {
   const names = getDateNames(language);
   return interpolate(names.monthYear, {

@@ -5,6 +5,7 @@ const {
   buildCalendarWeeks,
   isValidAmountText,
   shiftMonthKey,
+  shortDayLabel,
 } = require('../format');
 
 // format.js imports from currency.js (pure) and i18n.js (which uses React's
@@ -496,5 +497,36 @@ describe('shiftMonthKey()', () => {
   it('is its own inverse for ±1 around a year boundary (round-trips)', () => {
     expect(shiftMonthKey(shiftMonthKey('2026-01', -1), 1)).toBe('2026-01');
     expect(shiftMonthKey(shiftMonthKey('2026-12', 1), -1)).toBe('2026-12');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shortDayLabel() — the compact date form ("Jul 29") used where a row is too
+// narrow for dayLabel's weekday-and-full-month one (the Split tab's group-card
+// bill preview). Today/Yesterday still take precedence over the date.
+// ---------------------------------------------------------------------------
+describe('shortDayLabel()', () => {
+  const OLD_DATE = new Date(2026, 6, 29, 12, 0, 0).getTime(); // Wed Jul 29 2026
+
+  it('renders month abbreviation + day in English', () => {
+    expect(shortDayLabel(OLD_DATE, 'en')).toBe('Jul 29');
+  });
+
+  it('puts the day first in Spanish and uses the abbreviated month', () => {
+    expect(shortDayLabel(OLD_DATE, 'es')).toBe('29 jul');
+  });
+
+  it('uses the Chinese month/day form', () => {
+    expect(shortDayLabel(OLD_DATE, 'zh')).toBe('7月29日');
+  });
+
+  it('falls back to English for an unknown language', () => {
+    expect(shortDayLabel(OLD_DATE, 'de')).toBe('Jul 29');
+  });
+
+  it('says "Today" for today and "Yesterday" for yesterday', () => {
+    const now = Date.now();
+    expect(shortDayLabel(now, 'en')).toBe('Today');
+    expect(shortDayLabel(now - 24 * 60 * 60 * 1000, 'en')).toBe('Yesterday');
   });
 });

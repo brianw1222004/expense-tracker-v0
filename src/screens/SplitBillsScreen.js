@@ -6,7 +6,7 @@ import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT, useLanguage } from '../i18n';
-import { formatMoney, formatMoneyShort, shiftMonthKey, dayLabel } from '../format';
+import { formatMoney, formatMoneyShort, shiftMonthKey, shortDayLabel } from '../format';
 import { convert } from '../currency';
 import { getCategory } from '../categories';
 import {
@@ -24,9 +24,10 @@ import { HIcon } from '../icons';
 
 // The Split Bills tab: an overall owed/owe summary, then a stack of full-width
 // group widget cards mirroring the group sheet's hero — a header row (method-
-// tinted group icon, name, members · method, avatar stack), the group's
-// all-time total spent with a toned net line, then icon-badged recent-bill
-// preview rows on a nested surface — each card tinted to its payment-method
+// tinted group icon, name, members · method, avatar stack), then a two-column
+// body: the group's all-time total spent with a toned net line on the left and
+// the icon-badged recent-bill preview rows on a nested surface BESIDE it (the
+// preview takes the wider share) — each card tinted to its payment-method
 // color with a deeper colored left edge (the expense-row treatment). Tapping a
 // card opens the group's detail sheet; the "+" opens the create-group sheet.
 // The card's total and net are shown in the DISPLAY currency (converted from
@@ -276,57 +277,67 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
         </View>
       </View>
 
-      <Text style={styles.groupTotalLabel}>{t('split.totalSpent')}</Text>
-      <Text style={styles.groupTotal} numberOfLines={1} adjustsFontSizeToFit>
-        {formatMoney(totalSpent, displayCurrency)}
-      </Text>
-      <View style={styles.groupNetRow}>
-        <View style={[styles.groupNetDot, { backgroundColor: tone }]} />
-        <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>{balanceText}</Text>
-      </View>
+      {/* Total block and the bills preview sit SIDE BY SIDE: the figure keeps
+          the left, the preview panel takes the rest of the width (which is why
+          its rows run on the compact type/short date — they have roughly half
+          a card to fit in). */}
+      <View style={styles.groupBody}>
+        <View style={styles.groupTotalCol}>
+          <Text style={styles.groupTotalLabel}>{t('split.totalSpent')}</Text>
+          <Text style={styles.groupTotal} numberOfLines={1} adjustsFontSizeToFit>
+            {formatMoney(totalSpent, displayCurrency)}
+          </Text>
+          <View style={styles.groupNetRow}>
+            <View style={[styles.groupNetDot, { backgroundColor: tone }]} />
+            <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>{balanceText}</Text>
+          </View>
+        </View>
 
-      {shownBills.length === 0 ? (
-        <Text style={styles.groupBillEmpty}>{t('split.noBills')}</Text>
-      ) : (
-        <View style={styles.groupBillPanel}>
-          {shownBills.map((bill, i) => {
-            const cat = getCategory(bill.category, customCategories);
-            const { tone: posTone, text: posText } = billPositionCaption(bill, {
-              formatAmount: formatMoneyShort,
-              t,
-              colors,
-            });
-            // The card total is in the display currency; a bill logged in a
-            // different currency gets its ISO code so its native amount can't
-            // be misread against that converted total.
-            const foreignCurrency = bill.currency !== displayCurrency;
-            return (
-              <View key={bill.id} style={[styles.groupBillRow, i > 0 && styles.groupBillDivider]}>
-                <View style={[styles.groupBillIcon, { backgroundColor: `${cat.color}1F` }]}>
-                  <HIcon name={cat.emoji} size={14} color={cat.color} strokeWidth={1.8} />
-                </View>
-                <View style={styles.groupBillInfo}>
-                  <Text style={styles.groupBillName} numberOfLines={1}>
-                    {bill.description || t('split.bill')}
-                  </Text>
-                  <Text style={styles.groupBillMeta} numberOfLines={1}>
-                    {t('split.paidByName', { name: nameFor(bill.paidBy, group, t) })} · {dayLabel(bill.createdAt, language)}
-                  </Text>
-                </View>
-                <View style={styles.groupBillRight}>
-                  <Text style={styles.groupBillAmount} numberOfLines={1}>
-                    {formatMoneyShort(bill.amount, bill.currency)}{foreignCurrency ? ` ${bill.currency}` : ''}
-                  </Text>
-                  <Text style={[styles.groupBillShare, { color: posTone }]} numberOfLines={1}>{posText}</Text>
-                </View>
-              </View>
-            );
-          })}
-          {extraBills > 0 && (
-            <Text style={styles.groupBillMore}>{t('split.moreMembers', { count: extraBills })}</Text>
+        <View style={styles.groupBillCol}>
+          {shownBills.length === 0 ? (
+            <Text style={styles.groupBillEmpty}>{t('split.noBills')}</Text>
+          ) : (
+            <View style={styles.groupBillPanel}>
+              {shownBills.map((bill, i) => {
+                const cat = getCategory(bill.category, customCategories);
+                const { tone: posTone, text: posText } = billPositionCaption(bill, {
+                  formatAmount: formatMoneyShort,
+                  t,
+                  colors,
+                });
+                // The card total is in the display currency; a bill logged in a
+                // different currency gets its ISO code so its native amount can't
+                // be misread against that converted total.
+                const foreignCurrency = bill.currency !== displayCurrency;
+                return (
+                  <View key={bill.id} style={[styles.groupBillRow, i > 0 && styles.groupBillDivider]}>
+                    <View style={[styles.groupBillIcon, { backgroundColor: `${cat.color}1F` }]}>
+                      <HIcon name={cat.emoji} size={13} color={cat.color} strokeWidth={1.8} />
+                    </View>
+                    <View style={styles.groupBillInfo}>
+                      <Text style={styles.groupBillName} numberOfLines={1}>
+                        {bill.description || t('split.bill')}
+                      </Text>
+                      <Text style={styles.groupBillMeta} numberOfLines={1}>
+                        {t('split.paidByName', { name: nameFor(bill.paidBy, group, t) })} · {shortDayLabel(bill.createdAt, language)}
+                      </Text>
+                    </View>
+                    <View style={styles.groupBillRight}>
+                      <Text style={styles.groupBillAmount} numberOfLines={1}>
+                        {formatMoneyShort(bill.amount, bill.currency)}{foreignCurrency ? ` ${bill.currency}` : ''}
+                      </Text>
+                      <Text style={[styles.groupBillShare, { color: posTone }]} numberOfLines={1}>{posText}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+              {extraBills > 0 && (
+                <Text style={styles.groupBillMore}>{t('split.moreMembers', { count: extraBills })}</Text>
+              )}
+            </View>
           )}
         </View>
-      )}
+      </View>
     </Pressable>
   );
 });
@@ -551,17 +562,31 @@ const createStyles = (colors) =>
       fontSize: 9,
       fontVariant: ['tabular-nums'],
     },
+    // Total figure (left) beside the bills preview (right). The columns are
+    // proportional rather than fixed so the split holds on a narrow phone; the
+    // total column is the smaller share because the preview rows carry more.
+    groupBody: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm + 2,
+      marginTop: spacing.md,
+    },
+    groupTotalCol: {
+      flex: 4,
+    },
+    groupBillCol: {
+      flex: 6,
+    },
     groupTotalLabel: {
       color: colors.textSecondary,
       fontFamily: fonts.bold,
       fontSize: 12,
       letterSpacing: 0.2,
-      marginTop: spacing.md,
     },
     groupTotal: {
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
-      fontSize: 24,
+      fontSize: 22,
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.5,
       marginTop: 2,
@@ -584,26 +609,27 @@ const createStyles = (colors) =>
     },
     // The bills preview: icon-badged rows (the group sheet's bill-row format,
     // compacted) on a solid surface floating over the payment-method wash.
+    // Sized for the right half of the card — every text style here is a step
+    // down from the sheet's so a name + "paid by · date" still fits.
     groupBillPanel: {
       backgroundColor: colors.card,
       borderRadius: radius.sm + 2,
-      paddingHorizontal: spacing.sm + 2,
-      marginTop: spacing.sm + 4,
+      paddingHorizontal: spacing.sm,
     },
     groupBillRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
-      paddingVertical: spacing.sm,
+      gap: spacing.xs + 2,
+      paddingVertical: spacing.sm - 1,
     },
     groupBillDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
     groupBillIcon: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -613,12 +639,12 @@ const createStyles = (colors) =>
     groupBillName: {
       color: colors.textPrimary,
       fontFamily: fonts.bold,
-      fontSize: 13,
+      fontSize: 12,
     },
     groupBillMeta: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
-      fontSize: 11,
+      fontSize: 10,
       marginTop: 1,
     },
     groupBillRight: {
@@ -627,28 +653,27 @@ const createStyles = (colors) =>
     groupBillAmount: {
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
-      fontSize: 13,
+      fontSize: 12,
       fontVariant: ['tabular-nums'],
     },
     groupBillShare: {
       fontFamily: fonts.numRegular,
-      fontSize: 11,
+      fontSize: 10,
       fontVariant: ['tabular-nums'],
       marginTop: 1,
     },
     groupBillMore: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 11,
       textAlign: 'center',
-      paddingBottom: spacing.sm,
+      paddingBottom: spacing.sm - 1,
     },
     groupBillEmpty: {
       color: colors.textMuted,
       fontFamily: fonts.regular,
       fontSize: 12,
       lineHeight: 17,
-      marginTop: spacing.sm + 4,
     },
     empty: {
       alignItems: 'center',

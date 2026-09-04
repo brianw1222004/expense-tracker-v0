@@ -5,7 +5,7 @@ import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT } from '../i18n';
 import { formatMoneyShort } from '../format';
 import { getCategoryLabel } from '../categories';
-import { budgetZoneTone } from '../budget';
+import { categoryBarState } from '../budget';
 import { HIcon } from '../icons';
 
 const DONUT_SIZE = 132;
@@ -42,14 +42,15 @@ function buildArcs(segments, total) {
 const TOP_ROWS = 3;
 
 // The category-spending summary card shown on the Dashboard (moved off the old
-// Categories tab): a "Categorical Spending Overview" section heading (the same
+// Categories tab): a "Categorical Overview" section heading (the same
 // title-case heading style as the Dashboard's other cards), a rounded-segment
 // donut of the month's spending by category with the total in the center, and
-// the top-spending categories beside it — icon + name + spent amount, over a
-// progress bar that fills against the category's budget in a zone tone (green
-// under, orange within 15%, red over; budget on the right, share-of-total
-// fill when no budget is set). The month comes from the app-wide selection on the Monthly
-// Spending card (no month nav of its own). A "More detail ›" link in the
+// the top-spending categories beside it — icon + color-matched name + spent
+// amount, over a progress bar that fills against the category's budget in a
+// zone tone (green under, orange within 15%, red over; budget on the right); a
+// category with no budget gets an empty track and a "No budget" label instead.
+// The month comes from the app-wide selection on the Monthly
+// Spending card (no month nav of its own). A "›" chevron in the
 // header jumps to the Insight tab, which hosts the full per-category tile
 // grid on its Categories card.
 export default function CategorySummaryCard({
@@ -68,19 +69,20 @@ export default function CategorySummaryCard({
     () => months.find((m) => m.key === monthKey) ?? { key: monthKey, total: 0, byCategory: {} },
     [months, monthKey]
   );
-
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>{t('cats.sectionTitle')}</Text>
+        {/* Chevron only — the same affordance the Dashboard's split-balances
+            card uses; the label lives in the accessibility name. */}
         <Pressable
           onPress={onMoreDetail}
           accessibilityRole="button"
-          hitSlop={8}
+          accessibilityLabel={t('cats.moreDetail')}
+          hitSlop={12}
           style={({ pressed }) => [styles.moreDetailLink, pressed && styles.moreDetailLinkPressed]}
         >
-          <Text style={styles.moreDetailText}>{t('cats.moreDetail')}</Text>
-          <HIcon name="chevron-right" size={14} color={colors.textSecondary} strokeWidth={2} />
+          <HIcon name="chevron-right" size={18} color={colors.textMuted} strokeWidth={2} />
         </Pressable>
       </View>
 
@@ -158,7 +160,6 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, cate
             {i > 0 && <View style={styles.statDivider} />}
             <TopCategoryRow
               seg={seg}
-              total={total}
               budget={categoryBudgets?.[seg.category.id] ?? 0}
               displayCurrency={displayCurrency}
               colors={colors}
@@ -178,17 +179,15 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, cate
 // One top-spending row beside the donut, in the shared category-row format
 // (matching the Insight Categories list): a small category-tinted icon circle
 // leads a two-line block and centers on its full height, so the name and the
-// progress bar share the same left edge. Line 1 is name + this month's spend;
-// line 2 is the bar with the budget beside it. The bar fills spent-of-budget
-// in a budget-zone tone — green under budget, orange within 15% of it, red
-// over — mirroring the Insight budget gauge; with no budget set it falls back
-// to the category's share of the month total (green, no zone to breach) and
-// the budget label is omitted.
-function TopCategoryRow({ seg, total, budget, displayCurrency, colors, styles, t }) {
-  const hasBudget = budget > 0;
-  const ratio = hasBudget ? seg.value / budget : seg.value / total;
-  const fillPct = Math.min(ratio * 100, 100);
-  const tone = budgetZoneTone(ratio, hasBudget, colors);
+// progress bar share the same left edge. Line 1 is the name — tinted in the
+// category's own color, matching its icon — plus this month's spend; line 2 is
+// the bar with its reference figure beside it. The bar fills spent-of-budget in
+// a budget-zone tone (green under budget, orange within 15% of it, red over)
+// mirroring the Insight budget gauge; with no budget set the track stays empty
+// and the slot reads "No budget" — via the shared `categoryBarState`, exactly
+// like the Insight rows.
+function TopCategoryRow({ seg, budget, displayCurrency, colors, styles, t }) {
+  const bar = categoryBarState({ spent: seg.value, budget, colors });
   return (
     <View style={styles.statRow}>
       <View style={[styles.statIconBox, { backgroundColor: `${seg.category.color}1A` }]}>
@@ -196,22 +195,26 @@ function TopCategoryRow({ seg, total, budget, displayCurrency, colors, styles, t
       </View>
       <View style={styles.statBody}>
         <View style={styles.statHead}>
-          <Text style={styles.statName} numberOfLines={1}>
+          <Text style={[styles.statName, { color: seg.category.color }]} numberOfLines={1}>
             {getCategoryLabel(seg.category, t)}
           </Text>
-          <Text style={styles.statSpent} numberOfLines={1}>
+          {/* A blown budget reddens the figure. */}
+          <Text
+            style={[styles.statSpent, bar.over && { color: colors.danger }]}
+            numberOfLines={1}
+          >
             {formatMoneyShort(seg.value, displayCurrency)}
           </Text>
         </View>
         <View style={styles.statBarRow}>
           <View style={styles.statBarTrack}>
-            <View style={[styles.statBarFill, { width: `${fillPct}%`, backgroundColor: tone }]} />
+            <View style={[styles.statBarFill, { width: `${bar.fillPct}%`, backgroundColor: bar.tone }]} />
           </View>
-          {hasBudget && (
-            <Text style={styles.statBudget} numberOfLines={1}>
-              {formatMoneyShort(budget, displayCurrency)}
-            </Text>
-          )}
+          <Text style={styles.statBudget} numberOfLines={1}>
+            {bar.basis === 'budget'
+              ? formatMoneyShort(budget, displayCurrency)
+              : t('cats.noBudget')}
+          </Text>
         </View>
       </View>
     </View>
@@ -228,7 +231,7 @@ const createStyles = (colors) =>
       marginTop: spacing.md,
       ...cardShadow,
     },
-    // Heading row: title on the left, the "More detail ›" link on the right.
+    // Heading row: title on the left, the "›" detail chevron on the right.
     cardHeader: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -243,18 +246,12 @@ const createStyles = (colors) =>
       letterSpacing: 0.2,
       flexShrink: 1,
     },
-    // Quiet "More detail ›" link in the header.
+    // Quiet "›" affordance in the header (chevron only, like the split card).
     moreDetailLink: {
-      flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
+      justifyContent: 'center',
     },
     moreDetailLinkPressed: { opacity: 0.6 },
-    moreDetailText: {
-      color: colors.textSecondary,
-      fontFamily: fonts.medium,
-      fontSize: 14,
-    },
     donutBody: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -314,9 +311,9 @@ const createStyles = (colors) =>
       justifyContent: 'space-between',
       gap: spacing.sm,
     },
+    // Color is applied inline from the category (matching its icon).
     statName: {
       flexShrink: 1,
-      color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 15,
     },
@@ -327,7 +324,8 @@ const createStyles = (colors) =>
       fontSize: 14,
       fontVariant: ['tabular-nums'],
     },
-    // Comparison bar with the budget beside it (label omitted when unbudgeted).
+    // Comparison bar with its reference figure beside it (the budget, or last
+    // month's spend when unbudgeted).
     statBarRow: {
       flexDirection: 'row',
       alignItems: 'center',

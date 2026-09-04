@@ -65,10 +65,10 @@ export default function AnchorMenu({ visible, anchor, options = [], value, value
                   </Text>
                   {multi ? (
                     <View style={[styles.checkRing, selected && styles.checkRingOn]}>
-                      {selected ? <HIcon name="tick-01" size={12} color={colors.onAccent} strokeWidth={2.5} /> : null}
+                      {selected ? <HIcon name="tick-02" size={12} color={colors.onAccent} strokeWidth={2.5} /> : null}
                     </View>
                   ) : selected ? (
-                    <HIcon name="tick-01" size={16} color={colors.accent} strokeWidth={2.2} />
+                    <HIcon name="tick-02" size={16} color={colors.accent} strokeWidth={2.2} />
                   ) : opt.icon ? (
                     <HIcon name={opt.icon} size={16} color={colors.icon} strokeWidth={2} />
                   ) : null}

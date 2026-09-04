@@ -7,10 +7,9 @@ export function clampBudgetRatio(ratio) {
 // The zone tone for a category's spent-of-budget bar, shared by the Dashboard's
 // top-category rows and the Insight category rows so the thresholds can't drift
 // apart: green under budget, orange within 15% of it (>=85%), red over. An
-// unbudgeted category is always green (there's no limit to breach — the caller
-// fills the bar by share-of-total instead). `colors` is injected to keep this
-// module palette-free. (The overall budget gauge deliberately uses its own,
-// earlier 75% warning and does NOT go through here.)
+// unbudgeted category is always green (there's no limit to breach). `colors` is
+// injected to keep this module palette-free. (The overall budget gauge
+// deliberately uses its own, earlier 75% warning and does NOT go through here.)
 export function budgetZoneTone(ratio, hasBudget, colors) {
   if (!hasBudget) return colors.success;
   if (ratio > 1) return colors.danger;
@@ -18,31 +17,38 @@ export function budgetZoneTone(ratio, hasBudget, colors) {
   return colors.success;
 }
 
+// Everything a category progress bar needs, in one place so the Dashboard's
+// top-category rows and the Insight category rows can't drift apart. The bar
+// always measures spent-of-BUDGET:
+//   basis 'budget' — a budget is set: fill spent-of-budget in the budget zone.
+//   basis 'none'   — no budget, so there's nothing to measure against: an empty
+//                    track (callers label the slot "No budget" instead of a
+//                    figure). The old no-budget fallback — this month vs. the
+//                    same category LAST month — was removed; both cards compare
+//                    against the budget only.
+// `fillPct` is always clamped to 0..100; `ratio` is left uncapped so callers
+// can label the real overshoot.
+export function categoryBarState({ spent = 0, budget = 0, colors }) {
+  if (budget > 0) {
+    const ratio = spent / budget;
+    return {
+      basis: 'budget',
+      ratio,
+      fillPct: clampBudgetRatio(ratio) * 100,
+      tone: budgetZoneTone(ratio, true, colors),
+      over: spent > budget,
+    };
+  }
+  return { basis: 'none', ratio: 0, fillPct: 0, tone: colors.success, over: false };
+}
+
 export function hasUsableOverallBudget(overallBudget) {
   const n = Number(overallBudget);
   return Number.isFinite(n) && n > 0;
 }
 
-export function budgetAmountToRatio(amount, overallBudget) {
-  if (!hasUsableOverallBudget(overallBudget)) return 0;
-  return clampBudgetRatio((Number(amount) || 0) / Number(overallBudget));
-}
-
-// Snap a 0..1 slider ratio to the nearest `step` (default 5%). The slider works
-// in proportions of the overall budget, so a 0.05 step === 5% increments. Float
-// dust from `n * 0.05` is rounded away so results are clean multiples.
-export function snapRatioToStep(ratio, step = 0.05) {
-  const r = clampBudgetRatio(ratio);
-  const s = Number(step);
-  if (!Number.isFinite(s) || s <= 0) return r;
-  return clampBudgetRatio(Math.round(Math.round(r / s) * s * 1e6) / 1e6);
-}
-
-export function ratioToBudgetAmount(ratio, overallBudget, decimals = 2) {
-  if (!hasUsableOverallBudget(overallBudget)) return 0;
-  const factor = 10 ** decimals;
-  return Math.round(Number(overallBudget) * clampBudgetRatio(ratio) * factor) / factor;
-}
+// (The ratio↔amount and 5%-snapping helpers that fed the budget editor's
+// proportion sliders went with them — budgets are typed as amounts now.)
 
 export function budgetAmountPercent(amount, overallBudget) {
   if (!hasUsableOverallBudget(overallBudget)) return null;

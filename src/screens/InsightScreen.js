@@ -13,15 +13,16 @@ import { useT } from '../i18n';
 import { formatMoney, formatMoneyShort, shiftMonthKey } from '../format';
 import { getCurrency } from '../currency';
 import { getCategoryLabel } from '../categories';
-import { budgetZoneTone } from '../budget';
+import { categoryBarState } from '../budget';
 import { HIcon } from '../icons';
 
 // The Insight tab: the budget view compressed into two cards. A "Budget" card
 // with a compact horizontal bar gauge (the old BudgetGauge donut was retired)
 // plus the display-currency pill and "Edit budgets" on its header; below it a
-// merged "Categories" card — a single-column list of clean category rows (name
-// + month amount over an indented budget progress bar, led by a tinted icon
-// circle; the old packed two-column tiles and their MoM delta were retired)
+// merged "Categories" card — a single-column list of clean category rows
+// (color-matched name + month amount over an indented progress bar — budget
+// when one is set, else this month vs the same category last month — led by a
+// tinted icon circle; the old packed two-column tiles were retired)
 // with an "External" subsection. Rows reorder by long-press drag (the
 // breakdown page's drag-reorder — persisted in device-local
 // settings.categoryOrder). The card header's add pill (and tapping any row)
@@ -68,12 +69,6 @@ export default function InsightScreen({
     () => months.find((m) => m.key === monthKey)?.byCategory ?? {},
     [months, monthKey]
   );
-  // Month-over-month deltas compare the selected month to the one before it.
-  const prevMonth = useMemo(() => {
-    const prevKey = shiftMonthKey(monthKey, -1);
-    return months.find((m) => m.key === prevKey) ?? { key: prevKey, total: 0, byCategory: {} };
-  }, [months, monthKey]);
-
   const spentOf = (category) => totalsByCategory[category.id] ?? 0;
   const hasBudgetFor = (category) => (categoryBudgets?.[category.id] ?? 0) > 0;
 
@@ -84,22 +79,22 @@ export default function InsightScreen({
     return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
   };
 
-  // One tile per category that has activity (this or last month), a budget, or
-  // is user-created (so custom categories stay reachable for editing).
+  // One tile per category with spending this month, a budget, or that is
+  // user-created (so custom categories stay reachable for editing). Last
+  // month's activity no longer keeps a row alive — the rows measure against the
+  // budget only, so a $0-this-month row with no budget would say nothing.
   const tileRows = (categories) =>
     categories
       .map((category) => ({
         category,
         budget: categoryBudgets?.[category.id] ?? 0,
         thisVal: spentOf(category),
-        lastVal: prevMonth.byCategory[category.id] ?? 0,
       }))
-      .filter((row) => row.thisVal > 0 || row.lastVal > 0 || row.budget > 0 || row.category.custom)
+      .filter((row) => row.thisVal > 0 || row.budget > 0 || row.category.custom)
       .sort(
         (a, b) =>
           orderIndex(a.category.id) - orderIndex(b.category.id) ||
-          b.thisVal - a.thisVal ||
-          b.lastVal - a.lastVal
+          b.thisVal - a.thisVal
       );
 
   const regularRows = tileRows(regularCategories);
@@ -495,14 +490,16 @@ function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, o
 // tiles: a small category-tinted icon circle leads a two-line block and
 // centers on its full height (the midpoint between the title line and the
 // bar), so the name and the progress bar share the same left edge — the bar
-// starts at the name, not under the icon. Line 1 is name + month amount
-// ("$0" is the placeholder when nothing is recorded yet; danger-toned when
-// over budget); line 2 is the budget progress bar with the budget figure at
-// its right. The track renders on EVERY row so tracking always reads; without
-// a budget it stays an empty strip (and shows no figure) until one is set.
-// The MoM delta was dropped in this decluttering. Tapping a row opens the
-// edit modal (presets included — edits/deletes are stored as
-// overrides/tombstones in customCategories); long-press drags to reorder.
+// starts at the name, not under the icon. Line 1 is the name — tinted in the
+// category's own color, matching its icon — plus the month amount ("$0" is the
+// placeholder when nothing is recorded yet; danger-toned when over); line 2 is
+// the progress bar with its reference figure at the right. The bar measures
+// spent-of-BUDGET (`categoryBarState`: green under budget, orange within 15%,
+// red over) with the budget figure beside it; a category with no budget shows
+// an empty track and a "No budget" nudge instead — tapping the row opens the
+// editor, where the budget is set. Tapping a row opens the edit modal (presets
+// included — edits/deletes are stored as overrides/tombstones in
+// customCategories); long-press drags to reorder.
 function CategoryRow({
   category,
   budget,
@@ -521,12 +518,9 @@ function CategoryRow({
 }) {
   const factor = 10 ** getCurrency(displayCurrency).decimals;
   const spent = Math.round(thisVal * factor) / factor;
-  const hasBudget = budget > 0;
-  const ratio = hasBudget ? spent / budget : 0;
-  const over = hasBudget && spent > budget;
-  // Shared zone tone (green/orange/red) — see budgetZoneTone. `over` is kept
-  // separately because it also tones the amount text above the bar.
-  const zone = budgetZoneTone(ratio, hasBudget, colors);
+  // Shared spent-of-budget bar state — see categoryBarState. `over` also tones
+  // the amount text above the bar.
+  const bar = categoryBarState({ spent, budget, colors });
 
   const dragStyle = dragging
     ? { transform: pan.getTranslateTransform(), zIndex: 10, elevation: 10, opacity: 0.9 }
@@ -547,28 +541,28 @@ function CategoryRow({
         </View>
         <View style={styles.catRowBody}>
           <View style={styles.catRowTop}>
-            <Text style={styles.catName} numberOfLines={1}>{getCategoryLabel(category, t)}</Text>
-            <Text style={[styles.catMonthVal, over && { color: colors.danger }]} numberOfLines={1}>
+            <Text style={[styles.catName, { color: category.color }]} numberOfLines={1}>
+              {getCategoryLabel(category, t)}
+            </Text>
+            {/* A blown budget reddens the figure. */}
+            <Text
+              style={[styles.catMonthVal, bar.over && { color: colors.danger }]}
+              numberOfLines={1}
+            >
               {formatMoneyShort(spent, displayCurrency)}
             </Text>
           </View>
           <View style={styles.catRowBottom}>
             <View style={styles.catTrack}>
               <View
-                style={[
-                  styles.catFill,
-                  {
-                    width: hasBudget ? `${Math.min(100, ratio * 100)}%` : '0%',
-                    backgroundColor: zone,
-                  },
-                ]}
+                style={[styles.catFill, { width: `${bar.fillPct}%`, backgroundColor: bar.tone }]}
               />
             </View>
-            {hasBudget && (
-              <Text style={styles.catBudgetVal} numberOfLines={1}>
-                {formatMoneyShort(budget, displayCurrency)}
-              </Text>
-            )}
+            <Text style={styles.catBudgetVal} numberOfLines={1}>
+              {bar.basis === 'budget'
+                ? formatMoneyShort(budget, displayCurrency)
+                : t('cats.noBudget')}
+            </Text>
           </View>
         </View>
       </Pressable>
@@ -794,8 +788,8 @@ const createStyles = (colors) =>
       justifyContent: 'space-between',
       gap: spacing.sm,
     },
+    // Color is applied inline from the category (matching its icon).
     catName: {
-      color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 14,
       flexShrink: 1,

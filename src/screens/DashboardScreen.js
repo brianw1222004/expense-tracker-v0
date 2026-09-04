@@ -27,6 +27,7 @@ export default function DashboardScreen({
   monthTotal,
   lastMonthTotal,
   dailyTotals,
+  prevDailyTotals,
   monthKey,
   onShiftMonth,
   displayCurrency,
@@ -115,16 +116,20 @@ export default function DashboardScreen({
           )}
         </View>
 
+        {/* No spacer between the figure and the chart — SpendingChart's own
+            PADDING_TOP is the whole gap. */}
         {hasExpenses && dailyTotals && (
-          <View style={styles.chartWrap}>
-            <SpendingChart
-              dailyTotals={dailyTotals}
-              displayCurrency={displayCurrency}
-              endDay={isCurrentMonth ? undefined : dailyTotals.length}
-              mode={chartMode}
-              monthlyTotals={monthlyTotals}
-            />
-          </View>
+          <SpendingChart
+            dailyTotals={dailyTotals}
+            // The previous month's per-day line, dimmed behind this one (the
+            // chart ignores it in Monthly mode — that series is already
+            // cross-month).
+            compareTotals={prevDailyTotals}
+            displayCurrency={displayCurrency}
+            endDay={isCurrentMonth ? undefined : dailyTotals.length}
+            mode={chartMode}
+            monthlyTotals={monthlyTotals}
+          />
         )}
       </View>
 
@@ -277,13 +282,10 @@ const createStyles = (colors) =>
     heroTotal: {
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
-      fontSize: 40,
+      fontSize: 48,
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.5,
       flexShrink: 1,
-    },
-    chartWrap: {
-      marginTop: spacing.md,
     },
 
     // Plain "↓ 82.6%" change beside the hero total.

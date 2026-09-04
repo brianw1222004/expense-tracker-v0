@@ -900,6 +900,9 @@ function ExpenseTracker() {
   // The hero card's view of the selected month: total, previous-month total
   // (for the delta badge) and the per-day chart series. Months with no data
   // render honestly as $0 with a flat chart (no fallback to the current month).
+  // `prevDailyTotals` is the chart's dimmed comparison line — undefined (not a
+  // zero-filled array) when that month has no data at all, so the chart draws
+  // no second line rather than a flat one along the baseline.
   const heroView = useMemo(() => {
     const selected = months.find((m) => m.key === dashMonthKey);
     const prev = months.find((m) => m.key === shiftMonthKey(dashMonthKey, -1));
@@ -909,6 +912,7 @@ function ExpenseTracker() {
       total: selected?.total ?? 0,
       prevTotal: prev?.total ?? 0,
       dailyTotals: selected?.dailyTotals ?? new Array(daysInMonth).fill(0),
+      prevDailyTotals: prev?.dailyTotals,
     };
   }, [months, dashMonthKey]);
 
@@ -957,6 +961,7 @@ function ExpenseTracker() {
               monthTotal={heroView.total}
               lastMonthTotal={heroView.prevTotal}
               dailyTotals={heroView.dailyTotals}
+              prevDailyTotals={heroView.prevDailyTotals}
               monthKey={dashMonthKey}
               onShiftMonth={shiftDashMonth}
               displayCurrency={displayCurrency}

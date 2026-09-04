@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,23 +17,16 @@ import { getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
 import {
   budgetAmountPercent,
-  budgetAmountToRatio,
   clampCategoryBudgetAmount,
   fitAllocatedBudgetsToOverall,
   hasUsableOverallBudget,
-  maxBudgetForCategory,
   remainingBudget,
-  ratioToBudgetAmount,
-  snapRatioToStep,
   totalAllocatedBudget,
 } from '../budget';
 
-// The category slider moves in 5% steps of the overall budget — the extra
-// precision wasn't useful and made fine mouse control fiddly on web.
-const SLIDER_STEP = 0.05;
-// Thumb diameter; the thumb's dynamic marginLeft scales with this so it never
-// overhangs the track ends (keep in sync with the sliderThumb width/height).
-const THUMB_SIZE = 18;
+// Every budget on this sheet is TYPED, not dragged: the proportion sliders that
+// used to sit on the category rows are gone — landing on an exact figure with a
+// 5%-snapping thumb was fiddly, and the number was the point.
 
 function budgetToText(value, decimals) {
   if (!(value > 0)) return '';
@@ -81,126 +73,27 @@ function AmountField({ value, decimals, onCommit, style, accessibilityLabel }) {
   );
 }
 
-function BudgetSlider({ value, maxValue, color, disabled, onChange, styles, colors, accessibilityLabel }) {
-  // Everything the gesture handlers read lives in refs so the PanResponder can be
-  // created once (empty deps) — mirroring the hue sliders. Recreating it per render
-  // (as before) dropped in-flight mouse drags on web.
-  const trackWidthRef = useRef(0);
-  const maxValueRef = useRef(maxValue);
-  maxValueRef.current = maxValue;
-  const disabledRef = useRef(disabled);
-  disabledRef.current = disabled;
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-  const lastEmitRef = useRef(null);
-
-  // Absolute position within the track (like the hue slider), snapped to 5% and
-  // clamped to what's still allocatable. Deduped so a mouse drag that stays inside
-  // one 5% step doesn't spam commits/re-renders.
-  const setFromLocation = (locationX) => {
-    if (disabledRef.current || trackWidthRef.current <= 0) return;
-    const raw = locationX / trackWidthRef.current;
-    const next = Math.max(0, Math.min(maxValueRef.current, snapRatioToStep(raw, SLIDER_STEP)));
-    if (next === lastEmitRef.current) return;
-    lastEmitRef.current = next;
-    onChangeRef.current(next);
-  };
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => !disabledRef.current,
-        onMoveShouldSetPanResponder: () => !disabledRef.current,
-        onPanResponderGrant: (event) => {
-          lastEmitRef.current = null;
-          setFromLocation(event.nativeEvent.locationX);
-        },
-        onPanResponderMove: (event) => setFromLocation(event.nativeEvent.locationX),
-      }),
-    []
-  );
-
-  const clamped = Math.max(0, Math.min(1, value));
-  const pct = `${clamped * 100}%`;
-
-  return (
-    <View
-      accessible
-      accessibilityRole="adjustable"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-      style={[styles.sliderTrack, disabled && styles.sliderTrackDisabled]}
-      onLayout={(event) => { trackWidthRef.current = event.nativeEvent.layout.width; }}
-      {...panResponder.panHandlers}
-    >
-      {/* pointerEvents none keeps the track the only touch target, so locationX
-          stays track-relative on native (and it blocks drag text-selection on web). */}
-      <View style={styles.sliderBase} pointerEvents="none" />
-      <View
-        pointerEvents="none"
-        style={[
-          styles.sliderFill,
-          { width: pct, backgroundColor: disabled ? colors.border : color },
-        ]}
-      />
-      {/* marginLeft scales with value so the thumb stays fully inside the track at
-          both ends (0% → its left edge at the start) instead of overhanging the gap. */}
-      <View
-        pointerEvents="none"
-        style={[
-          styles.sliderThumb,
-          { left: pct, marginLeft: -clamped * THUMB_SIZE, borderColor: disabled ? colors.border : color },
-        ]}
-      />
-    </View>
-  );
-}
-
-function CategoryBudgetRow({
-  category,
-  value,
-  overallBudget,
-  currency,
-  onCommit,
-  maxAmount,
-  styles,
-  colors,
-  t,
-}) {
+// One category's budget line — tinted icon, name over its share of the overall
+// budget, and the typed amount in a recessed field on the right. Both the
+// regular and the external section render this; `percentLabel` is omitted for
+// external categories, whose budgets sit outside the overall allocation.
+function CategoryBudgetRow({ category, value, currency, percentLabel, divider, onCommit, styles, t }) {
   const label = getCategoryLabel(category, t);
-  const sliderEnabled = hasUsableOverallBudget(overallBudget);
-  const ratio = budgetAmountToRatio(value, overallBudget);
-  const maxRatio = budgetAmountToRatio(maxAmount, overallBudget);
-  const percent = budgetAmountPercent(value, overallBudget);
-  const percentLabel = percent == null ? '—' : `${Math.round(percent)}%`;
 
   return (
-    <View style={styles.categoryBudgetRow}>
-      <View style={styles.categoryLeft}>
-        <View style={[styles.categoryIconWrap, { backgroundColor: `${category.color}1F` }]}>
-          <HIcon name={category.emoji} size={18} color={category.color} />
-        </View>
-        <View style={styles.categoryNameWrap}>
-          <Text style={styles.categoryLabel} numberOfLines={1}>
-            {label}
-          </Text>
-          <Text style={styles.categoryPercent}>{percentLabel}</Text>
-        </View>
+    <View style={[styles.categoryRow, divider && styles.rowDivider]}>
+      <View style={[styles.categoryIconWrap, { backgroundColor: `${category.color}1F` }]}>
+        <HIcon name={category.emoji} size={18} color={category.color} />
       </View>
-      <BudgetSlider
-        value={ratio}
-        maxValue={maxRatio}
-        color={category.color}
-        disabled={!sliderEnabled}
-        onChange={(nextRatio) => onCommit(ratioToBudgetAmount(nextRatio, overallBudget, currency.decimals))}
-        styles={styles}
-        colors={colors}
-        accessibilityLabel={`${label} budget proportion`}
-      />
-      <View style={styles.categoryAmountWrap}>
+      <View style={styles.categoryNameWrap}>
+        <Text style={styles.categoryLabel} numberOfLines={1}>
+          {label}
+        </Text>
+        {percentLabel ? <Text style={styles.categoryPercent}>{percentLabel}</Text> : null}
+      </View>
+      <View style={styles.amountField}>
         <Text style={styles.categorySymbol}>{currency.symbol}</Text>
         <AmountField
-          key={category.id}
           value={value}
           decimals={currency.decimals}
           onCommit={onCommit}
@@ -268,6 +161,14 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
     return clamped;
   };
 
+  // "n%" under a regular category's name — the share of the overall budget the
+  // slider's fill used to show at a glance. Null (so no caption) when there's no
+  // overall budget to be a percentage of.
+  const percentLabelFor = (value) => {
+    const percent = budgetAmountPercent(value, overallBudget);
+    return percent == null ? null : `${Math.round(percent)}%`;
+  };
+
   return (
     <Sheet
       visible={visible}
@@ -309,64 +210,51 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
             </View>
 
             <Text style={styles.sectionHeader}>{t('budget.categorySection')}</Text>
+            {/* How much of the overall budget the typed category figures use up
+                — the ceiling each field is clamped to, now that no slider track
+                shows it. */}
             {canAllocate && (
               <View style={styles.allocationSummary}>
                 <Text style={styles.allocationText}>
-                  Allocated: {formatMoney(allocated, settings.displayCurrency)} / {formatMoney(overallBudget, settings.displayCurrency)}
+                  {t('budget.allocatedOf', {
+                    allocated: formatMoney(allocated, settings.displayCurrency),
+                    total: formatMoney(overallBudget, settings.displayCurrency),
+                  })}
                 </Text>
                 <Text style={[styles.allocationText, remaining === 0 && styles.allocationTextEmpty]}>
-                  Remaining: {formatMoney(remaining, settings.displayCurrency)}
+                  {t('budget.remainingOf', { amount: formatMoney(remaining, settings.displayCurrency) })}
                 </Text>
               </View>
             )}
             <View style={styles.card}>
               {regularCategories.map((category, index) => (
-                <View
+                <CategoryBudgetRow
                   key={category.id}
-                  style={[index > 0 && styles.rowDivider]}
-                >
-                  <CategoryBudgetRow
-                    category={category}
-                    value={categoryBudgets[category.id] ?? 0}
-                    overallBudget={overallBudget}
-                    maxAmount={maxBudgetForCategory(
-                      category.id,
-                      overallBudget,
-                      categoryBudgets,
-                      regularCategoryIds,
-                      currency.decimals
-                    )}
-                    currency={currency}
-                    onCommit={(committed) => commitRegularCategory(category.id, committed)}
-                    styles={styles}
-                    colors={colors}
-                    t={t}
-                  />
-                </View>
+                  category={category}
+                  value={categoryBudgets[category.id] ?? 0}
+                  currency={currency}
+                  percentLabel={percentLabelFor(categoryBudgets[category.id] ?? 0)}
+                  divider={index > 0}
+                  onCommit={(committed) => commitRegularCategory(category.id, committed)}
+                  styles={styles}
+                  t={t}
+                />
               ))}
             </View>
 
             <Text style={styles.sectionHeader}>{t('budget.externalSection')}</Text>
             <View style={styles.card}>
               {externalCategories.map((category, index) => (
-                <View
+                <CategoryBudgetRow
                   key={category.id}
-                  style={[styles.externalCategoryRow, index > 0 && styles.rowDivider]}
-                >
-                  <HIcon name={category.emoji} size={18} color={category.color} />
-                  <Text style={styles.categoryLabel} numberOfLines={1}>
-                    {getCategoryLabel(category, t)}
-                  </Text>
-                  <Text style={styles.categorySymbol}>{currency.symbol}</Text>
-                  <AmountField
-                    key={category.id}
-                    value={categoryBudgets[category.id] ?? 0}
-                    decimals={currency.decimals}
-                    onCommit={(committed) => commitCategory(category.id, committed)}
-                    style={styles.categoryInput}
-                    accessibilityLabel={getCategoryLabel(category, t)}
-                  />
-                </View>
+                  category={category}
+                  value={categoryBudgets[category.id] ?? 0}
+                  currency={currency}
+                  divider={index > 0}
+                  onCommit={(committed) => commitCategory(category.id, committed)}
+                  styles={styles}
+                  t={t}
+                />
               ))}
             </View>
             <Text style={styles.sectionNote}>{t('budget.externalNote')}</Text>
@@ -466,27 +354,12 @@ const createStyles = (colors) =>
     allocationTextEmpty: {
       color: colors.warning,
     },
-    categoryBudgetRow: {
+    categoryRow: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs + 2,
+      paddingVertical: spacing.sm,
       gap: spacing.sm,
-    },
-    categoryLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      flex: 0.9,
-      minWidth: 74,
-      maxWidth: 132,
-    },
-    categoryAmountWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      width: 104,
-      justifyContent: 'flex-end',
-      minWidth: 0,
     },
     categoryIconWrap: {
       width: 30,
@@ -506,79 +379,39 @@ const createStyles = (colors) =>
       lineHeight: 14,
       fontVariant: ['tabular-nums'],
     },
-    externalCategoryRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: spacing.md,
-      gap: 8,
-    },
     categoryLabel: {
       color: colors.textPrimary,
       fontFamily: fonts.regular,
       fontSize: 15,
-      flex: 1,
-      marginRight: spacing.sm,
+    },
+    // A recessed, bordered field: with the slider gone this is the row's only
+    // control, so it has to read as "type a number here" rather than as a
+    // right-aligned readout.
+    amountField: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      width: 120,
+      gap: 2,
+      paddingHorizontal: spacing.sm + 2,
+      borderRadius: radius.sm,
+      backgroundColor: colors.background,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
     categorySymbol: {
       color: colors.textMuted,
       fontFamily: fonts.numRegular,
       fontSize: 14,
-      marginRight: 2,
-      fontVariant: ['tabular-nums'],
-    },
-    categoryInput: {
-      width: 110,
-      color: colors.textPrimary,
-      fontFamily: fonts.numBold,
-      fontSize: 15,
-      textAlign: 'right',
-      paddingVertical: spacing.sm + 4,
       fontVariant: ['tabular-nums'],
     },
     categoryBudgetInput: {
-      width: 80,
+      flex: 1,
+      minWidth: 0,
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
       fontSize: 15,
       textAlign: 'right',
       paddingVertical: spacing.sm + 2,
       fontVariant: ['tabular-nums'],
-    },
-    sliderTrack: {
-      flex: 1,
-      minWidth: 36,
-      height: 24,
-      justifyContent: 'center',
-      // Web affordances (ignored on native): pointer cursor + no accidental
-      // text selection while dragging with a mouse.
-      cursor: 'pointer',
-      userSelect: 'none',
-    },
-    sliderTrackDisabled: {
-      opacity: 0.55,
-      cursor: 'default',
-    },
-    sliderBase: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: colors.border,
-    },
-    sliderFill: {
-      position: 'absolute',
-      left: 0,
-      height: 6,
-      borderRadius: 3,
-    },
-    sliderThumb: {
-      position: 'absolute',
-      width: THUMB_SIZE,
-      height: THUMB_SIZE,
-      borderRadius: THUMB_SIZE / 2,
-      borderWidth: 3,
-      backgroundColor: colors.card,
-      ...panelShadow,
     },
   });

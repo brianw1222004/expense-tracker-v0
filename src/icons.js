@@ -40,7 +40,9 @@ import Leaf01Icon from '@hugeicons/core-free-icons/Leaf01Icon';
 import StarCircleIcon from '@hugeicons/core-free-icons/StarCircleIcon';
 import Cancel01Icon from '@hugeicons/core-free-icons/Cancel01Icon';
 import Delete02Icon from '@hugeicons/core-free-icons/Delete02Icon';
-import Tick01Icon from '@hugeicons/core-free-icons/Tick01Icon';
+// tick-02, not tick-01: the two-segment ✓ reads firm; tick-01's swooping,
+// curved stroke looked faint and hand-drawn at selection-mark sizes.
+import Tick02Icon from '@hugeicons/core-free-icons/Tick02Icon';
 import ChevronLeftIcon from '@hugeicons/core-free-icons/ChevronLeftIcon';
 import ChevronRightIcon from '@hugeicons/core-free-icons/ChevronRightIcon';
 import ChevronDownIcon from '@hugeicons/core-free-icons/ChevronDownIcon';
@@ -49,6 +51,8 @@ import Settings01Icon from '@hugeicons/core-free-icons/Settings01Icon';
 import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import PlusSignIcon from '@hugeicons/core-free-icons/PlusSignIcon';
 import Analytics01Icon from '@hugeicons/core-free-icons/Analytics01Icon';
+import GlobalIcon from '@hugeicons/core-free-icons/GlobalIcon';
+import PaintBoardIcon from '@hugeicons/core-free-icons/PaintBoardIcon';
 // Payment-method icons (for split-bill payment methods, mirroring categories).
 import Cash01Icon from '@hugeicons/core-free-icons/Cash01Icon';
 import CreditCardIcon from '@hugeicons/core-free-icons/CreditCardIcon';
@@ -110,7 +114,7 @@ const REGISTRY = {
 
   'cancel-01': Cancel01Icon,
   'delete-02': Delete02Icon,
-  'tick-01': Tick01Icon,
+  'tick-02': Tick02Icon,
   'chevron-left': ChevronLeftIcon,
   'chevron-right': ChevronRightIcon,
   'chevron-down': ChevronDownIcon,
@@ -119,6 +123,8 @@ const REGISTRY = {
   'user-group': UserGroupIcon,
   'plus-sign': PlusSignIcon,
   'analytics-01': Analytics01Icon,
+  'global': GlobalIcon,
+  'paint-board': PaintBoardIcon,
 
   'cash-01': Cash01Icon,
   'credit-card': CreditCardIcon,

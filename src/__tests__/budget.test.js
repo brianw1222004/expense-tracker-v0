@@ -1,19 +1,17 @@
 const {
   budgetAmountPercent,
-  budgetAmountToRatio,
   budgetZoneTone,
+  categoryBarState,
   clampBudgetRatio,
   clampCategoryBudgetAmount,
   fitAllocatedBudgetsToOverall,
   hasUsableOverallBudget,
   maxBudgetForCategory,
   remainingBudget,
-  ratioToBudgetAmount,
-  snapRatioToStep,
   totalAllocatedBudget,
 } = require('../budget');
 
-describe('budget slider helpers', () => {
+describe('budget allocation helpers', () => {
   test('detects usable overall budgets', () => {
     expect(hasUsableOverallBudget(1000)).toBe(true);
     expect(hasUsableOverallBudget('250.50')).toBe(true);
@@ -22,35 +20,11 @@ describe('budget slider helpers', () => {
     expect(hasUsableOverallBudget(NaN)).toBe(false);
   });
 
-  test('clamps slider ratios into the 0..1 range', () => {
+  test('clamps progress-bar ratios into the 0..1 range', () => {
     expect(clampBudgetRatio(-0.5)).toBe(0);
     expect(clampBudgetRatio(0.4)).toBe(0.4);
     expect(clampBudgetRatio(2)).toBe(1);
     expect(clampBudgetRatio('bad')).toBe(0);
-  });
-
-  test('maps category amounts to slider ratios', () => {
-    expect(budgetAmountToRatio(250, 1000)).toBe(0.25);
-    expect(budgetAmountToRatio(1200, 1000)).toBe(1);
-    expect(budgetAmountToRatio(250, 0)).toBe(0);
-  });
-
-  test('snaps slider ratios to clean 5% steps', () => {
-    expect(snapRatioToStep(0.12, 0.05)).toBe(0.1);
-    expect(snapRatioToStep(0.13, 0.05)).toBe(0.15);
-    expect(snapRatioToStep(0.155, 0.05)).toBe(0.15); // no float dust from 3 * 0.05
-    expect(snapRatioToStep(0.5, 0.05)).toBe(0.5);
-    expect(snapRatioToStep(1.4, 0.05)).toBe(1); // clamped into range
-    expect(snapRatioToStep(-0.2, 0.05)).toBe(0);
-    expect(snapRatioToStep(0.2, 0)).toBe(0.2); // invalid step is a no-op (still clamped)
-  });
-
-  test('maps slider ratios back to rounded category amounts', () => {
-    expect(ratioToBudgetAmount(0.25, 1000, 2)).toBe(250);
-    expect(ratioToBudgetAmount(0.333, 1000, 2)).toBe(333);
-    expect(ratioToBudgetAmount(0.333, 1000, 0)).toBe(333);
-    expect(ratioToBudgetAmount(1.5, 1000, 2)).toBe(1000);
-    expect(ratioToBudgetAmount(0.5, 0, 2)).toBe(0);
   });
 
   test('keeps displayed percentages unclamped for typed over-budget values', () => {
@@ -107,7 +81,8 @@ describe('budgetZoneTone', () => {
 
   test('an unbudgeted category is always green (no limit to breach)', () => {
     expect(budgetZoneTone(0, false, colors)).toBe('green');
-    // The ratio is ignored when hasBudget is false (it's share-of-total there).
+    // The ratio is ignored when hasBudget is false — an unbudgeted row plots no
+    // bar at all (basis 'none'; see categoryBarState).
     expect(budgetZoneTone(0.95, false, colors)).toBe('green');
     expect(budgetZoneTone(5, false, colors)).toBe('green');
   });
@@ -127,5 +102,34 @@ describe('budgetZoneTone', () => {
   test('red once over budget (ratio > 1)', () => {
     expect(budgetZoneTone(1.0001, true, colors)).toBe('red');
     expect(budgetZoneTone(2, true, colors)).toBe('red');
+  });
+});
+
+describe('categoryBarState', () => {
+  const colors = { success: 'green', warning: 'orange', danger: 'red' };
+
+  test('spent-of-budget in the budget zone', () => {
+    expect(categoryBarState({ spent: 45, budget: 100, colors })).toEqual({
+      basis: 'budget', ratio: 0.45, fillPct: 45, tone: 'green', over: false,
+    });
+    expect(categoryBarState({ spent: 90, budget: 100, colors })).toMatchObject({
+      basis: 'budget', fillPct: 90, tone: 'orange', over: false,
+    });
+    expect(categoryBarState({ spent: 120, budget: 100, colors })).toMatchObject({
+      basis: 'budget', ratio: 1.2, fillPct: 100, tone: 'red', over: true,
+    });
+  });
+
+  test('no budget leaves the bar empty (no last-month fallback)', () => {
+    expect(categoryBarState({ spent: 599, budget: 0, colors })).toMatchObject({
+      basis: 'none', fillPct: 0, over: false,
+    });
+    expect(categoryBarState({ spent: 0, budget: 0, colors })).toMatchObject({
+      basis: 'none', fillPct: 0,
+    });
+  });
+
+  test('defaults treat missing figures as zero', () => {
+    expect(categoryBarState({ colors }).basis).toBe('none');
   });
 });

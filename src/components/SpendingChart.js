@@ -7,7 +7,10 @@ import { formatMoneyShort } from '../format';
 const CHART_HEIGHT = 150;
 const PADDING_LEFT = 40;
 const PADDING_RIGHT = 12;
-const PADDING_TOP = 24;
+// Headroom above the tallest point and — since the container no longer carries
+// a top margin (see createStyles) — the WHOLE gap under the hero figure. It used
+// to be 24 stacked on a spacing.md margin; those 40px are halved into this 20.
+const PADDING_TOP = 20;
 const PADDING_BOTTOM = 28;
 
 // Fixed ticks plus the month's actual last day (appended at render). Listing
@@ -25,6 +28,12 @@ const pillShadow = {
   elevation: 4,
 };
 
+// The previous-month comparison line's opacity: dimmed at rest so the selected
+// month owns the card, lifted while the user scrubs (the interaction is what
+// asks for the comparison).
+const COMPARE_DIM = 0.28;
+const COMPARE_ACTIVE = 0.6;
+
 function gridSteps(maxVal) {
   if (maxVal <= 0) return [];
   const rough = maxVal / 4;
@@ -37,10 +46,12 @@ function gridSteps(maxVal) {
   return lines;
 }
 
-// The hero-card spending line chart: a thick smoothed line in a light accent
-// tint with the newest segment overdrawn in full accent, dashed HORIZONTAL
-// gridlines (one per y value label), dot markers, and a floating pill badge
-// on the latest point. No area fill or baseline.
+// The hero-card spending line chart: a THIN single-tone accent line with
+// angular (unsmoothed) joins, dashed HORIZONTAL gridlines (one per y value
+// label), dot markers, and a floating pill badge on the latest point. No area
+// fill or baseline. The line is one weight/colour end to end — the old thick
+// pale line with the newest segment overdrawn in full accent read as two
+// different charts spliced together.
 // `dailyTotals` holds one entry per day of the current month; only days up to
 // today are plotted, but the x-axis spans the whole month.
 // `endDay` caps how many days are plotted (1-based, inclusive). Omitted, it
@@ -50,7 +61,12 @@ function gridSteps(maxVal) {
 // (the default), or `monthlyTotals` — [{label, value}], one point per month —
 // for the cross-month trend view. Monthly plots every slot with a dot; daily
 // keeps dots off the line except the newest point.
-export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mode = 'daily', monthlyTotals }) {
+// `compareTotals` (daily mode only) is the PREVIOUS month's per-day series,
+// drawn as a second line on the same day axis and the same y scale: dimmed at
+// rest, lifted while scrubbing, with its value in the tooltip. It plots in
+// full (a past month is complete) even though the selected month stops at
+// today — that month-to-date vs. whole-month read is the point of it.
+export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mode = 'daily', monthlyTotals, compareTotals }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
@@ -89,7 +105,14 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
       }));
     }
 
-    const maxVal = Math.max(...values, 1);
+    // The comparison series shares the day axis, so a previous month LONGER
+    // than the selected one loses its overhanging days (there's no slot to put
+    // them in); a shorter one simply ends early.
+    const compareValues = monthly ? [] : (compareTotals ?? []).slice(0, slotCount);
+
+    // One scale for both lines — a comparison drawn to its own max would be a
+    // lie about the shape it's being compared to.
+    const maxVal = Math.max(...values, ...compareValues, 1);
 
     const drawWidth = chartWidth - PADDING_LEFT - PADDING_RIGHT;
     const drawHeight = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
@@ -100,27 +123,18 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
     const getY = (value) => PADDING_TOP + drawHeight - (value / maxVal) * drawHeight;
 
     const points = values.map((val, i) => ({ x: getX(i), y: getY(val) }));
+    const comparePoints = compareValues.map((val, i) => ({ x: getX(i), y: getY(val) }));
 
-    const cps = (prev, curr) => {
-      const cpx1 = prev.x + (curr.x - prev.x) * 0.4;
-      const cpx2 = curr.x - (curr.x - prev.x) * 0.4;
-      return `C${cpx1},${prev.y} ${cpx2},${curr.y} ${curr.x},${curr.y}`;
+    // Straight segments, round joins — a single spike day now reads as a crisp
+    // peak instead of the balloon a Bezier smoothing pass inflated it into.
+    const toPath = (pts) => {
+      if (pts.length < 2) return '';
+      let d = `M${pts[0].x},${pts[0].y}`;
+      for (let i = 1; i < pts.length; i++) d += ` L${pts[i].x},${pts[i].y}`;
+      return d;
     };
-
-    let linePath = '';
-    if (points.length > 1) {
-      linePath = `M${points[0].x},${points[0].y}`;
-      for (let i = 1; i < points.length; i++) {
-        linePath += ` ${cps(points[i - 1], points[i])}`;
-      }
-    }
-
-    // The newest segment, overdrawn in full accent on top of the tinted line
-    // (the reference design's emphasized "current" stretch).
-    const lastSegPath =
-      points.length > 1
-        ? `M${points[points.length - 2].x},${points[points.length - 2].y} ${cps(points[points.length - 2], points[points.length - 1])}`
-        : '';
+    const linePath = toPath(points);
+    const comparePath = toPath(comparePoints);
 
     const xLabels = labelSlots.map(({ index, label }) => ({ x: getX(index), label }));
 
@@ -136,14 +150,16 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
     const yLabels = gridSteps(maxVal).map((v) => ({ value: v, y: getY(v) }));
 
     return {
-      values, slotCount, drawWidth, baselineY,
-      points, linePath, lastSegPath, xLabels, dotIndexes, lastPoint, lastVal, yLabels,
+      values, compareValues, slotCount, drawWidth, baselineY,
+      points, comparePoints, linePath, comparePath,
+      xLabels, dotIndexes, lastPoint, lastVal, yLabels,
     };
-  }, [dailyTotals, chartWidth, endDay, monthly, monthlyTotals]);
+  }, [dailyTotals, chartWidth, endDay, monthly, monthlyTotals, compareTotals]);
 
   const {
-    values, slotCount, drawWidth, baselineY,
-    points, linePath, lastSegPath, xLabels, dotIndexes, lastPoint, lastVal, yLabels,
+    values, compareValues, slotCount, drawWidth, baselineY,
+    points, comparePoints, linePath, comparePath,
+    xLabels, dotIndexes, lastPoint, lastVal, yLabels,
   } = geom;
 
   const handleInteraction = (e) => {
@@ -162,6 +178,10 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
   const clearActive = () => setActiveIndex((cur) => (cur === null ? cur : null));
 
   const activePoint = activeIndex != null && activeIndex < points.length ? points[activeIndex] : null;
+  // The comparison's reading at the scrubbed day (it can run out earlier than
+  // the selected month — e.g. the 31st against a 30-day previous month).
+  const compareActive =
+    activePoint && activeIndex < comparePoints.length ? comparePoints[activeIndex] : null;
   const tooltipLabel =
     activeIndex == null
       ? ''
@@ -212,22 +232,27 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
               </SvgText>
             ))}
 
+            {/* Previous month, UNDER the selected one and dimmed until the
+                user scrubs — same hue and weight, so the difference the eye
+                picks up is the shape, not the styling. */}
+            {comparePath ? (
+              <Path
+                d={comparePath}
+                fill="none"
+                stroke={colors.accent}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={activePoint ? COMPARE_ACTIVE : COMPARE_DIM}
+              />
+            ) : null}
+
             {linePath ? (
               <Path
                 d={linePath}
                 fill="none"
-                stroke={`${colors.accent}4D`}
-                strokeWidth={3.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ) : null}
-            {lastSegPath ? (
-              <Path
-                d={lastSegPath}
-                fill="none"
                 stroke={colors.accent}
-                strokeWidth={3.5}
+                strokeWidth={2}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -246,29 +271,46 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
               />
             )}
 
-            {/* Ringed dot markers: every point (monthly) + the newest point. */}
-            {points.map((p, i) =>
-              dotIndexes.has(i) && i !== activeIndex ? (
+            {/* Dot markers: every point (monthly) + the newest point. The
+                newest reads as a solid terminal cap on the thin line; the
+                in-between monthly dots stay small and ringed so a dense run of
+                them doesn't thicken the line. */}
+            {points.map((p, i) => {
+              if (!dotIndexes.has(i) || i === activeIndex) return null;
+              const isLast = i === points.length - 1;
+              return (
                 <Circle
                   key={`dot-${i}`}
                   cx={p.x}
                   cy={p.y}
-                  r={3.5}
+                  r={isLast ? 4 : 2.5}
                   fill={colors.accent}
-                  stroke={colors.card}
-                  strokeWidth={2}
+                  stroke={isLast ? 'none' : colors.card}
+                  strokeWidth={isLast ? 0 : 1.5}
                 />
-              ) : null
+              );
+            })}
+
+            {compareActive && (
+              <Circle
+                cx={compareActive.x}
+                cy={compareActive.y}
+                r={3.5}
+                fill={colors.accent}
+                stroke={colors.card}
+                strokeWidth={1.5}
+                opacity={COMPARE_ACTIVE}
+              />
             )}
 
             {activePoint && (
               <Circle
                 cx={activePoint.x}
                 cy={activePoint.y}
-                r={5}
+                r={4.5}
                 fill={colors.accent}
                 stroke={colors.card}
-                strokeWidth={2.5}
+                strokeWidth={2}
               />
             )}
 
@@ -314,8 +356,10 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
               styles.tooltip,
               {
                 left: Math.max(4, Math.min(chartWidth - 76, activePoint.x - 38)),
-                top: activePoint.y > 52
-                  ? activePoint.y - 46
+                // The comparison row makes the pill ~14px taller, so it needs
+                // that much more clearance before it can sit above the point.
+                top: activePoint.y > (compareActive ? 66 : 52)
+                  ? activePoint.y - (compareActive ? 60 : 46)
                   : activePoint.y + 14,
               },
             ]}
@@ -325,6 +369,16 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
             <Text style={styles.tooltipValue}>
               {formatMoneyShort(values[activeIndex], displayCurrency)}
             </Text>
+            {/* Same day, previous month. The dimmed dash echoes the dimmed
+                line, which is what says WHICH line this figure belongs to. */}
+            {compareActive && (
+              <View style={styles.tooltipCompareRow}>
+                <View style={styles.tooltipCompareSwatch} />
+                <Text style={styles.tooltipCompareValue}>
+                  {formatMoneyShort(compareValues[activeIndex], displayCurrency)}
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -334,9 +388,10 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    // Spacing above the plotted chart when embedded inside the hero card.
+    // No margin of its own: PADDING_TOP inside the SVG is the whole gap under
+    // the hero figure now (a margin here on top of it stacked into a canyon).
     container: {
-      marginTop: spacing.md,
+      marginTop: 0,
     },
     chartWrap: {
       position: 'relative',
@@ -381,5 +436,25 @@ const createStyles = (colors) =>
       fontSize: 13,
       fontVariant: ['tabular-nums'],
       lineHeight: 17,
+    },
+    // The previous-month reading, keyed to the dimmed line by a matching dash.
+    tooltipCompareRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    tooltipCompareSwatch: {
+      width: 9,
+      height: 2,
+      borderRadius: 1,
+      backgroundColor: colors.accent,
+      opacity: COMPARE_ACTIVE,
+    },
+    tooltipCompareValue: {
+      color: colors.textMuted,
+      fontFamily: fonts.numRegular,
+      fontSize: 11,
+      fontVariant: ['tabular-nums'],
+      lineHeight: 14,
     },
   });

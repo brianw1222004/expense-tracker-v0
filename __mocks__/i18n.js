@@ -10,25 +10,34 @@ const DATE_NAMES = {
   en: {
     months: ['January', 'February', 'March', 'April', 'May', 'June',
              'July', 'August', 'September', 'October', 'November', 'December'],
+    shortMonths: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     weekdays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     weekdayLetters: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
     dayLabel: '{weekday}, {month} {day}',
+    shortDayLabel: '{month} {day}',
     monthYear: '{month} {year}',
   },
   zh: {
     months: ['1月', '2月', '3月', '4月', '5月', '6月',
              '7月', '8月', '9月', '10月', '11月', '12月'],
+    shortMonths: ['1月', '2月', '3月', '4月', '5月', '6月',
+                  '7月', '8月', '9月', '10月', '11月', '12月'],
     weekdays: ['週日', '週一', '週二', '週三', '週四', '週五', '週六'],
     weekdayLetters: ['日', '一', '二', '三', '四', '五', '六'],
     dayLabel: '{month}{day}日 {weekday}',
+    shortDayLabel: '{month}{day}日',
     monthYear: '{year}年{month}',
   },
   es: {
     months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
              'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+    shortMonths: ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+                  'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
     weekdays: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
     weekdayLetters: ['D', 'L', 'M', 'X', 'J', 'V', 'S'],
     dayLabel: '{weekday}, {day} de {month}',
+    shortDayLabel: '{day} {month}',
     monthYear: '{month} de {year}',
   },
 };
@@ -42,6 +51,15 @@ const STRINGS = {
 
 function getDateNames(language) {
   return DATE_NAMES[language] ?? DATE_NAMES.en;
+}
+
+// Same {placeholder} substitution the real i18n.js exports — format.js' date
+// labels build their strings with it.
+function interpolate(template, vars) {
+  if (!vars) return template;
+  return String(template).replace(/\{(\w+)\}/g, (match, name) =>
+    vars[name] !== undefined ? String(vars[name]) : match
+  );
 }
 
 function translate(language, key, vars) {
@@ -70,6 +88,7 @@ module.exports = {
   DATE_NAMES,
   LANGUAGES,
   getDateNames,
+  interpolate,
   translate,
   I18nProvider,
   useT,
