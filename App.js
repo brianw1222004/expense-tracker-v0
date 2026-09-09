@@ -933,8 +933,9 @@ function ExpenseTracker() {
     );
   } else {
     mainUIVisible = true;
-    // Global chrome (account FAB top-left, add FAB bottom-right) hides whenever
-    // any popup or sheet is open so it never floats over a modal surface.
+    // Global chrome (the account FAB top-left and the sync-failure pill) hides
+    // whenever any popup or sheet is open so it never floats over a modal
+    // surface. The add "+" is the tab bar's center button, not a FAB.
     const chromeVisible =
       overlay == null &&
       !addOpen &&
