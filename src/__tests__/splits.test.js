@@ -19,6 +19,7 @@ const {
   computeTaxShares,
   taxInputValid,
   billsForGroup,
+  splitMonthGroupSummaries,
   removeMemberFromBill,
   billUndistributed,
   groupBalances,
@@ -586,6 +587,109 @@ describe('billsForGroup()', () => {
 
   it('returns empty array for empty expense list', () => {
     expect(billsForGroup('g1', [])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// splitMonthGroupSummaries()
+// ---------------------------------------------------------------------------
+
+describe('splitMonthGroupSummaries()', () => {
+  const EMPTY_GROUP = {
+    id: 'g-empty',
+    currency: 'USD',
+    members: [{ id: 'm3' }],
+  };
+  const julyEarlier = makeBill({
+    id: 'jul-usd',
+    amount: 25,
+    currency: 'USD',
+    shares: { [YOU]: 10, m1: 15 },
+    createdAt: new Date(2026, 6, 4, 12).getTime(),
+  });
+  const julyLater = makeBill({
+    id: 'jul-eur',
+    amount: 92,
+    currency: 'EUR',
+    shares: { [YOU]: 46, m1: 46 },
+    createdAt: new Date(2026, 6, 20, 12).getTime(),
+  });
+  const augustBill = makeBill({
+    id: 'aug-jpy',
+    amount: 15750,
+    currency: 'JPY',
+    shares: { [YOU]: 7875, m2: 7875 },
+    createdAt: new Date(2026, 7, 8, 12).getTime(),
+  });
+  const settlement = {
+    id: 'settlement',
+    groupId: 'g1',
+    settlement: true,
+    from: 'm1',
+    to: YOU,
+    amount: 5,
+    currency: 'USD',
+    createdAt: new Date(2026, 6, 25, 12).getTime(),
+  };
+  const allRecords = [julyEarlier, augustBill, settlement, julyLater];
+
+  it('uses only July bills for July spending and count', () => {
+    const [summary] = splitMonthGroupSummaries([GROUP_A], allRecords, '2026-07', 'USD');
+
+    expect(summary.billCount).toBe(2);
+    expect(summary.totalSpent).toBeCloseTo(25 + convert(92, 'EUR', 'USD'), 10);
+  });
+
+  it('uses only August bills for August spending and count', () => {
+    const [summary] = splitMonthGroupSummaries([GROUP_A], allRecords, '2026-08', 'USD');
+
+    expect(summary.billCount).toBe(1);
+    expect(summary.totalSpent).toBeCloseTo(convert(15750, 'JPY', 'USD'), 10);
+  });
+
+  it('sorts selected-month preview bills newest first', () => {
+    const [summary] = splitMonthGroupSummaries([GROUP_A], allRecords, '2026-07', 'USD');
+
+    expect(summary.bills.map((bill) => bill.id)).toEqual(['jul-eur', 'jul-usd']);
+  });
+
+  it('keeps groups with no selected-month activity visible with zero values', () => {
+    const summaries = splitMonthGroupSummaries([GROUP_A, EMPTY_GROUP], allRecords, '2026-07', 'USD');
+
+    expect(summaries.map(({ group }) => group.id)).toEqual(['g1', 'g-empty']);
+    expect(summaries[1]).toMatchObject({ bills: [], billCount: 0, totalSpent: 0 });
+  });
+
+  it('does not mutate or filter the records used by all-time outstanding balances', () => {
+    const before = overallBalance([GROUP_A], allRecords, 'USD');
+
+    splitMonthGroupSummaries([GROUP_A], allRecords, '2026-07', 'USD');
+    const julyBalance = overallBalance([GROUP_A], allRecords, 'USD');
+    splitMonthGroupSummaries([GROUP_A], allRecords, '2026-08', 'USD');
+    const augustBalance = overallBalance([GROUP_A], allRecords, 'USD');
+
+    expect(julyBalance).toEqual(before);
+    expect(augustBalance).toEqual(before);
+    expect(allRecords).toEqual([julyEarlier, augustBill, settlement, julyLater]);
+  });
+
+  it('excludes settlements from monthly activity while applying them to all-time debt', () => {
+    const [summary] = splitMonthGroupSummaries([GROUP_A], [julyEarlier, settlement], '2026-07', 'USD');
+    const balanceWithoutSettlement = groupBalances(GROUP_A, [julyEarlier]);
+    const balanceWithSettlement = groupBalances(GROUP_A, [julyEarlier, settlement]);
+
+    expect(summary.bills.map((bill) => bill.id)).toEqual(['jul-usd']);
+    expect(summary.totalSpent).toBe(25);
+    expect(balanceWithSettlement.m1).toBe(balanceWithoutSettlement.m1 - 5);
+  });
+
+  it('converts every selected-month bill using the existing currency rules', () => {
+    const [summary] = splitMonthGroupSummaries([GROUP_A], [julyEarlier, julyLater], '2026-07', 'JPY');
+
+    expect(summary.totalSpent).toBeCloseTo(
+      convert(25, 'USD', 'JPY') + convert(92, 'EUR', 'JPY'),
+      10
+    );
   });
 });
 

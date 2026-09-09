@@ -7,6 +7,7 @@
 // whom, Splitwise-style. Bill amounts live in the bill's ENTRY currency and are
 // converted at display time, exactly like expenses.
 import { convert, getCurrency } from './currency';
+import { dateKey } from './format';
 
 // The implicit participant id for the app's owner. Members never use this id.
 export const YOU = 'you';
@@ -258,6 +259,33 @@ export function taxInputValid(subtotals, participantIds) {
 // The bills belonging to one group (helper so callers can pass the flat list).
 export function billsForGroup(groupId, splitExpenses) {
   return splitExpenses.filter((b) => b.groupId === groupId);
+}
+
+// Presentation data for the Split tab's group cards in one browsing month.
+// Every group is returned, including groups with no matching bills. Settlement
+// records are excluded because they adjust all-time debt rather than spending.
+// The source bills remain untouched; each summary owns its newest-first array.
+export function splitMonthGroupSummaries(groups, splitExpenses, monthKey, displayCurrency) {
+  const billsByGroup = new Map();
+
+  for (const bill of splitExpenses) {
+    if (bill.settlement || dateKey(bill.createdAt).slice(0, 7) !== monthKey) continue;
+    if (!billsByGroup.has(bill.groupId)) billsByGroup.set(bill.groupId, []);
+    billsByGroup.get(bill.groupId).push(bill);
+  }
+
+  return groups.map((group) => {
+    const bills = [...(billsByGroup.get(group.id) ?? [])].sort((a, b) => b.createdAt - a.createdAt);
+    return {
+      group,
+      bills,
+      billCount: bills.length,
+      totalSpent: bills.reduce(
+        (sum, bill) => sum + convert(bill.amount, bill.currency, displayCurrency),
+        0
+      ),
+    };
+  });
 }
 
 // Display name for a member id (the YOU sentinel localizes; unknown ids —

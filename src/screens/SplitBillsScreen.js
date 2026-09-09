@@ -11,7 +11,7 @@ import { convert } from '../currency';
 import { getCategory } from '../categories';
 import {
   groupNet,
-  billsForGroup,
+  splitMonthGroupSummaries,
   nameFor,
   getPaymentMethodLabel,
   getPaymentMethodColor,
@@ -25,8 +25,8 @@ import { HIcon } from '../icons';
 // The Split Bills tab: an overall owed/owe summary, then a stack of full-width
 // group widget cards mirroring the group sheet's hero — a header row (method-
 // tinted group icon, name, members · method, avatar stack), then a two-column
-// body: the group's all-time total spent with a toned net line on the left and
-// the icon-badged recent-bill preview rows on a nested surface BESIDE it (the
+// body: the selected month's total spent with an all-time net line on the left
+// and that month's recent-bill preview rows on a nested surface BESIDE it (the
 // preview takes the wider share) — each card tinted to its payment-method
 // color with a deeper colored left edge (the expense-row treatment). Tapping a
 // card opens the group's detail sheet; the "+" opens the create-group sheet.
@@ -50,10 +50,12 @@ export default function SplitBillsScreen({
   const t = useT();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  // The selector shares App's browsing month. It remains deliberately
-  // display-only here: outstanding balances and group cards are all-time.
+  const groupSummaries = useMemo(
+    () => splitMonthGroupSummaries(groups, splitExpenses, monthKey, displayCurrency),
+    [groups, splitExpenses, monthKey, displayCurrency]
+  );
 
-  const hasGroups = groups.length > 0;
+  const hasGroups = groupSummaries.length > 0;
 
   return (
     <View style={styles.container}>
@@ -144,10 +146,13 @@ export default function SplitBillsScreen({
 
       {hasGroups ? (
         <View style={styles.groupGrid}>
-          {groups.map((group) => (
+          {groupSummaries.map(({ group, bills, billCount, totalSpent }) => (
             <GroupCard
               key={group.id}
               group={group}
+              bills={bills}
+              billCount={billCount}
+              totalSpent={totalSpent}
               splitExpenses={splitExpenses}
               displayCurrency={displayCurrency}
               customCategories={customCategories}
@@ -203,7 +208,7 @@ function SummaryTile({ label, amount, count, tone, icon, displayCurrency, styles
 // How many bill tiles a card previews before collapsing into "+N more".
 const MAX_CARD_BILLS = 2;
 
-const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayCurrency, customCategories, customPaymentMethods, onOpenGroup, styles, colors, t }) {
+const GroupCard = React.memo(function GroupCard({ group, bills, billCount, totalSpent, splitExpenses, displayCurrency, customCategories, customPaymentMethods, onOpenGroup, styles, colors, t }) {
   const language = useLanguage();
   const handlePress = useCallback(() => onOpenGroup(group.id), [onOpenGroup, group.id]);
   const net = convert(groupNet(group, splitExpenses), group.currency, displayCurrency);
@@ -212,16 +217,6 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
   // group-detail card): a tinted avatar circle + the expense-row treatment —
   // a soft color wash with a deeper colored left edge.
   const pmColor = getPaymentMethodColor(group.paymentMethod, customPaymentMethods);
-  const bills = useMemo(
-    () => billsForGroup(group.id, splitExpenses).filter((b) => !b.settlement).sort((a, b) => b.createdAt - a.createdAt),
-    [group.id, splitExpenses]
-  );
-  // The group-sheet hero's figure, converted to the display currency so it
-  // agrees with the net line under it (and the summary card above).
-  const totalSpent = useMemo(
-    () => bills.reduce((sum, b) => sum + convert(b.amount, b.currency, displayCurrency), 0),
-    [bills, displayCurrency]
-  );
   const balanceText =
     net > 0
       ? t('split.owesYouShort', { amount: formatMoney(net, displayCurrency) })
@@ -281,9 +276,12 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
           a card to fit in). */}
       <View style={styles.groupBody}>
         <View style={styles.groupTotalCol}>
-          <Text style={styles.groupTotalLabel}>{t('split.totalSpent')}</Text>
+          <Text style={styles.groupTotalLabel}>{t('split.spentThisMonth')}</Text>
           <Text style={styles.groupTotal} numberOfLines={1} adjustsFontSizeToFit>
             {formatMoney(totalSpent, displayCurrency)}
+          </Text>
+          <Text style={styles.groupActivityCount} numberOfLines={1}>
+            {billCount === 1 ? t('split.billCountOne') : t('split.billCount', { count: billCount })}
           </Text>
           <View style={styles.groupNetRow}>
             <View style={[styles.groupNetDot, { backgroundColor: tone }]} />
@@ -293,7 +291,7 @@ const GroupCard = React.memo(function GroupCard({ group, splitExpenses, displayC
 
         <View style={styles.groupBillCol}>
           {shownBills.length === 0 ? (
-            <Text style={styles.groupBillEmpty}>{t('split.noBills')}</Text>
+            <Text style={styles.groupBillEmpty}>{t('split.noBillsThisMonth')}</Text>
           ) : (
             <View style={styles.groupBillPanel}>
               {shownBills.map((bill, i) => {
@@ -588,6 +586,12 @@ const createStyles = (colors) =>
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.5,
       marginTop: 2,
+    },
+    groupActivityCount: {
+      color: colors.textMuted,
+      fontFamily: fonts.regular,
+      fontSize: 11,
+      marginTop: 1,
     },
     groupNetRow: {
       flexDirection: 'row',
