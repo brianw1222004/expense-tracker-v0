@@ -54,4 +54,4 @@ All state lives in `App.js` (data, persistence/sync wiring, currency conversion 
 and hand-rolled tab + overlay navigation); everything under `src/` is presentational or a pure
 helper — `screens/`, `components/`, plus `currency.js`, `storage.js`, `sync.js`, `categories.js`,
 `splits.js`, `derive.js`, `format.js`, `i18n.js`, `theme.js`, and `icons.js`. See **CLAUDE.md** for
-the full architecture and conventions.
+the full architecture and conventions, and **docs/ui-conventions.md** for the visual spec.
