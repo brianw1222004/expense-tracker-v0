@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderGlow from '../components/HeaderGlow';
@@ -6,7 +6,7 @@ import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT, useLanguage } from '../i18n';
-import { formatMoney, formatMoneyShort, shiftMonthKey, shortDayLabel } from '../format';
+import { formatMoney, formatMoneyShort, shortDayLabel } from '../format';
 import { convert } from '../currency';
 import { getCategory } from '../categories';
 import {
@@ -38,7 +38,9 @@ export default function SplitBillsScreen({
   splitExpenses,
   displayCurrency,
   summary,
+  monthKey,
   currentMonthKey,
+  onShiftMonth,
   customCategories,
   customPaymentMethods,
   onOpenGroup,
@@ -48,12 +50,8 @@ export default function SplitBillsScreen({
   const t = useT();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  // This page's month selection (under the title, matching every other tab).
-  // DELIBERATELY display-only: balances are outstanding debts, so the summary
-  // and group cards stay all-time regardless of the selected month (product
-  // decision — don't wire it into the balance math without asking).
-  const [monthKey, setMonthKey] = useState(currentMonthKey);
-  const shiftMonth = (dir) => setMonthKey((key) => shiftMonthKey(key, dir));
+  // The selector shares App's browsing month. It remains deliberately
+  // display-only here: outstanding balances and group cards are all-time.
 
   const hasGroups = groups.length > 0;
 
@@ -70,7 +68,7 @@ export default function SplitBillsScreen({
       <MonthSelector
         monthKey={monthKey}
         currentMonthKey={currentMonthKey}
-        onShift={shiftMonth}
+        onShift={onShiftMonth}
         style={styles.monthSelector}
       />
 

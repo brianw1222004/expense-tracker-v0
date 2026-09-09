@@ -911,6 +911,26 @@ describe('overallBalance()', () => {
     expect(result.owed).toBeCloseTo(30 + jpyInUsd, 5);
   });
 
+  it('keeps outstanding balances global across bill months', () => {
+    const januaryBill = makeBill({
+      id: 'jan',
+      shares: { [YOU]: 20, m1: 20 },
+      paidBy: YOU,
+      createdAt: new Date(2026, 0, 10, 12).getTime(),
+    });
+    const augustBill = makeBill({
+      id: 'aug',
+      shares: { [YOU]: 35, m2: 35 },
+      paidBy: YOU,
+      createdAt: new Date(2026, 7, 10, 12).getTime(),
+    });
+
+    const result = overallBalance([GROUP_A], [januaryBill, augustBill], 'USD');
+
+    expect(result.owed).toBeCloseTo(55, 5);
+    expect(result.net).toBeCloseTo(55, 5);
+  });
+
   it('owed and owe are always non-negative', () => {
     const bill1 = makeBill({ id: 'b1', shares: { [YOU]: 50, m1: 50 }, paidBy: 'm1' });
     const bill2 = makeBill({ id: 'b2', shares: { [YOU]: 30, m2: 30 }, paidBy: YOU });
