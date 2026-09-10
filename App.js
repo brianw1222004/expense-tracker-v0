@@ -69,6 +69,7 @@ import {
 import { supabase, isSupabaseConfigured } from './src/supabase';
 import { buildDemoExpenses } from './src/demoData';
 import { redenominateBudgets, getCurrency } from './src/currency';
+import { saveCategorySettings } from './src/categorySettings';
 import { getAllCategories, getRegularAll, getExternalAll, isPresetCategory } from './src/categories';
 import { dateKey, shiftMonthKey } from './src/format';
 import { deriveViewData } from './src/derive';
@@ -795,12 +796,7 @@ function ExpenseTracker() {
   // `budget`; the budget lives in settings.categoryBudgets (not on the category
   // object), so split it off before storing either.
   const addCustomCategory = (category) => {
-    const { budget, ...cat } = category;
-    patchSyncedSettings((prev) => ({
-      ...prev,
-      customCategories: [...(prev.customCategories || []), cat],
-      ...(budget > 0 ? { categoryBudgets: { ...prev.categoryBudgets, [cat.id]: budget } } : {}),
-    }));
+    patchSyncedSettings((prev) => saveCategorySettings(prev, category, true));
   };
 
   // Presets delete as a `{ id, deleted: true }` tombstone (getAllCategories
@@ -821,16 +817,7 @@ function ExpenseTracker() {
   // Upsert: an edited preset has no entry in customCategories yet — its first
   // save appends an override carrying the preset's id.
   const updateCustomCategory = (updated) => {
-    const { budget, ...cat } = updated;
-    patchSyncedSettings((prev) => {
-      const list = prev.customCategories || [];
-      const exists = list.some((c) => c.id === cat.id);
-      return {
-        ...prev,
-        customCategories: exists ? list.map((c) => (c.id === cat.id ? cat : c)) : [...list, cat],
-        ...(budget > 0 ? { categoryBudgets: { ...prev.categoryBudgets, [cat.id]: budget } } : {}),
-      };
-    });
+    patchSyncedSettings((prev) => saveCategorySettings(prev, updated));
   };
 
   // A custom payment method carries the same {id,label,color,icon} shape as the

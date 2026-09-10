@@ -3,7 +3,9 @@ import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { fonts, spacing, radius } from '../theme';
 import { EMOJI_OPTIONS, COLOR_OPTIONS, generateCategoryId, getCategoryLabel } from '../categories';
-import { formatMoney, cleanAmountInput } from '../format';
+import { formatMoney, cleanAmountInput, isValidAmountText } from '../format';
+import { getCurrency } from '../currency';
+import { categoryBudgetUpdate, maxBudgetForCategory } from '../budget';
 import { HIcon } from '../icons';
 import IconPickerSheet from './IconPickerSheet';
 import ToggleSwitch from './ToggleSwitch';
@@ -39,6 +41,8 @@ export default function AddCategoryModal({
   initialBudget = 0,
   displayCurrency,
   monthlyBudget = 0,
+  categoryBudgets = {},
+  regularCategories = [],
   onClose,
   onSave,
   onDelete,
@@ -113,15 +117,28 @@ export default function AddCategoryModal({
     },
   }), []);
 
-  // A budget is required when creating (minimum 5% of the overall monthly
-  // budget; any positive amount when no overall budget is set). When editing,
-  // an empty field is also fine — presets start without a budget, and a
-  // rename/recolor shouldn't force one.
-  const minBudget = monthlyBudget > 0 ? monthlyBudget * 0.05 : 0;
-  const budgetValue = parseFloat(budgetText.replace(',', '.')) || 0;
-  const budgetOk = budgetValue > 0 && budgetValue >= minBudget;
-  const budgetInvalid = budgetText.length > 0 && !budgetOk;
-  const canSave = name.trim().length > 0 && (budgetOk || (isEdit && budgetText.length === 0));
+  const { decimals } = getCurrency(displayCurrency);
+  const categoryId = editingCategory?.id;
+  const categoryIds = regularCategories.map((c) => c.id);
+  const normalized = budgetText.trim().replace(/,(\d{3})\b/g, '$1').replace(',', '.');
+  const validText = normalized === '' || isValidAmountText(normalized, decimals);
+  const budgetUpdate = categoryBudgetUpdate({
+    categoryId,
+    amount: Number(normalized),
+    overallBudget: monthlyBudget,
+    categoryBudgets,
+    categoryIds,
+    decimals,
+    external,
+    isNew: !isEdit,
+  });
+  const maxBudget = external ? Infinity : maxBudgetForCategory(
+    categoryId, monthlyBudget, categoryBudgets, categoryIds, decimals
+  );
+  const allocationConflict = !isEdit && maxBudget < budgetUpdate.minimum;
+  const budgetOk = validText && budgetUpdate.valid;
+  const budgetInvalid = allocationConflict || (budgetText.length > 0 && !budgetOk);
+  const canSave = name.trim().length > 0 && budgetOk;
 
   const handleSave = () => {
     if (!canSave) return;
@@ -132,7 +149,7 @@ export default function AddCategoryModal({
       color,
       external,
       custom: true,
-      budget: budgetValue,
+      budget: budgetUpdate.amount,
     };
     if (isEdit) cat._editing = true;
     onSave(cat);
@@ -205,17 +222,25 @@ export default function AddCategoryModal({
                 style={styles.budgetInput}
                 value={budgetText}
                 onChangeText={(v) => setBudgetText(cleanAmountInput(v))}
+                onBlur={() => {
+                  if (budgetOk && normalized !== '') setBudgetText(String(budgetUpdate.amount));
+                }}
                 placeholder="0"
                 placeholderTextColor={colors.textMuted}
-                keyboardType="decimal-pad"
+                keyboardType={decimals === 0 ? 'number-pad' : 'decimal-pad'}
                 keyboardAppearance={colors.keyboardAppearance}
                 maxLength={12}
               />
               <Text style={styles.budgetCurrency}>{displayCurrency}</Text>
             </View>
             <Text style={[styles.budgetHint, budgetInvalid && { color: colors.danger }]}>
-              {minBudget > 0
-                ? t('cats.budgetMinHint', { amount: formatMoney(minBudget, displayCurrency) })
+              {allocationConflict
+                ? t('cats.budgetAllocationConflict', {
+                    available: formatMoney(maxBudget, displayCurrency),
+                    minimum: formatMoney(budgetUpdate.minimum, displayCurrency),
+                  })
+                : !isEdit && monthlyBudget > 0
+                ? t('cats.budgetMinHint', { amount: formatMoney(budgetUpdate.minimum, displayCurrency) })
                 : t('cats.budgetAnyHint')}
             </Text>
 

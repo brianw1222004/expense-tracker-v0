@@ -202,6 +202,7 @@ const STRINGS = {
     'cats.externalHint': 'Won’t count toward your overall budget',
     'cats.budgetLabel': 'Monthly budget',
     'cats.budgetMinHint': 'At least {amount} — 5% of your overall budget',
+    'cats.budgetAllocationConflict': 'Only {available} is available; a new category requires at least {minimum}. Free up allocation or increase the overall budget.',
     'cats.budgetAnyHint': 'How much you plan to spend on this each month',
     'cats.save': 'Save',
 
@@ -453,6 +454,7 @@ const STRINGS = {
     'cats.externalHint': '不計入每月預算總額',
     'cats.budgetLabel': '每月預算',
     'cats.budgetMinHint': '至少 {amount}（每月預算總額的 5%）',
+    'cats.budgetAllocationConflict': '剩餘可分配預算只有 {available}，新增分類至少需要 {minimum}。請先釋出其他分類的額度或提高每月預算總額。',
     'cats.budgetAnyHint': '這個分類每月打算花多少',
     'cats.save': '儲存',
 
@@ -702,6 +704,7 @@ const STRINGS = {
     'cats.externalHint': 'No cuenta para tu presupuesto total',
     'cats.budgetLabel': 'Presupuesto mensual',
     'cats.budgetMinHint': 'Mínimo {amount} — 5% de tu presupuesto total',
+    'cats.budgetAllocationConflict': 'Solo quedan {available}; una nueva categoría requiere al menos {minimum}. Libera presupuesto asignado o aumenta el presupuesto total.',
     'cats.budgetAnyHint': 'Cuánto planeas gastar al mes en esto',
     'cats.save': 'Guardar',
 

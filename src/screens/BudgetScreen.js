@@ -17,7 +17,7 @@ import { getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
 import {
   budgetAmountPercent,
-  clampCategoryBudgetAmount,
+  categoryBudgetUpdate,
   fitAllocatedBudgetsToOverall,
   hasUsableOverallBudget,
   remainingBudget,
@@ -138,27 +138,20 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
     return committed;
   };
 
-  const commitCategory = (id, committed) => {
-    if (committed === (categoryBudgets[id] ?? 0)) return;
-    // 0 means "no limit": remove the key rather than storing zeros forever.
-    const next = { ...categoryBudgets };
-    if (committed > 0) next[id] = committed;
-    else delete next[id];
-    onUpdateSettings({ categoryBudgets: next });
-    return committed;
-  };
-
-  const commitRegularCategory = (id, committed) => {
-    const clamped = clampCategoryBudgetAmount(
-      id,
-      committed,
+  const commitCategory = (id, committed, external = false) => {
+    const update = categoryBudgetUpdate({
+      categoryId: id,
+      amount: committed,
       overallBudget,
       categoryBudgets,
-      regularCategoryIds,
-      currency.decimals
-    );
-    commitCategory(id, clamped);
-    return clamped;
+      categoryIds: regularCategoryIds,
+      decimals: currency.decimals,
+      external,
+    });
+    if (update.categoryBudgets[id] !== categoryBudgets[id]) {
+      onUpdateSettings({ categoryBudgets: update.categoryBudgets });
+    }
+    return update.amount;
   };
 
   // "n%" under a regular category's name — the share of the overall budget the
@@ -235,7 +228,7 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
                   currency={currency}
                   percentLabel={percentLabelFor(categoryBudgets[category.id] ?? 0)}
                   divider={index > 0}
-                  onCommit={(committed) => commitRegularCategory(category.id, committed)}
+                  onCommit={(committed) => commitCategory(category.id, committed)}
                   styles={styles}
                   t={t}
                 />
@@ -251,7 +244,7 @@ export default function BudgetScreen({ visible, settings, regularCategories, ext
                   value={categoryBudgets[category.id] ?? 0}
                   currency={currency}
                   divider={index > 0}
-                  onCommit={(committed) => commitCategory(category.id, committed)}
+                  onCommit={(committed) => commitCategory(category.id, committed, true)}
                   styles={styles}
                   t={t}
                 />

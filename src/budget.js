@@ -68,9 +68,9 @@ export function remainingBudget(overallBudget, categoryBudgets = {}, categoryIds
 
 export function maxBudgetForCategory(categoryId, overallBudget, categoryBudgets = {}, categoryIds = [], decimals = 2) {
   if (!hasUsableOverallBudget(overallBudget)) return Infinity;
-  const current = Math.max(0, Number(categoryBudgets?.[categoryId]) || 0);
-  const remaining = remainingBudget(overallBudget, categoryBudgets, categoryIds, decimals);
-  return current + (remaining ?? 0);
+  // Exclude the edited allocation exactly once. This also handles categories
+  // becoming regular and repairs the edited share of legacy over-allocation.
+  return remainingBudget(overallBudget, categoryBudgets, categoryIds.filter((id) => id !== categoryId), decimals);
 }
 
 export function clampCategoryBudgetAmount(categoryId, amount, overallBudget, categoryBudgets = {}, categoryIds = [], decimals = 2) {
@@ -80,6 +80,29 @@ export function clampCategoryBudgetAmount(categoryId, amount, overallBudget, cat
   if (!hasUsableOverallBudget(overallBudget)) return rounded;
   const maxAllowed = maxBudgetForCategory(categoryId, overallBudget, categoryBudgets, categoryIds, decimals);
   return Math.min(rounded, maxAllowed);
+}
+
+// Shared by both budget entry points and the settings mutation. Only the
+// targeted budget changes; zero/blank removes its key. Creation retains the
+// positive/5% minimum, checked AFTER clamping to available allocation.
+export function categoryBudgetUpdate({
+  categoryId, amount, overallBudget, categoryBudgets = {}, categoryIds = [],
+  decimals = 2, external = false, isNew = false,
+}) {
+  const saved = clampCategoryBudgetAmount(
+    categoryId, amount, external ? 0 : overallBudget, categoryBudgets, categoryIds, decimals
+  );
+  const factor = 10 ** decimals;
+  const minimum = hasUsableOverallBudget(overallBudget)
+    ? Math.ceil(Math.round(Number(overallBudget) * factor) / 20) / factor
+    : 1 / factor;
+  const valid = !isNew || saved >= minimum;
+  const next = { ...categoryBudgets };
+  if (valid) {
+    if (saved > 0) next[categoryId] = saved;
+    else delete next[categoryId];
+  }
+  return { amount: saved, categoryBudgets: next, minimum, valid };
 }
 
 export function fitAllocatedBudgetsToOverall(categoryBudgets = {}, categoryIds = [], overallBudget, decimals = 2) {

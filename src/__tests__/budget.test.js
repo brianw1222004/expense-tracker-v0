@@ -2,6 +2,7 @@ const {
   budgetAmountPercent,
   budgetZoneTone,
   categoryBarState,
+  categoryBudgetUpdate,
   clampBudgetRatio,
   clampCategoryBudgetAmount,
   fitAllocatedBudgetsToOverall,
@@ -58,6 +59,76 @@ describe('budget allocation helpers', () => {
     expect(clampCategoryBudgetAmount('food', 900, 1000, budgets, ids, 2)).toBe(700);
     expect(clampCategoryBudgetAmount('food', 650, 1000, budgets, ids, 2)).toBe(650);
     expect(clampCategoryBudgetAmount('food', 900, 0, budgets, ids, 2)).toBe(900);
+  });
+
+  test('reuses the edited allocation once, without changing other budgets', () => {
+    const budgets = Object.freeze({ food: 200, transport: 300, bills: 1200 });
+    const update = categoryBudgetUpdate({
+      categoryId: 'food', amount: 900, overallBudget: 1000,
+      categoryBudgets: budgets, categoryIds: ['food', 'transport'],
+    });
+    expect(maxBudgetForCategory('food', 1000, budgets, ['food', 'transport'])).toBe(700);
+    expect(update.categoryBudgets).toEqual({ food: 700, transport: 300, bills: 1200 });
+    expect(totalAllocatedBudget(update.categoryBudgets, ['food', 'transport'])).toBe(1000);
+  });
+
+  test.each([0, '', '0'])('removes %p and releases capacity for another category', (amount) => {
+    const update = categoryBudgetUpdate({
+      categoryId: 'food', amount, overallBudget: 1000,
+      categoryBudgets: { food: 700, transport: 300 }, categoryIds: ['food', 'transport'],
+    });
+    expect(update.categoryBudgets).toEqual({ transport: 300 });
+    expect(maxBudgetForCategory('transport', 1000, update.categoryBudgets, ['food', 'transport'])).toBe(1000);
+  });
+
+  test('reduces only the edited share of an already over-allocated budget', () => {
+    expect(categoryBudgetUpdate({
+      categoryId: 'food', amount: 800, overallBudget: 1000,
+      categoryBudgets: { food: 800, transport: 300 }, categoryIds: ['food', 'transport'],
+    }).categoryBudgets).toEqual({ food: 700, transport: 300 });
+  });
+
+  test('a category newly entering the regular pool cannot reuse its external allocation', () => {
+    expect(categoryBudgetUpdate({
+      categoryId: 'bills', amount: 1200, overallBudget: 1000,
+      categoryBudgets: { food: 800, bills: 1200 }, categoryIds: ['food'],
+    }).categoryBudgets).toEqual({ food: 800, bills: 200 });
+  });
+
+  test('external budgets stay independent even when regular allocations are full', () => {
+    expect(categoryBudgetUpdate({
+      categoryId: 'bills', amount: 5000, external: true, overallBudget: 1000,
+      categoryBudgets: { food: 1000 }, categoryIds: ['food'],
+    }).categoryBudgets).toEqual({ food: 1000, bills: 5000 });
+  });
+
+  test.each([undefined, null, '', 0, -1])('no positive overall budget (%p) imposes no ceiling', (overallBudget) => {
+    expect(categoryBudgetUpdate({
+      categoryId: 'food', amount: 5000, overallBudget,
+      categoryBudgets: { transport: 300 }, categoryIds: ['food', 'transport'],
+    }).categoryBudgets).toEqual({ food: 5000, transport: 300 });
+  });
+
+  test.each([
+    [2, 10.01, 3.33, 6.68],
+    [0, 1000, 301, 699],
+  ])('clamps to currency precision (%i decimals)', (decimals, overallBudget, other, expected) => {
+    const update = categoryBudgetUpdate({
+      categoryId: 'food', amount: 9999.999, overallBudget, decimals,
+      categoryBudgets: { food: 1, transport: other }, categoryIds: ['food', 'transport'],
+    });
+    expect(update.amount).toBe(expected);
+    expect(Number(update.amount.toFixed(decimals))).toBe(update.amount);
+  });
+
+  test.each([[2, 12.345, 12.35], [0, 12.6, 13]])('rounds independent budgets (%i decimals)', (decimals, amount, expected) => {
+    expect(categoryBudgetUpdate({ categoryId: 'food', amount, decimals }).amount).toBe(expected);
+  });
+
+  test('integer-currency proportional fit still removes allocations rounded to zero', () => {
+    const next = fitAllocatedBudgetsToOverall({ food: 600, transport: 400, shopping: 1, bills: 1200 },
+      ['food', 'transport', 'shopping'], 501, 0);
+    expect(next).toEqual({ food: 300, transport: 200, bills: 1200 });
   });
 
   test('scales over-allocated normal categories down when overall budget shrinks', () => {

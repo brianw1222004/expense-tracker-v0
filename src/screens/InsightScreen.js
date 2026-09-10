@@ -271,6 +271,8 @@ export default function InsightScreen({
         }
         displayCurrency={displayCurrency}
         monthlyBudget={monthlyBudget}
+        categoryBudgets={categoryBudgets}
+        regularCategories={regularCategories}
         onClose={() => setModalCategory(null)}
         onSave={handleSaveCategory}
         onDelete={handleDeleteFromModal}
