@@ -42,7 +42,6 @@ import {
   saveGroups,
   loadSplitExpenses,
   saveSplitExpenses,
-  clearUserStorage,
   DEFAULT_SETTINGS,
   LOCAL_USER,
 } from './src/storage';
@@ -50,17 +49,14 @@ import {
   applyPendingOps,
   applyPendingGroupOps,
   applyPendingSplitOps,
-  clearQueues,
   enqueueExpenseDelete,
   enqueueExpenseUpsert,
   enqueueExpensesReplace,
   enqueueGroupDelete,
   enqueueGroupUpsert,
-  enqueueGroupsReplace,
   enqueueSettingsPush,
   enqueueSplitDelete,
   enqueueSplitUpsert,
-  enqueueSplitsReplace,
   flush,
   flushGroups,
   flushSplits,
@@ -76,7 +72,8 @@ import { overallBalance, yourShareAsExpenses, groupBalances, removeMemberFromBil
 import { ThemeProvider, getTheme, spacing, fonts, panelShadow, ACCOUNT_FAB_SIZE } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
 import { HIcon } from './src/icons';
-import { confirmDestructive } from './src/confirm';
+import { alertInfo, confirmDestructive } from './src/confirm';
+import { deleteAllData } from './src/deleteAllData';
 
 const Haptics = Platform.OS === 'web'
   ? { notificationAsync: () => Promise.resolve(), impactAsync: () => Promise.resolve(), NotificationFeedbackType: HapticsModule.NotificationFeedbackType, ImpactFeedbackStyle: HapticsModule.ImpactFeedbackStyle }
@@ -130,6 +127,8 @@ function ExpenseTracker() {
   const [groups, setGroups] = useState([]);
   const [splitExpenses, setSplitExpenses] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const deleteDataGuard = useRef(false);
+  const [deletingData, setDeletingData] = useState(false);
   // Which user the in-memory data belongs to; null while (re)loading. Saving
   // is gated on dataUser === userId so a sign-in/out can never write one
   // account's data under another account's cache key.
@@ -707,66 +706,25 @@ function ExpenseTracker() {
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   }, [userId, language]);
 
-  // Permanently erase the account's data: wipe all server rows (synced mode),
-  // clear this device's caches, reset in-memory state, and sign out. NOTE: the
-  // Supabase auth login record itself can't be removed with the anon key — that
-  // needs a server-side (service-role) function; this is the client-side data
-  // wipe + sign-out. In local-only mode it just clears everything on the device.
-  const deleteAccount = useCallback(async () => {
-    const confirmed = await confirmDestructive({
-      title: translate(language, 'acct.deleteAccount'),
-      body: translate(language, 'acct.deleteBody'),
-      confirmLabel: translate(language, 'acct.deleteConfirm'),
-      cancelLabel: translate(language, 'common.cancel'),
-    });
-    if (!confirmed) return;
-    setOverlay(null);
-
-    const wipeUser = userId;
-    if (isSupabaseConfigured && wipeUser && wipeUser !== LOCAL_USER) {
-      // replace-with-empty deletes every row on each lane, scoped to this user
-      // via RLS. Best-effort: if offline the ops stay queued and wipe on resync.
-      enqueueExpensesReplace(wipeUser, []);
-      enqueueGroupsReplace(wipeUser, []);
-      enqueueSplitsReplace(wipeUser, []);
-      await Promise.all([
-        flush(wipeUser),
-        flushGroups(wipeUser),
-        flushSplits(wipeUser),
-      ]).catch(() => {});
-      // The settings row isn't covered by the three lanes — delete it directly
-      // (RLS scopes it to this user) so budgets/custom categories/payment
-      // methods don't survive the wipe and re-pull on a later sign-in.
-      await supabase.from('settings').delete().eq('user_id', wipeUser).then(
-        () => {},
-        () => {}
-      );
-      // Legacy: the income feature was removed client-side, but accounts from
-      // older builds may still hold server income rows — wipe them the same way.
-      await supabase.from('income').delete().eq('user_id', wipeUser).then(
-        () => {},
-        () => {}
-      );
-    }
-
-    // Purge the pending-op queues (durable + in-memory). If a wipe op above
-    // couldn't flush (offline), letting it linger is worse than dropping it:
-    // a stale replace-with-empty replaying later would silently delete data
-    // this account recreated on another device.
-    await clearQueues(wipeUser);
-    await clearUserStorage(wipeUser);
-
-    // Reset in-memory state so nothing stale lingers behind the sign-out.
-    setExpenses([]);
-    setGroups([]);
-    setSplitExpenses([]);
-    setSettings(DEFAULT_SETTINGS);
-
-    if (isSupabaseConfigured) {
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-    }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  }, [userId, language]);
+  // Cloud deletion is contained before confirmation or cleanup.
+  const handleDeleteAllData = useCallback(() => deleteAllData({
+    cloudConfigured: isSupabaseConfigured,
+    userId,
+    ready: dataUser != null && dataUser === userId,
+    guard: deleteDataGuard,
+    confirm: confirmDestructive,
+    inform: alertInfo,
+    t: (key) => translate(language, key),
+    setBusy: setDeletingData,
+    resetState: () => {
+      setExpenses([]);
+      setGroups([]);
+      setSplitExpenses([]);
+      setSettings({ ...DEFAULT_SETTINGS, categoryBudgets: {}, customCategories: [], customPaymentMethods: [] });
+      setOverlay(null);
+    },
+    onSuccess: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
+  }), [userId, dataUser, language]);
 
   const displayCurrency = settings.displayCurrency;
 
@@ -1171,11 +1129,14 @@ function ExpenseTracker() {
         <AccountScreen
           visible={overlay === 'account'}
           settings={settings}
-          onUpdateSettings={updateSettings}
+          onUpdateSettings={(patch) => { if (!deleteDataGuard.current) updateSettings(patch); }}
           accountEmail={session?.user?.email}
           onSignOut={signOut}
-          onDeleteAccount={deleteAccount}
-          onClose={() => setOverlay(null)}
+          onDeleteAllData={handleDeleteAllData}
+          deletingData={deletingData}
+          deleteDisabled={!loaded}
+          cloudConfigured={isSupabaseConfigured}
+          onClose={() => { if (!deleteDataGuard.current) setOverlay(null); }}
         />
 
         <CreateGroupScreen

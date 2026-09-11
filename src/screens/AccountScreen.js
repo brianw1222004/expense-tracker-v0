@@ -14,7 +14,7 @@ import Sheet from '../components/Sheet';
 // The account card leads the sheet with no section header of its own (the page
 // title already says "Account"); Language and Theme get iconized uppercase
 // headers over cards of `SelectRow`s.
-export default function AccountScreen({ visible, settings, onUpdateSettings, accountEmail, onSignOut, onDeleteAccount, onClose }) {
+export default function AccountScreen({ visible, settings, onUpdateSettings, accountEmail, onSignOut, onDeleteAllData, deletingData = false, deleteDisabled = false, cloudConfigured = false, onClose }) {
   const { colors } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -37,6 +37,7 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
             <Text style={styles.title}>{t('acct.title')}</Text>
             <Pressable
               onPress={onClose}
+              disabled={deletingData}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel={t('common.close')}
@@ -47,6 +48,7 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
           </View>
 
           <ScrollView
+            pointerEvents={deletingData ? 'none' : 'auto'}
             contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
             showsVerticalScrollIndicator={false}
           >
@@ -117,18 +119,20 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
               ))}
             </View>
 
-            {/* No standing warning line under this card any more — the copy
-                moved into the confirmation popup the button raises. */}
+            {/* Cloud mode explains containment here and when the row is tapped. */}
             <View style={[styles.card, styles.deleteCard]}>
               <Pressable
-                onPress={onDeleteAccount}
+                onPress={onDeleteAllData}
+                disabled={deletingData || deleteDisabled}
                 accessibilityRole="button"
-                accessibilityLabel={t('acct.deleteAccount')}
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                accessibilityLabel={t('acct.deleteData')}
+                accessibilityState={{ disabled: deletingData || deleteDisabled, busy: deletingData }}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed, (deletingData || deleteDisabled) && { opacity: 0.5 }]}
               >
-                <Text style={styles.deleteAccountText}>{t('acct.deleteAccount')}</Text>
+                <Text style={styles.deleteDataText}>{t(deletingData ? 'acct.deletingData' : 'acct.deleteData')}</Text>
               </Pressable>
             </View>
+            {cloudConfigured && <Text style={styles.sectionNote}>{t('acct.deleteUnavailable')}</Text>}
           </ScrollView>
     </Sheet>
   );
@@ -306,7 +310,7 @@ const createStyles = (colors) =>
       fontSize: 15,
       fontFamily: fonts.bold,
     },
-    deleteAccountText: {
+    deleteDataText: {
       color: colors.danger,
       fontSize: 15,
       fontFamily: fonts.bold,

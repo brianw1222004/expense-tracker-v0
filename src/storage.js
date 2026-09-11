@@ -7,6 +7,29 @@ const SETTINGS_KEY = '@expense-tracker/settings';
 const GROUPS_KEY = '@expense-tracker/groups';
 const SPLITS_KEY = '@expense-tracker/splits';
 
+// Observe outstanding cache writes so strict local deletion can drain them
+// before removing keys. Ordinary saves retain their best-effort behavior.
+const pendingWrites = new Map();
+
+async function saveCache(userId, key, value) {
+  const writes = pendingWrites.get(userId) ?? new Set();
+  pendingWrites.set(userId, writes);
+  const write = (async () => {
+    try {
+      await AsyncStorage.setItem(scopedKey(key, userId), JSON.stringify(value));
+    } catch {
+      // Ordinary persistence remains best-effort.
+    }
+  })();
+  writes.add(write);
+  try {
+    await write;
+  } finally {
+    writes.delete(write);
+    if (writes.size === 0) pendingWrites.delete(userId);
+  }
+}
+
 // The cache is per-user so two accounts on one device never read each other's
 // data. Local-only mode (Supabase not configured) uses this sentinel and keeps
 // the original un-suffixed keys, so pre-auth installs keep their data.
@@ -52,11 +75,7 @@ export async function loadExpenses(userId) {
 }
 
 export async function saveExpenses(userId, expenses) {
-  try {
-    await AsyncStorage.setItem(scopedKey(STORAGE_KEY, userId), JSON.stringify(expenses));
-  } catch {
-    // Persistence is best-effort in this demo; in-memory state stays correct.
-  }
+  await saveCache(userId, STORAGE_KEY, expenses);
 }
 
 // Fresh categoryBudgets object every call — the shallow spread would otherwise
@@ -93,11 +112,7 @@ export async function loadSettings(userId) {
 }
 
 export async function saveSettings(userId, settings) {
-  try {
-    await AsyncStorage.setItem(scopedKey(SETTINGS_KEY, userId), JSON.stringify(settings));
-  } catch {
-    // Best-effort, same as expenses.
-  }
+  await saveCache(userId, SETTINGS_KEY, settings);
 }
 
 // Split-bills groups and shared bills — synced to Supabase via the groups and
@@ -123,11 +138,7 @@ export async function loadGroups(userId) {
 }
 
 export async function saveGroups(userId, groups) {
-  try {
-    await AsyncStorage.setItem(scopedKey(GROUPS_KEY, userId), JSON.stringify(groups));
-  } catch {
-    // Best-effort, same as expenses.
-  }
+  await saveCache(userId, GROUPS_KEY, groups);
 }
 
 export async function loadSplitExpenses(userId) {
@@ -143,11 +154,7 @@ export async function loadSplitExpenses(userId) {
 }
 
 export async function saveSplitExpenses(userId, splits) {
-  try {
-    await AsyncStorage.setItem(scopedKey(SPLITS_KEY, userId), JSON.stringify(splits));
-  } catch {
-    // Best-effort, same as expenses.
-  }
+  await saveCache(userId, SPLITS_KEY, splits);
 }
 
 // Legacy keys from retired features (category drag-reorder, income tracking) —
@@ -155,9 +162,9 @@ export async function saveSplitExpenses(userId, splits) {
 const CATEGORY_ORDER_KEY = '@expense-tracker/category-order';
 const LEGACY_INCOME_KEY = '@expense-tracker/income';
 
-// Wipe every cached key for one user (used by "delete account"). Best-effort,
-// like the rest of this layer — in-memory state is reset separately by the caller.
-export async function clearUserStorage(userId) {
+// Strict mode is for verified local Delete All Data. Default behavior remains
+// best-effort for existing callers.
+export async function clearUserStorage(userId, { strict = false } = {}) {
   const keys = [
     STORAGE_KEY,
     LEGACY_INCOME_KEY,
@@ -167,8 +174,18 @@ export async function clearUserStorage(userId) {
     CATEGORY_ORDER_KEY,
   ].map((base) => scopedKey(base, userId));
   try {
+    if (strict) {
+      while (pendingWrites.get(userId)?.size) {
+        await Promise.all([...pendingWrites.get(userId)]);
+      }
+    }
     await AsyncStorage.multiRemove(keys);
-  } catch {
+    if (strict) {
+      const remaining = await Promise.all(keys.map((key) => AsyncStorage.getItem(key)));
+      if (remaining.some((value) => value !== null)) throw new Error('Local tracker cleanup incomplete');
+    }
+  } catch (error) {
+    if (strict) throw error;
     // Best-effort.
   }
 }
