@@ -203,6 +203,7 @@ const STRINGS = {
     'cats.budgetLabel': 'Monthly budget',
     'cats.budgetMinHint': 'At least {amount} — 5% of your overall budget',
     'cats.budgetAllocationConflict': 'Only {available} is available; a new category requires at least {minimum}. Free up allocation or increase the overall budget.',
+    'cats.budgetClamped': 'Reduced to {amount} — the rest of your overall budget is already allocated.',
     'cats.budgetAnyHint': 'How much you plan to spend on this each month',
     'cats.save': 'Save',
 
@@ -455,6 +456,7 @@ const STRINGS = {
     'cats.budgetLabel': '每月預算',
     'cats.budgetMinHint': '至少 {amount}（每月預算總額的 5%）',
     'cats.budgetAllocationConflict': '剩餘可分配預算只有 {available}，新增分類至少需要 {minimum}。請先釋出其他分類的額度或提高每月預算總額。',
+    'cats.budgetClamped': '將調整為 {amount}——每月預算總額的其餘額度已分配給其他分類。',
     'cats.budgetAnyHint': '這個分類每月打算花多少',
     'cats.save': '儲存',
 
@@ -705,6 +707,7 @@ const STRINGS = {
     'cats.budgetLabel': 'Presupuesto mensual',
     'cats.budgetMinHint': 'Mínimo {amount} — 5% de tu presupuesto total',
     'cats.budgetAllocationConflict': 'Solo quedan {available}; una nueva categoría requiere al menos {minimum}. Libera presupuesto asignado o aumenta el presupuesto total.',
+    'cats.budgetClamped': 'Se reducirá a {amount}: el resto de tu presupuesto total ya está asignado.',
     'cats.budgetAnyHint': 'Cuánto planeas gastar al mes en esto',
     'cats.save': 'Guardar',
 

@@ -119,10 +119,11 @@ export default function AddCategoryModal({
 
   const { decimals } = getCurrency(displayCurrency);
   const categoryId = editingCategory?.id;
-  const categoryIds = regularCategories.map((c) => c.id);
+  const categoryIds = useMemo(() => regularCategories.map((c) => c.id), [regularCategories]);
   const normalized = budgetText.trim().replace(/,(\d{3})\b/g, '$1').replace(',', '.');
   const validText = normalized === '' || isValidAmountText(normalized, decimals);
-  const budgetUpdate = categoryBudgetUpdate({
+  // Runs on every keystroke and clones categoryBudgets, so keep it memoized.
+  const budgetUpdate = useMemo(() => categoryBudgetUpdate({
     categoryId,
     amount: Number(normalized),
     overallBudget: monthlyBudget,
@@ -131,11 +132,15 @@ export default function AddCategoryModal({
     decimals,
     external,
     isNew: !isEdit,
-  });
-  const maxBudget = external ? Infinity : maxBudgetForCategory(
+  }), [categoryId, normalized, monthlyBudget, categoryBudgets, categoryIds, decimals, external, isEdit]);
+  const maxBudget = useMemo(() => (external ? Infinity : maxBudgetForCategory(
     categoryId, monthlyBudget, categoryBudgets, categoryIds, decimals
-  );
+  )), [external, categoryId, monthlyBudget, categoryBudgets, categoryIds, decimals]);
   const allocationConflict = !isEdit && maxBudget < budgetUpdate.minimum;
+  // Save silently stores budgetUpdate.amount, so say so when the allocation
+  // ceiling cuts the typed figure — otherwise an edit that types 900 and saves
+  // 700 gives no feedback at all unless the field happens to blur first.
+  const budgetClamped = validText && normalized !== '' && Number(normalized) > budgetUpdate.amount;
   const budgetOk = validText && budgetUpdate.valid;
   const budgetInvalid = allocationConflict || (budgetText.length > 0 && !budgetOk);
   const canSave = name.trim().length > 0 && budgetOk;
@@ -233,12 +238,18 @@ export default function AddCategoryModal({
               />
               <Text style={styles.budgetCurrency}>{displayCurrency}</Text>
             </View>
-            <Text style={[styles.budgetHint, budgetInvalid && { color: colors.danger }]}>
+            <Text style={[
+              styles.budgetHint,
+              budgetClamped && !budgetInvalid && { color: colors.warning },
+              budgetInvalid && { color: colors.danger },
+            ]}>
               {allocationConflict
                 ? t('cats.budgetAllocationConflict', {
                     available: formatMoney(maxBudget, displayCurrency),
                     minimum: formatMoney(budgetUpdate.minimum, displayCurrency),
                   })
+                : budgetClamped
+                ? t('cats.budgetClamped', { amount: formatMoney(budgetUpdate.amount, displayCurrency) })
                 : !isEdit && monthlyBudget > 0
                 ? t('cats.budgetMinHint', { amount: formatMoney(budgetUpdate.minimum, displayCurrency) })
                 : t('cats.budgetAnyHint')}

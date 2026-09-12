@@ -784,6 +784,10 @@ function ExpenseTracker() {
     (fn) => {
       setSettings((prev) => {
         const next = fn(prev);
+        // A rejected patch (saveCategorySettings returns `prev` when a new
+        // category fails its budget minimum) must not bump the version or push
+        // — the invariant is that only a real change to a synced field does.
+        if (next === prev) return prev;
         settingsVersionRef.current += 1;
         enqueueSettingsPush(userId, next); // sync.js picks the synced subset
         return next;

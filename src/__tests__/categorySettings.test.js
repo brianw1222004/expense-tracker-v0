@@ -92,6 +92,13 @@ describe('category add/edit settings path', () => {
     expect(saveCategorySettings(current, { ...category, budget: 0.11 }, true).categoryBudgets).toEqual({ c_new: 0.11 });
   });
 
+  test('never appends a second entry for an id the list already carries', () => {
+    const current = { ...settings, customCategories: [category] };
+    const next = saveCategorySettings(current, { ...category, label: 'Same id', budget: 100 }, true);
+    expect(next.customCategories).toEqual([{ ...category, label: 'Same id' }]);
+    expect(getCategory(category.id, next.customCategories).label).toBe('Same id');
+  });
+
   test('editing keeps category ordering, unrelated metadata, and budgets intact', () => {
     const another = { ...category, id: 'c_another', label: 'Another' };
     const current = { ...settings, customCategories: [category, another], categoryBudgets: { ...settings.categoryBudgets, c_new: 100, c_another: 20 } };

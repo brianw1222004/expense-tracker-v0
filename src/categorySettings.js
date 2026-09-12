@@ -18,10 +18,12 @@ export function saveCategorySettings(settings, category, isNew = false) {
     isNew,
   });
   if (!update.valid) return settings;
+  // Upsert on id regardless of isNew: appending a second entry for an id the
+  // list already carries would shadow the first everywhere getCategory looks.
   const exists = list.some((c) => c.id === cat.id);
   return {
     ...settings,
-    customCategories: !isNew && exists
+    customCategories: exists
       ? list.map((c) => (c.id === cat.id ? cat : c))
       : [...list, cat],
     categoryBudgets: update.categoryBudgets,
