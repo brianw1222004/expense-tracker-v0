@@ -88,14 +88,18 @@ export async function clearQueues(userId, { strict = false } = {}) {
     // or flushes sync work, so no cloud lane can race this verified removal.
     if (isSupabaseConfigured || userId !== LOCAL_USER) throw new Error('Strict queue cleanup requires local-only mode');
     await Promise.all(laneKeys.map((key) => queueLoads.get(key)));
-    const storageKeys = laneKeys.map((key) => `${QUEUE_KEY}:${key}`);
-    await AsyncStorage.multiRemove(storageKeys);
-    const remaining = await Promise.all(storageKeys.map((key) => AsyncStorage.getItem(key)));
-    if (remaining.some((value) => value !== null)) throw new Error('Local queue cleanup incomplete');
+    // Empty the in-memory lanes BEFORE touching their durable mirrors: if the
+    // removal or its verification below fails we must not still be holding ops
+    // that a later persistQueue would write straight back into the files this
+    // just deleted.
     for (const key of laneKeys) {
       queues.set(key, []);
       queueLoads.delete(key);
     }
+    const storageKeys = laneKeys.map((key) => `${QUEUE_KEY}:${key}`);
+    await AsyncStorage.multiRemove(storageKeys);
+    const remaining = await Promise.all(storageKeys.map((key) => AsyncStorage.getItem(key)));
+    if (remaining.some((value) => value !== null)) throw new Error('Local queue cleanup incomplete');
     return;
   }
   for (const key of laneKeys) {

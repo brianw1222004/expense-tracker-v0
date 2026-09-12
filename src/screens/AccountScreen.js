@@ -14,11 +14,15 @@ import Sheet from '../components/Sheet';
 // The account card leads the sheet with no section header of its own (the page
 // title already says "Account"); Language and Theme get iconized uppercase
 // headers over cards of `SelectRow`s.
-export default function AccountScreen({ visible, settings, onUpdateSettings, accountEmail, onSignOut, onDeleteAllData, deletingData = false, deleteDisabled = false, cloudConfigured = false, onClose }) {
+export default function AccountScreen({ visible, settings, onUpdateSettings, accountEmail, onSignOut, onDeleteAllData, deletingData = false, interactionLocked = false, deleteDisabled = false, cloudConfigured = false, onClose }) {
   const { colors } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  // App blocks close/settings taps for the whole deletion window (confirmation
+  // and the cloud "unavailable" alert included), so the chrome must look
+  // inert for that window, not only while cleanup runs.
+  const locked = deletingData || interactionLocked;
 
   // The selected index drives the divider rule as well as the pill: a hairline
   // is drawn only BETWEEN two unselected rows, so nothing crowds the capsule.
@@ -37,7 +41,7 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
             <Text style={styles.title}>{t('acct.title')}</Text>
             <Pressable
               onPress={onClose}
-              disabled={deletingData}
+              disabled={locked}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel={t('common.close')}
@@ -48,7 +52,7 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
           </View>
 
           <ScrollView
-            pointerEvents={deletingData ? 'none' : 'auto'}
+            pointerEvents={locked ? 'none' : 'auto'}
             contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
             showsVerticalScrollIndicator={false}
           >
@@ -123,11 +127,11 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
             <View style={[styles.card, styles.deleteCard]}>
               <Pressable
                 onPress={onDeleteAllData}
-                disabled={deletingData || deleteDisabled}
+                disabled={locked || deleteDisabled}
                 accessibilityRole="button"
                 accessibilityLabel={t('acct.deleteData')}
-                accessibilityState={{ disabled: deletingData || deleteDisabled, busy: deletingData }}
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed, (deletingData || deleteDisabled) && { opacity: 0.5 }]}
+                accessibilityState={{ disabled: locked || deleteDisabled, busy: deletingData }}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed, (locked || deleteDisabled) && { opacity: 0.5 }]}
               >
                 <Text style={styles.deleteDataText}>{t(deletingData ? 'acct.deletingData' : 'acct.deleteData')}</Text>
               </Pressable>

@@ -129,6 +129,10 @@ function ExpenseTracker() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const deleteDataGuard = useRef(false);
   const [deletingData, setDeletingData] = useState(false);
+  // The ref keeps deleteAllData re-entrant-safe across renders; this state is
+  // that same window made visible, so the Account chrome it disables matches
+  // exactly what the guard silently blocks.
+  const [accountLocked, setAccountLocked] = useState(false);
   // Which user the in-memory data belongs to; null while (re)loading. Saving
   // is gated on dataUser === userId so a sign-in/out can never write one
   // account's data under another account's cache key.
@@ -707,24 +711,32 @@ function ExpenseTracker() {
   }, [userId, language]);
 
   // Cloud deletion is contained before confirmation or cleanup.
-  const handleDeleteAllData = useCallback(() => deleteAllData({
-    cloudConfigured: isSupabaseConfigured,
-    userId,
-    ready: dataUser != null && dataUser === userId,
-    guard: deleteDataGuard,
-    confirm: confirmDestructive,
-    inform: alertInfo,
-    t: (key) => translate(language, key),
-    setBusy: setDeletingData,
-    resetState: () => {
-      setExpenses([]);
-      setGroups([]);
-      setSplitExpenses([]);
-      setSettings({ ...DEFAULT_SETTINGS, categoryBudgets: {}, customCategories: [], customPaymentMethods: [] });
-      setOverlay(null);
-    },
-    onSuccess: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
-  }), [userId, dataUser, language]);
+  const handleDeleteAllData = useCallback(async () => {
+    if (deleteDataGuard.current) return;
+    setAccountLocked(true);
+    try {
+      await deleteAllData({
+        cloudConfigured: isSupabaseConfigured,
+        userId,
+        ready: dataUser != null && dataUser === userId,
+        guard: deleteDataGuard,
+        confirm: confirmDestructive,
+        inform: alertInfo,
+        t: (key) => translate(language, key),
+        setBusy: setDeletingData,
+        resetState: () => {
+          setExpenses([]);
+          setGroups([]);
+          setSplitExpenses([]);
+          setSettings({ ...DEFAULT_SETTINGS, categoryBudgets: {}, customCategories: [], customPaymentMethods: [] });
+          setOverlay(null);
+        },
+        onSuccess: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
+      });
+    } finally {
+      setAccountLocked(false);
+    }
+  }, [userId, dataUser, language]);
 
   const displayCurrency = settings.displayCurrency;
 
@@ -1129,14 +1141,15 @@ function ExpenseTracker() {
         <AccountScreen
           visible={overlay === 'account'}
           settings={settings}
-          onUpdateSettings={(patch) => { if (!deleteDataGuard.current) updateSettings(patch); }}
+          onUpdateSettings={(patch) => { if (!accountLocked) updateSettings(patch); }}
           accountEmail={session?.user?.email}
           onSignOut={signOut}
           onDeleteAllData={handleDeleteAllData}
           deletingData={deletingData}
+          interactionLocked={accountLocked}
           deleteDisabled={!loaded}
           cloudConfigured={isSupabaseConfigured}
-          onClose={() => { if (!deleteDataGuard.current) setOverlay(null); }}
+          onClose={() => { if (!accountLocked) setOverlay(null); }}
         />
 
         <CreateGroupScreen

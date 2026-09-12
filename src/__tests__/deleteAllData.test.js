@@ -16,20 +16,34 @@ const { deleteAllData } = require('../deleteAllData');
 // Explicit .js loads the real translations instead of the pure-domain mock.
 const { translate } = require('../i18n.js');
 
-// Execute the actual App callbacks with observable dependencies, without
-// requiring a native renderer or reproducing the action in the test.
-const appAst = parser.parse(fs.readFileSync(path.join(__dirname, '../../App.js'), 'utf8'), {
-  sourceType: 'module', plugins: ['jsx'],
-});
-function appCallback(name, scope) {
+// Execute the actual App callbacks with observable dependencies. App itself
+// cannot be rendered here — jest.config maps `react`/`react-native` to pure
+// mocks — so the callback BODY is real source but its scope is substituted:
+// module bindings, the React setters and App's effects are all stubs. That
+// means these tests cover the callback's own logic, NOT App's surrounding
+// wiring; anything that depends on an effect firing (e.g. the cache-save
+// effects re-writing a key after resetState) needs its own coverage.
+const appSource = fs.readFileSync(path.join(__dirname, '../../App.js'), 'utf8');
+const appAst = parser.parse(appSource, { sourceType: 'module', plugins: ['jsx'] });
+// Fail with the reason rather than a TypeError when App's shape moves on.
+function appCallbackNode(name) {
   let callback;
   traverse(appAst, {
     VariableDeclarator(p) {
-      if (p.node.id.name === name) callback = p.node.init.arguments[0];
+      if (p.node.id.name !== name) return;
+      const init = p.node.init;
+      if (init?.type !== 'CallExpression' || init.callee.name !== 'useCallback') {
+        throw new Error(`App.${name} is no longer a useCallback(...) declaration — update this harness`);
+      }
+      callback = init.arguments[0];
     },
   });
   if (!callback) throw new Error(`Missing App callback: ${name}`);
-  return Function(...Object.keys(scope), `return (${generate(callback).code});`)(...Object.values(scope));
+  return callback;
+}
+function appCallback(name, scope) {
+  const code = generate(appCallbackNode(name)).code;
+  return Function(...Object.keys(scope), `return (${code});`)(...Object.values(scope));
 }
 
 const trackerKeys = ['expenses', 'groups', 'splits', 'settings', 'income', 'category-order']
@@ -54,6 +68,7 @@ function fixture(cloudConfigured = false) {
     alertInfo: jest.fn(async () => {}),
     translate, language: 'en',
     setDeletingData: jest.fn(),
+    setAccountLocked: jest.fn(),
     setExpenses: jest.fn((v) => { state.expenses = v; }),
     setGroups: jest.fn((v) => { state.groups = v; }),
     setSplitExpenses: jest.fn((v) => { state.splits = v; }),
@@ -244,5 +259,19 @@ describe('honest localized deletion copy', () => {
     expect(translate(language, 'acct.deleteUnavailable')).toContain(unavailable);
     expect(translate(language, 'acct.deleteData')).not.toMatch(/delete account|eliminar cuenta|刪除帳/i);
     expect(translate(language, 'acct.deleteFailedBody')).not.toBe('acct.deleteFailedBody');
+  });
+});
+
+describe('App wiring for the delete action', () => {
+  test('the callback under test is the one App renders, with its containment inputs intact', () => {
+    const source = generate(appCallbackNode('handleDeleteAllData')).code;
+    for (const input of ['cloudConfigured: isSupabaseConfigured', 'guard: deleteDataGuard', 'setBusy: setDeletingData']) {
+      expect(source).toContain(input);
+    }
+    expect(appSource).toContain('onDeleteAllData={handleDeleteAllData}');
+    // The guard is invisible on its own; the Account chrome must be disabled
+    // by a state that covers the same window.
+    expect(appSource).toContain('interactionLocked={accountLocked}');
+    expect(appSource).not.toContain('if (!deleteDataGuard.current) setOverlay(null)');
   });
 });
