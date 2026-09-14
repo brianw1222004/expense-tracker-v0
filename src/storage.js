@@ -162,9 +162,31 @@ export async function saveSplitExpenses(userId, splits) {
 const CATEGORY_ORDER_KEY = '@expense-tracker/category-order';
 const LEGACY_INCOME_KEY = '@expense-tracker/income';
 
-// Strict mode is for verified local Delete All Data. Default behavior remains
+// A wedged AsyncStorage write (storage full, native module stall) must not hold
+// the locked Account sheet forever. Giving up BEFORE the removal starts means a
+// timed-out drain never deletes anything later, behind the user's back.
+const DRAIN_TIMEOUT_MS = 5000;
+
+async function drainPendingWrites(userId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (pendingWrites.get(userId)?.size) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error('Pending cache writes did not settle');
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Pending cache writes did not settle')), remaining);
+    });
+    try {
+      await Promise.race([Promise.all([...pendingWrites.get(userId)]), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+// Strict mode is for verified Delete All Data. Default behavior remains
 // best-effort for existing callers.
-export async function clearUserStorage(userId, { strict = false } = {}) {
+export async function clearUserStorage(userId, { strict = false, drainTimeoutMs = DRAIN_TIMEOUT_MS } = {}) {
   const keys = [
     STORAGE_KEY,
     LEGACY_INCOME_KEY,
@@ -174,11 +196,7 @@ export async function clearUserStorage(userId, { strict = false } = {}) {
     CATEGORY_ORDER_KEY,
   ].map((base) => scopedKey(base, userId));
   try {
-    if (strict) {
-      while (pendingWrites.get(userId)?.size) {
-        await Promise.all([...pendingWrites.get(userId)]);
-      }
-    }
+    if (strict) await drainPendingWrites(userId, drainTimeoutMs);
     await AsyncStorage.multiRemove(keys);
     if (strict) {
       const remaining = await Promise.all(keys.map((key) => AsyncStorage.getItem(key)));

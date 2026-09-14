@@ -138,6 +138,10 @@ function ExpenseTracker() {
   // is gated on dataUser === userId so a sign-in/out can never write one
   // account's data under another account's cache key.
   const [dataUser, setDataUser] = useState(null);
+  // The value each cache key last held, per collection: the save effects skip a
+  // value already there, so a load isn't written straight back and Delete All
+  // Data's reset doesn't re-create the keys it just verified as gone.
+  const cachedRef = useRef({});
   // Supabase session. With Supabase unconfigured the app runs local-only and
   // skips auth entirely (sessionLoaded starts true, userId is LOCAL_USER).
   const [session, setSession] = useState(null);
@@ -299,6 +303,7 @@ function ExpenseTracker() {
         loadSplitExpenses(userId),
       ]);
       if (!active) return;
+      cachedRef.current = { expenses: cachedExpenses, groups: cachedGroups, splits: cachedSplits, settings: cachedSettings };
       setExpenses(cachedExpenses);
       setGroups(cachedGroups);
       setSplitExpenses(cachedSplits);
@@ -366,20 +371,27 @@ function ExpenseTracker() {
     applySyncResult(result, versionBeforeSync, { backfillOnboarding: false });
   }, [userId, applySyncResult]);
 
+  // True (and records the value) when `value` isn't already in `name`'s cache key.
+  const needsCacheWrite = (name, value) => {
+    if (!dataUser || dataUser !== userId || cachedRef.current[name] === value) return false;
+    cachedRef.current[name] = value;
+    return true;
+  };
+
   useEffect(() => {
-    if (dataUser && dataUser === userId) saveExpenses(dataUser, expenses);
+    if (needsCacheWrite('expenses', expenses)) saveExpenses(dataUser, expenses);
   }, [expenses, dataUser, userId]);
 
   useEffect(() => {
-    if (dataUser && dataUser === userId) saveGroups(dataUser, groups);
+    if (needsCacheWrite('groups', groups)) saveGroups(dataUser, groups);
   }, [groups, dataUser, userId]);
 
   useEffect(() => {
-    if (dataUser && dataUser === userId) saveSplitExpenses(dataUser, splitExpenses);
+    if (needsCacheWrite('splits', splitExpenses)) saveSplitExpenses(dataUser, splitExpenses);
   }, [splitExpenses, dataUser, userId]);
 
   useEffect(() => {
-    if (dataUser && dataUser === userId) saveSettings(dataUser, settings);
+    if (needsCacheWrite('settings', settings)) saveSettings(dataUser, settings);
   }, [settings, dataUser, userId]);
 
   // Open the add popup on the Personal side (from the tab-bar "+").
@@ -711,7 +723,7 @@ function ExpenseTracker() {
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   }, [userId, language]);
 
-  // Cloud deletion is contained before confirmation or cleanup.
+  // Local: wipes this device. Cloud: wipes the server rows too, then signs out.
   const handleDeleteAllData = useCallback(async () => {
     if (deleteDataGuard.current) return;
     setAccountLocked(true);
@@ -726,12 +738,22 @@ function ExpenseTracker() {
         t: (key) => translate(language, key),
         setBusy: setDeletingData,
         resetState: () => {
-          setExpenses([]);
-          setGroups([]);
-          setSplitExpenses([]);
-          setSettings({ ...DEFAULT_SETTINGS, categoryBudgets: {}, customCategories: [], customPaymentMethods: [] });
+          const reset = {
+            expenses: [],
+            groups: [],
+            splits: [],
+            settings: { ...DEFAULT_SETTINGS, categoryBudgets: {}, customCategories: [], customPaymentMethods: [] },
+          };
+          // The keys are verified absent: mark these values as cached so the
+          // save effects don't write them back until the user changes something.
+          cachedRef.current = reset;
+          setExpenses(reset.expenses);
+          setGroups(reset.groups);
+          setSplitExpenses(reset.splits);
+          setSettings(reset.settings);
           setOverlay(null);
         },
+        signOut: () => supabase.auth.signOut({ scope: 'local' }),
         onSuccess: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
       });
     } finally {
@@ -1139,7 +1161,6 @@ function ExpenseTracker() {
           deletingData={deletingData}
           interactionLocked={accountLocked}
           deleteDisabled={!loaded}
-          cloudConfigured={isSupabaseConfigured}
           onClose={() => { if (!accountLocked) setOverlay(null); }}
         />
 

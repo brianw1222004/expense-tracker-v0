@@ -1,13 +1,8 @@
 jest.mock('../supabase', () => ({
   isSupabaseConfigured: false,
-  supabase: { from: jest.fn(), auth: { signOut: jest.fn(async () => ({})) } },
+  supabase: { from: jest.fn() },
 }));
 
-const fs = require('fs');
-const path = require('path');
-const parser = require('@babel/parser');
-const traverse = require('@babel/traverse').default;
-const generate = require('@babel/generator').default;
 const AsyncStorage = require('@react-native-async-storage/async-storage');
 const storage = require('../storage');
 const sync = require('../sync');
@@ -16,68 +11,92 @@ const { deleteAllData } = require('../deleteAllData');
 // Explicit .js loads the real translations instead of the pure-domain mock.
 const { translate } = require('../i18n.js');
 
-// Execute the actual App callbacks with observable dependencies. App itself
-// cannot be rendered here — jest.config maps `react`/`react-native` to pure
-// mocks — so the callback BODY is real source but its scope is substituted:
-// module bindings, the React setters and App's effects are all stubs. That
-// means these tests cover the callback's own logic, NOT App's surrounding
-// wiring; anything that depends on an effect firing (e.g. the cache-save
-// effects re-writing a key after resetState) needs its own coverage.
-const appSource = fs.readFileSync(path.join(__dirname, '../../App.js'), 'utf8');
-const appAst = parser.parse(appSource, { sourceType: 'module', plugins: ['jsx'] });
-// Fail with the reason rather than a TypeError when App's shape moves on.
-function appCallbackNode(name) {
-  let callback;
-  traverse(appAst, {
-    VariableDeclarator(p) {
-      if (p.node.id.name !== name) return;
-      const init = p.node.init;
-      if (init?.type !== 'CallExpression' || init.callee.name !== 'useCallback') {
-        throw new Error(`App.${name} is no longer a useCallback(...) declaration — update this harness`);
-      }
-      callback = init.arguments[0];
-    },
-  });
-  if (!callback) throw new Error(`Missing App callback: ${name}`);
-  return callback;
-}
-function appCallback(name, scope) {
-  const code = generate(appCallbackNode(name)).code;
-  return Function(...Object.keys(scope), `return (${code});`)(...Object.values(scope));
-}
+const CLOUD_USER = 'cloud-user';
+const TRACKER = ['expenses', 'groups', 'splits', 'settings', 'income', 'category-order'];
+const trackerKeys = (userId) =>
+  TRACKER.map((name) => `@expense-tracker/${name}${userId === storage.LOCAL_USER ? '' : `:${userId}`}`);
+const queueKeys = (userId) =>
+  [userId, `${userId}::groups`, `${userId}::splits`, `${userId}::income`].map((lane) => `@expense-tracker/pending-ops:${lane}`);
+const TABLES = ['expenses', 'groups', 'split_expenses', 'settings', 'income'];
 
-const trackerKeys = ['expenses', 'groups', 'splits', 'settings', 'income', 'category-order']
-  .map((name) => `@expense-tracker/${name}`);
-const queueKeys = ['local', 'local::groups', 'local::splits', 'local::income']
-  .map((lane) => `@expense-tracker/pending-ops:${lane}`);
 const deferred = () => {
   let resolve;
   const promise = new Promise((r) => { resolve = r; });
   return { promise, resolve };
 };
+const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-function fixture(cloudConfigured = false) {
-  const state = { expenses: [{ id: 'e1' }], groups: [{ id: 'g1' }], splits: [{ id: 'b1' }], settings: { monthlyBudget: 500 } };
-  const scope = {
-    deleteAllData,
-    isSupabaseConfigured: cloudConfigured,
-    userId: cloudConfigured ? 'cloud-user' : storage.LOCAL_USER,
-    dataUser: cloudConfigured ? 'cloud-user' : storage.LOCAL_USER,
-    deleteDataGuard: { current: false },
-    confirmDestructive: jest.fn(async () => true),
-    alertInfo: jest.fn(async () => {}),
-    translate, language: 'en',
-    setDeletingData: jest.fn(),
-    setAccountLocked: jest.fn(),
-    setExpenses: jest.fn((v) => { state.expenses = v; }),
-    setGroups: jest.fn((v) => { state.groups = v; }),
-    setSplitExpenses: jest.fn((v) => { state.splits = v; }),
-    setSettings: jest.fn((v) => { state.settings = v; }),
-    DEFAULT_SETTINGS: storage.DEFAULT_SETTINGS,
-    setOverlay: jest.fn(),
-    Haptics: { notificationAsync: jest.fn(async () => {}), NotificationFeedbackType: { Success: 'success' } },
+// A tiny in-memory PostgREST: the query-builder calls sync.js makes (delete /
+// select head-count / upsert, eq filters, abortSignal) against per-table rows.
+function fakeServer() {
+  const server = {
+    rows: Object.fromEntries(TABLES.map((table) => [table, []])),
+    calls: [],
+    missing: new Set(),
+    failDelete: new Set(),
+    refuseDelete: false, // RLS-style: no error, nothing deleted
+    hang: false,
+    upsertGate: null,
   };
-  return { state, scope, run: appCallback('handleDeleteAllData', scope) };
+  const respond = async (q) => {
+    server.calls.push(q);
+    if (server.hang) {
+      return new Promise((resolve) => q.signal?.addEventListener('abort', () => resolve({ error: { message: 'aborted' } })));
+    }
+    if (server.missing.has(q.table)) return { error: { code: 'PGRST205', message: 'missing table' } };
+    const user = q.filters.find(([column]) => column === 'user_id')?.[1];
+    if (q.op === 'upsert') {
+      if (server.upsertGate) await server.upsertGate;
+      server.rows[q.table].push({ ...q.payload, user_id: CLOUD_USER });
+      return { error: null };
+    }
+    if (q.op === 'delete') {
+      if (server.failDelete.has(q.table)) return { error: { message: 'offline' } };
+      if (!server.refuseDelete) server.rows[q.table] = server.rows[q.table].filter((row) => row.user_id !== user);
+      return { error: null };
+    }
+    return { count: server.rows[q.table].filter((row) => row.user_id === user).length, error: null };
+  };
+  cloud.supabase.from.mockImplementation((table) => {
+    const q = { table, op: null, filters: [], signal: null };
+    const chain = {
+      delete() { q.op = 'delete'; return chain; },
+      select() { q.op = 'count'; return chain; },
+      upsert(payload) { q.op = 'upsert'; q.payload = payload; return chain; },
+      eq(column, value) { q.filters.push([column, value]); return chain; },
+      abortSignal(signal) { q.signal = signal; return chain; },
+      then(resolve, reject) { return respond(q).then(resolve, reject); },
+    };
+    return chain;
+  });
+  return server;
+}
+
+function fixture({ cloudMode = false, ...overrides } = {}) {
+  const state = { expenses: [{ id: 'e1' }], groups: [{ id: 'g1' }], splits: [{ id: 'b1' }], settings: { monthlyBudget: 500 } };
+  const events = [];
+  const opts = {
+    cloudConfigured: cloudMode,
+    userId: cloudMode ? CLOUD_USER : storage.LOCAL_USER,
+    ready: true,
+    guard: { current: false },
+    confirm: jest.fn(async () => true),
+    inform: jest.fn(async () => {}),
+    t: (key) => translate('en', key),
+    setBusy: jest.fn(),
+    resetState: jest.fn(() => {
+      events.push('reset');
+      Object.assign(state, { expenses: [], groups: [], splits: [], settings: {} });
+    }),
+    signOut: jest.fn(async () => { events.push('signOut'); }),
+    onSuccess: jest.fn(() => { events.push('success'); }),
+    ...overrides,
+  };
+  return { state, events, opts, run: (extra) => deleteAllData({ ...opts, ...extra }) };
+}
+
+async function seed(keys, value = 'old') {
+  for (const key of keys) await AsyncStorage.setItem(key, value);
 }
 
 beforeEach(async () => {
@@ -87,72 +106,66 @@ beforeEach(async () => {
   await AsyncStorage.clear();
 });
 
-describe('local Delete All Data through the App action', () => {
-  test('clears every local tracker/cache/queue key, then resets all four state collections and succeeds', async () => {
-    for (const key of [...trackerKeys, ...queueKeys]) await AsyncStorage.setItem(key, JSON.stringify({ old: true }));
-    const otherKey = '@expense-tracker/expenses:other-user';
-    await AsyncStorage.setItem(otherKey, 'keep');
-    const { run, state, scope } = fixture();
+describe('local Delete All Data', () => {
+  test('clears every local tracker and queue key, then resets and succeeds', async () => {
+    await seed([...trackerKeys('local'), ...queueKeys('local')]);
+    await AsyncStorage.setItem('@expense-tracker/expenses:other-user', 'keep');
+    const { run, opts, events } = fixture();
     await run();
-    expect(state).toEqual({ expenses: [], groups: [], splits: [], settings: storage.DEFAULT_SETTINGS });
-    expect(scope.Haptics.notificationAsync.mock.invocationCallOrder[0])
-      .toBeGreaterThan(Math.max(...AsyncStorage.getItem.mock.invocationCallOrder));
-    for (const key of [...trackerKeys, ...queueKeys]) expect(await AsyncStorage.getItem(key)).toBeNull();
-    expect(await AsyncStorage.getItem(otherKey)).toBe('keep');
-    expect(scope.Haptics.notificationAsync).toHaveBeenCalledTimes(1);
-    expect(scope.alertInfo).not.toHaveBeenCalled();
-    expect(scope.setDeletingData.mock.calls).toEqual([[true], [false]]);
-    expect(cloud.supabase.auth.signOut).not.toHaveBeenCalled();
-    expect(sync.applyPendingOps('local', [])).toEqual([]);
-    expect(sync.applyPendingGroupOps('local', [])).toEqual([]);
-    expect(sync.applyPendingSplitOps('local', [])).toEqual([]);
+    for (const key of [...trackerKeys('local'), ...queueKeys('local')]) expect(await AsyncStorage.getItem(key)).toBeNull();
+    expect(await AsyncStorage.getItem('@expense-tracker/expenses:other-user')).toBe('keep');
+    expect(events).toEqual(['reset', 'success']);
+    expect(opts.confirm).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteBody') }));
+    expect(opts.inform).not.toHaveBeenCalled();
+    expect(opts.setBusy.mock.calls).toEqual([[true], [false]]);
+    expect(opts.signOut).not.toHaveBeenCalled();
+    expect(cloud.supabase.from).not.toHaveBeenCalled();
+    expect(opts.guard.current).toBe(false);
   });
 
   test('blocks concurrent taps during confirmation and cleanup, with success only after verification', async () => {
     const confirmation = deferred();
     const verification = deferred();
     const cleanupStarted = deferred();
-    const { run, scope } = fixture();
-    scope.confirmDestructive.mockReturnValue(confirmation.promise);
+    const { run, opts } = fixture();
+    opts.confirm.mockReturnValue(confirmation.promise);
     const clear = jest.spyOn(storage, 'clearUserStorage').mockImplementation(() => {
       cleanupStarted.resolve();
       return verification.promise;
     });
     const first = run();
     await run();
-    expect(scope.confirmDestructive).toHaveBeenCalledTimes(1);
+    expect(opts.confirm).toHaveBeenCalledTimes(1);
     confirmation.resolve(true);
-    // Wait for the actual queue removal and its verification to finish.
     await cleanupStarted.promise;
     await run();
     expect(clear).toHaveBeenCalledTimes(1);
-    expect(scope.setExpenses).not.toHaveBeenCalled();
-    expect(scope.Haptics.notificationAsync).not.toHaveBeenCalled();
+    expect(opts.resetState).not.toHaveBeenCalled();
     verification.resolve();
     await first;
-    expect(scope.setExpenses).toHaveBeenCalledWith([]);
-    expect(scope.Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(opts.resetState).toHaveBeenCalledTimes(1);
+    expect(opts.onSuccess).toHaveBeenCalledTimes(1);
   });
 
-  test('cancellation and not-yet-loaded data do not clean or reset anything', async () => {
+  test('cancellation and not-yet-loaded data do not clean, lock or reset anything', async () => {
     const clear = jest.spyOn(storage, 'clearUserStorage');
     const queues = jest.spyOn(sync, 'clearQueues');
-    const { run, scope } = fixture();
-    scope.confirmDestructive.mockResolvedValue(false);
+    const { run, opts } = fixture();
+    opts.confirm.mockResolvedValue(false);
     await run();
-    await appCallback('handleDeleteAllData', { ...scope, dataUser: null })();
+    await run({ ready: false });
+    expect(opts.confirm).toHaveBeenCalledTimes(1);
     expect(clear).not.toHaveBeenCalled();
     expect(queues).not.toHaveBeenCalled();
-    expect(scope.setExpenses).not.toHaveBeenCalled();
-    expect(scope.Haptics.notificationAsync).not.toHaveBeenCalled();
-    expect(scope.deleteDataGuard.current).toBe(false);
+    expect(opts.setBusy).not.toHaveBeenCalled();
+    expect(opts.resetState).not.toHaveBeenCalled();
+    expect(opts.guard.current).toBe(false);
   });
 
   test.each(['queue removal', 'tracker removal', 'verification read', 'silent incomplete removal'])(
     '%s failure leaves state intact, reports failure, and allows retry', async (failure) => {
-      for (const key of [...trackerKeys, ...queueKeys]) await AsyncStorage.setItem(key, 'old');
-      const { run, scope, state } = fixture();
-      const before = JSON.parse(JSON.stringify(state));
+      await seed([...trackerKeys('local'), ...queueKeys('local')]);
+      const { run, opts } = fixture();
       const originalRemove = AsyncStorage.multiRemove.getMockImplementation();
       const remove = jest.spyOn(AsyncStorage, 'multiRemove');
       if (failure === 'queue removal') remove.mockRejectedValueOnce(new Error('disk'));
@@ -160,14 +173,14 @@ describe('local Delete All Data through the App action', () => {
       if (failure === 'verification read') jest.spyOn(AsyncStorage, 'getItem').mockRejectedValueOnce(new Error('read'));
       if (failure === 'silent incomplete removal') remove.mockResolvedValueOnce(undefined);
       await run();
-      expect(state).toEqual(before);
-      expect(scope.setSettings).not.toHaveBeenCalled();
-      expect(scope.Haptics.notificationAsync).not.toHaveBeenCalled();
-      expect(scope.alertInfo).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteFailedBody') }));
-      expect(scope.deleteDataGuard.current).toBe(false);
+      expect(opts.resetState).not.toHaveBeenCalled();
+      expect(opts.onSuccess).not.toHaveBeenCalled();
+      expect(opts.inform).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteFailedBody') }));
+      expect(opts.setBusy.mock.calls).toEqual([[true], [false]]);
+      expect(opts.guard.current).toBe(false);
       await run();
-      expect(scope.setSettings).toHaveBeenCalledWith(storage.DEFAULT_SETTINGS);
-      expect(scope.Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+      expect(opts.resetState).toHaveBeenCalledTimes(1);
+      expect(opts.onSuccess).toHaveBeenCalledTimes(1);
     }
   );
 
@@ -179,99 +192,182 @@ describe('local Delete All Data through the App action', () => {
       await originalSet(...args);
     });
     const save = storage.saveExpenses('local', [{ id: 'late-write' }]);
-    const { run, scope } = fixture();
+    const { run, opts } = fixture();
     const deletion = run();
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(scope.setExpenses).not.toHaveBeenCalled();
+    await tick();
+    expect(opts.resetState).not.toHaveBeenCalled();
     pending.resolve();
     await Promise.all([save, deletion]);
     expect(await AsyncStorage.getItem('@expense-tracker/expenses')).toBeNull();
-    expect(scope.Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(opts.onSuccess).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('cloud containment', () => {
-  test.each([true, false])('cloud user receives explanation without any destructive effects (online=%s)', async (online) => {
+describe('a wedged step cannot lock the app', () => {
+  test('a cache write that never settles fails the drain before anything is removed', async () => {
+    await seed(trackerKeys('local'));
+    const stuck = deferred();
+    const originalSet = AsyncStorage.setItem.getMockImplementation();
+    jest.spyOn(AsyncStorage, 'setItem').mockImplementationOnce(async (...args) => {
+      await stuck.promise;
+      await originalSet(...args);
+    });
+    const save = storage.saveExpenses('local', [{ id: 'wedged' }]);
+    await expect(storage.clearUserStorage('local', { strict: true, drainTimeoutMs: 20 })).rejects.toThrow('did not settle');
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+    for (const key of trackerKeys('local')) expect(await AsyncStorage.getItem(key)).not.toBeNull();
+    stuck.resolve();
+    await save;
+  });
+
+  test('a cleanup step that hangs reports failure and unlocks at the overall deadline', async () => {
+    const hang = deferred();
+    jest.spyOn(storage, 'clearUserStorage').mockReturnValue(hang.promise);
+    const { run, opts } = fixture();
+    await run({ timeoutMs: 20 });
+    expect(opts.inform).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteFailedBody') }));
+    expect(opts.resetState).not.toHaveBeenCalled();
+    expect(opts.setBusy.mock.calls).toEqual([[true], [false]]);
+    expect(opts.guard.current).toBe(false);
+    hang.resolve();
+  });
+});
+
+describe('cloud Delete All Data', () => {
+  function seedServer(server) {
+    for (const table of TABLES) {
+      server.rows[table] = [{ id: `${table}-mine`, user_id: CLOUD_USER }, { id: `${table}-theirs`, user_id: 'other-user' }];
+    }
+  }
+
+  test('deletes and verifies every server row for the user, clears the device, resets, then signs out', async () => {
     cloud.isSupabaseConfigured = true;
-    cloud.supabase.from.mockImplementation(() => { throw new Error(online ? 'Unexpected server call' : 'offline'); });
-    const operations = ['enqueueExpensesReplace', 'enqueueGroupsReplace', 'enqueueSplitsReplace', 'flush', 'flushGroups', 'flushSplits', 'clearQueues'];
-    const spies = operations.map((name) => jest.spyOn(sync, name));
-    const clear = jest.spyOn(storage, 'clearUserStorage');
-    const key = '@expense-tracker/pending-ops:cloud-user';
-    await AsyncStorage.setItem(key, 'pending user work');
-    const { run, scope, state } = fixture(true);
-    const before = JSON.parse(JSON.stringify(state));
+    const server = fakeServer();
+    seedServer(server);
+    await seed([...trackerKeys(CLOUD_USER), ...queueKeys(CLOUD_USER)]);
+    const { run, opts, events } = fixture({ cloudMode: true });
     await run();
-    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
-    expect(clear).not.toHaveBeenCalled();
+    for (const table of TABLES) expect(server.rows[table]).toEqual([{ id: `${table}-theirs`, user_id: 'other-user' }]);
+    for (const call of server.calls) expect(call.filters).toContainEqual(['user_id', CLOUD_USER]);
+    expect(server.calls.filter((c) => c.op === 'count').map((c) => c.table).sort()).toEqual([...TABLES].sort());
+    for (const key of [...trackerKeys(CLOUD_USER), ...queueKeys(CLOUD_USER)]) expect(await AsyncStorage.getItem(key)).toBeNull();
+    expect(events).toEqual(['reset', 'signOut', 'success']);
+    expect(opts.confirm).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteBodyCloud') }));
+    expect(opts.inform).not.toHaveBeenCalled();
+    expect(opts.setBusy.mock.calls).toEqual([[true], [false]]);
+  });
+
+  test('tables that do not exist yet (or any more) count as already empty', async () => {
+    cloud.isSupabaseConfigured = true;
+    const server = fakeServer();
+    seedServer(server);
+    for (const table of ['groups', 'split_expenses', 'income']) server.missing.add(table);
+    const { run, opts } = fixture({ cloudMode: true });
+    await run();
+    expect(server.rows.expenses).toEqual([{ id: 'expenses-theirs', user_id: 'other-user' }]);
+    expect(opts.onSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ['a delete errors (offline)', (server) => server.failDelete.add('groups')],
+    ['RLS silently refuses the delete', (server) => { server.refuseDelete = true; }],
+  ])('%s: failure is reported and the device keeps its data and queue', async (_label, breakServer) => {
+    cloud.isSupabaseConfigured = true;
+    const server = fakeServer();
+    seedServer(server);
+    breakServer(server);
+    await seed([...trackerKeys(CLOUD_USER), ...queueKeys(CLOUD_USER)]);
+    const resume = jest.spyOn(sync, 'resumeSync');
+    const { run, opts } = fixture({ cloudMode: true });
+    await run();
+    expect(opts.inform).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteFailedBody') }));
+    for (const key of [...trackerKeys(CLOUD_USER), ...queueKeys(CLOUD_USER)]) expect(await AsyncStorage.getItem(key)).toBe('old');
+    expect(opts.resetState).not.toHaveBeenCalled();
+    expect(opts.signOut).not.toHaveBeenCalled();
+    expect(resume).toHaveBeenCalledWith(CLOUD_USER);
+    expect(opts.guard.current).toBe(false);
+  });
+
+  test('a server that never answers is aborted at the wipe deadline', async () => {
+    cloud.isSupabaseConfigured = true;
+    const server = fakeServer();
+    server.hang = true;
+    sync.suspendSync(CLOUD_USER);
+    try {
+      await expect(sync.wipeServerData(CLOUD_USER, { timeoutMs: 20 })).rejects.toThrow('timed out');
+      expect(server.calls[0].signal.aborted).toBe(true);
+    } finally {
+      sync.resumeSync(CLOUD_USER);
+    }
+  });
+
+  test('the wipe refuses to run while sync is live', async () => {
+    cloud.isSupabaseConfigured = true;
+    fakeServer();
+    await expect(sync.wipeServerData(CLOUD_USER)).rejects.toThrow('Suspend sync');
+    await expect(sync.clearQueues(CLOUD_USER, { strict: true })).rejects.toThrow('suspended');
+    expect(cloud.supabase.from).not.toHaveBeenCalled();
+  });
+
+  test('an op already on the wire lands before the delete, and suspended lanes push nothing new', async () => {
+    cloud.isSupabaseConfigured = true;
+    const server = fakeServer();
+    const gate = deferred();
+    server.upsertGate = gate.promise;
+    const enqueued = sync.enqueueExpenseUpsert(CLOUD_USER, { id: 'in-flight', amount: 1, currency: 'USD', createdAt: 1 });
+    await enqueued;
+    await tick();
+    expect(server.calls.map((c) => c.op)).toEqual(['upsert']);
+    const { run, opts } = fixture({ cloudMode: true });
+    const deletion = run();
+    await tick();
+    expect(server.calls.map((c) => c.op)).toEqual(['upsert']);
+    gate.resolve();
+    await deletion;
+    expect(server.rows.expenses).toEqual([]);
+    expect(server.calls.findIndex((c) => c.op === 'delete')).toBeGreaterThan(0);
+    expect(opts.onSuccess).toHaveBeenCalledTimes(1);
+
+    // Suspension alone stops a flush before its next op.
+    server.upsertGate = null;
+    sync.suspendSync(CLOUD_USER);
+    try {
+      const before = server.calls.length;
+      await sync.enqueueExpenseUpsert(CLOUD_USER, { id: 'later', amount: 1, currency: 'USD', createdAt: 2 });
+      expect(await sync.flush(CLOUD_USER)).toBe(false);
+      expect(server.calls.length).toBe(before);
+    } finally {
+      sync.resumeSync(CLOUD_USER);
+      await sync.clearQueues(CLOUD_USER);
+    }
+  });
+
+  test('an inconsistent configured build with the local sentinel does nothing', async () => {
+    cloud.isSupabaseConfigured = true;
+    fakeServer();
+    const { run, opts } = fixture({ cloudMode: true });
+    await run({ userId: storage.LOCAL_USER });
+    await run({ userId: null });
+    expect(opts.confirm).not.toHaveBeenCalled();
     expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
     expect(cloud.supabase.from).not.toHaveBeenCalled();
-    expect(cloud.supabase.auth.signOut).not.toHaveBeenCalled();
-    expect(await AsyncStorage.getItem(key)).toBe('pending user work');
-    expect(state).toEqual(before);
-    expect(scope.setExpenses).not.toHaveBeenCalled();
-    expect(scope.setGroups).not.toHaveBeenCalled();
-    expect(scope.setSplitExpenses).not.toHaveBeenCalled();
-    expect(scope.setSettings).not.toHaveBeenCalled();
-    expect(scope.setOverlay).not.toHaveBeenCalled();
-    expect(scope.setDeletingData).not.toHaveBeenCalled();
-    expect(scope.confirmDestructive).not.toHaveBeenCalled();
-    expect(scope.Haptics.notificationAsync).not.toHaveBeenCalled();
-    expect(scope.alertInfo).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteUnavailable') }));
-  });
-
-  test('configured mode cannot fall through to local cleanup even with a local sentinel', async () => {
-    const { scope } = fixture(true);
-    await appCallback('handleDeleteAllData', { ...scope, userId: 'local', dataUser: 'local' })();
-    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
-    expect(scope.setExpenses).not.toHaveBeenCalled();
-    expect(scope.alertInfo).toHaveBeenCalledTimes(1);
+    expect(opts.guard.current).toBe(false);
   });
 });
 
-describe('normal sign-out remains separate', () => {
-  test.each([true, false])('normal sign-out respects confirmation=%s and flushes all lanes before local sign-out', async (confirmed) => {
-    const events = [];
-    const scope = {
-      userId: 'cloud-user', language: 'en', translate,
-      confirmDestructive: jest.fn(async () => confirmed), setOverlay: jest.fn(),
-      flush: jest.fn(async () => { events.push('expenses'); return false; }),
-      flushGroups: jest.fn(async () => { events.push('groups'); return false; }),
-      flushSplits: jest.fn(async () => { events.push('splits'); return false; }),
-      supabase: { auth: { signOut: jest.fn(async () => { events.push('signOut'); }) } },
-    };
-    await appCallback('signOut', scope)();
-    expect(events).toEqual(confirmed ? ['expenses', 'groups', 'splits', 'signOut'] : []);
-    if (confirmed) expect(scope.supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
-  });
-});
-
-describe('honest localized deletion copy', () => {
+describe('localized deletion copy', () => {
   test.each([
-    ['en', 'Delete all data', 'this device', 'temporarily unavailable'],
+    ['en', 'Delete all data', 'this device', 'synced account'],
     // The app's stored language key for Traditional Chinese is `zh`.
-    ['zh', '刪除所有資料', '這台裝置', '暫時無法'],
-    ['es', 'Eliminar todos los datos', 'este dispositivo', 'temporalmente'],
-  ])('%s describes data deletion and its local/cloud scope', (language, label, device, unavailable) => {
+    ['zh', '刪除所有資料', '這台裝置', '同步帳戶'],
+    ['es', 'Eliminar todos los datos', 'este dispositivo', 'cuenta sincronizada'],
+  ])('%s names the scope of each deletion', (language, label, device, account) => {
     expect(translate(language, 'acct.deleteData')).toBe(label);
     expect(translate(language, 'acct.deleteConfirm')).toBe(label);
     expect(translate(language, 'acct.deleteBody')).toContain(device);
-    expect(translate(language, 'acct.deleteUnavailable')).toContain(unavailable);
-    expect(translate(language, 'acct.deleteData')).not.toMatch(/delete account|eliminar cuenta|刪除帳/i);
+    expect(translate(language, 'acct.deleteBodyCloud')).toContain(device);
+    expect(translate(language, 'acct.deleteBodyCloud')).toContain(account);
     expect(translate(language, 'acct.deleteFailedBody')).not.toBe('acct.deleteFailedBody');
-  });
-});
-
-describe('App wiring for the delete action', () => {
-  test('the callback under test is the one App renders, with its containment inputs intact', () => {
-    const source = generate(appCallbackNode('handleDeleteAllData')).code;
-    for (const input of ['cloudConfigured: isSupabaseConfigured', 'guard: deleteDataGuard', 'setBusy: setDeletingData']) {
-      expect(source).toContain(input);
-    }
-    expect(appSource).toContain('onDeleteAllData={handleDeleteAllData}');
-    // The guard is invisible on its own; the Account chrome must be disabled
-    // by a state that covers the same window.
-    expect(appSource).toContain('interactionLocked={accountLocked}');
-    expect(appSource).not.toContain('if (!deleteDataGuard.current) setOverlay(null)');
+    expect(translate(language, 'acct.deleteUnavailable')).toBe('acct.deleteUnavailable');
   });
 });

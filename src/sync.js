@@ -29,6 +29,8 @@ const QUEUE_KEY = '@expense-tracker/pending-ops';
 const queues = new Map();
 const queueLoads = new Map();
 const flushes = new Map();
+// Users whose lanes must not push (Delete All Data is wiping their server rows).
+const suspendedSync = new Set();
 
 function groupsKey(userId) {
   return `${userId}::groups`;
@@ -84,9 +86,12 @@ export async function clearQueues(userId, { strict = false } = {}) {
   // wipe list so old installs' durable mirrors still get cleared.
   const laneKeys = [userId, `${userId}::income`, groupsKey(userId), splitsKey(userId)];
   if (strict) {
-    // Only the local-only deletion path may opt in. Local mode never enqueues
-    // or flushes sync work, so no cloud lane can race this verified removal.
-    if (isSupabaseConfigured || userId !== LOCAL_USER) throw new Error('Strict queue cleanup requires local-only mode');
+    // Only Delete All Data opts in, and only when no lane can race the verified
+    // removal: local mode never flushes, and a cloud user must be suspended.
+    const liveLanes = userId === LOCAL_USER ? isSupabaseConfigured : !suspendedSync.has(userId);
+    if (liveLanes) throw new Error('Strict queue cleanup requires sync to be suspended');
+    // A flush finishing its last op would persist the lane straight back.
+    await Promise.all(laneKeys.map((key) => flushes.get(key)));
     await Promise.all(laneKeys.map((key) => queueLoads.get(key)));
     // Empty the in-memory lanes BEFORE touching their durable mirrors: if the
     // removal or its verification below fails we must not still be holding ops
@@ -444,6 +449,7 @@ function flushQueue(key, userId, runner) {
   const run = (async () => {
     const queue = await ensureQueueLoaded(key);
     while (queue.length > 0) {
+      if (suspendedSync.has(userId)) return false;
       const op = queue[0];
       try {
         await runner(op, userId);
@@ -470,6 +476,67 @@ export function flushGroups(userId) {
 
 export function flushSplits(userId) {
   return flushQueue(splitsKey(userId), userId, runSplitOp);
+}
+
+// Delete All Data for a signed-in user. While suspended, no lane pushes (a
+// running flush stops before its next op), so queued work can't re-create rows
+// the wipe removes; ops stay queued, so a failed wipe resumes with nothing lost.
+export function suspendSync(userId) {
+  suspendedSync.add(userId);
+}
+
+export function resumeSync(userId) {
+  suspendedSync.delete(userId);
+}
+
+// Every table holding this user's rows. `income` is the retired feature's —
+// databases that never ran migrate-drop-income-and-names.sql still have it.
+const USER_TABLES = ['split_expenses', 'groups', 'expenses', 'settings', 'income'];
+const SERVER_WIPE_TIMEOUT_MS = 15000;
+
+// A table that doesn't exist holds no rows to delete (the groups/splits tables
+// may not be created yet, and `income` is dropped by its migration).
+function isMissingTable(error) {
+  return error?.code === 'PGRST205' || error?.code === '42P01';
+}
+
+// Delete and then VERIFY every server row for this user: an RLS policy that
+// refuses a delete returns no error, so remaining rows are counted. Throws on
+// any failure or when `timeoutMs` elapses — requests are aborted, not orphaned.
+export async function wipeServerData(userId, { timeoutMs = SERVER_WIPE_TIMEOUT_MS } = {}) {
+  if (!canSync(userId)) throw new Error('Server wipe requires a signed-in user');
+  if (!suspendedSync.has(userId)) throw new Error('Suspend sync before wiping server data');
+  const controller = new AbortController();
+  let timer;
+  const timedOut = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error('Server wipe timed out'));
+    }, timeoutMs);
+  });
+  const run = async () => {
+    // Let an op already on the wire land first, so the delete below catches it.
+    await Promise.all([userId, groupsKey(userId), splitsKey(userId)].map((key) => flushes.get(key)));
+    for (const table of USER_TABLES) {
+      const { error } = await supabase.from(table).delete().eq('user_id', userId).abortSignal(controller.signal);
+      if (error && !isMissingTable(error)) throw error;
+    }
+    for (const table of USER_TABLES) {
+      const { count, error } = await supabase
+        .from(table)
+        .select('user_id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .abortSignal(controller.signal);
+      if (isMissingTable(error)) continue;
+      if (error) throw error;
+      if (count !== 0) throw new Error(`Server rows remain in ${table}`);
+    }
+  };
+  try {
+    await Promise.race([run(), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Re-apply a lane's pending ops on top of server state (synchronous, in-memory
