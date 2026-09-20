@@ -186,7 +186,10 @@ async function drainPendingWrites(userId, timeoutMs) {
 
 // Strict mode is for verified Delete All Data. Default behavior remains
 // best-effort for existing callers.
-export async function clearUserStorage(userId, { strict = false, drainTimeoutMs = DRAIN_TIMEOUT_MS } = {}) {
+export async function clearUserStorage(
+  userId,
+  { strict = false, drainTimeoutMs = DRAIN_TIMEOUT_MS, signal } = {}
+) {
   const keys = [
     STORAGE_KEY,
     LEGACY_INCOME_KEY,
@@ -196,7 +199,12 @@ export async function clearUserStorage(userId, { strict = false, drainTimeoutMs 
     CATEGORY_ORDER_KEY,
   ].map((base) => scopedKey(base, userId));
   try {
-    if (strict) await drainPendingWrites(userId, drainTimeoutMs);
+    if (strict) {
+      await drainPendingWrites(userId, drainTimeoutMs);
+      // Same rule the drain follows: a caller that has already given up and
+      // reported failure must not have these keys removed a moment later.
+      if (signal?.aborted) throw new Error('Local tracker cleanup cancelled');
+    }
     await AsyncStorage.multiRemove(keys);
     if (strict) {
       const remaining = await Promise.all(keys.map((key) => AsyncStorage.getItem(key)));

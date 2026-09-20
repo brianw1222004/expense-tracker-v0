@@ -81,7 +81,7 @@ async function persistQueue(key) {
 // the wipe, or it would replay on the next sync and silently delete data the
 // account recreated on another device in the meantime. Lanes are set to empty
 // rather than deleted so an in-flight ensureQueueLoaded can't resurrect old ops.
-export async function clearQueues(userId, { strict = false } = {}) {
+export async function clearQueues(userId, { strict = false, signal } = {}) {
   // `${userId}::income` is the retired income feature's queue — kept in the
   // wipe list so old installs' durable mirrors still get cleared.
   const laneKeys = [userId, `${userId}::income`, groupsKey(userId), splitsKey(userId)];
@@ -93,6 +93,11 @@ export async function clearQueues(userId, { strict = false } = {}) {
     // A flush finishing its last op would persist the lane straight back.
     await Promise.all(laneKeys.map((key) => flushes.get(key)));
     await Promise.all(laneKeys.map((key) => queueLoads.get(key)));
+    // Nothing above this line has changed anything, and those waits are bounded
+    // only by the caller's deadline — so a caller that has already given up (and
+    // told the user the delete failed) stops here rather than emptying lanes
+    // behind its back.
+    if (signal?.aborted) throw new Error('Local queue cleanup cancelled');
     // Empty the in-memory lanes BEFORE touching their durable mirrors: if the
     // removal or its verification below fails we must not still be holding ops
     // that a later persistQueue would write straight back into the files this
@@ -489,9 +494,14 @@ export function resumeSync(userId) {
   suspendedSync.delete(userId);
 }
 
-// Every table holding this user's rows. `income` is the retired feature's —
-// databases that never ran migrate-drop-income-and-names.sql still have it.
-const USER_TABLES = ['split_expenses', 'groups', 'expenses', 'settings', 'income'];
+// Every table holding this user's tracker rows.
+const USER_TABLES = ['split_expenses', 'groups', 'expenses', 'settings'];
+// The retired income feature's table — databases that never ran
+// migrate-drop-income-and-names.sql still have it. Its rows are deleted
+// best-effort and never verified: the app stopped reading them long ago, and
+// failing the whole delete over them — after every tracker table above was
+// already emptied — is the worse outcome for the user.
+const LEGACY_USER_TABLES = ['income'];
 const SERVER_WIPE_TIMEOUT_MS = 15000;
 
 // A table that doesn't exist holds no rows to delete (the groups/splits tables
@@ -503,23 +513,41 @@ function isMissingTable(error) {
 // Delete and then VERIFY every server row for this user: an RLS policy that
 // refuses a delete returns no error, so remaining rows are counted. Throws on
 // any failure or when `timeoutMs` elapses — requests are aborted, not orphaned.
-export async function wipeServerData(userId, { timeoutMs = SERVER_WIPE_TIMEOUT_MS } = {}) {
+// `signal` lets the caller's own deadline abort the wipe, and `onDeleteStarted`
+// fires once, just before the first delete goes out, so the caller knows
+// whether a failure can have left the account partly wiped.
+export async function wipeServerData(
+  userId,
+  { timeoutMs = SERVER_WIPE_TIMEOUT_MS, signal, onDeleteStarted } = {}
+) {
   if (!canSync(userId)) throw new Error('Server wipe requires a signed-in user');
   if (!suspendedSync.has(userId)) throw new Error('Suspend sync before wiping server data');
   const controller = new AbortController();
+  // The caller's own deadline aborts this wipe too, so giving up on it also
+  // stops the requests it had not made yet.
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  signal?.addEventListener?.('abort', abort);
   let timer;
   const timedOut = new Promise((_, reject) => {
     timer = setTimeout(() => {
-      controller.abort();
+      abort();
       reject(new Error('Server wipe timed out'));
     }, timeoutMs);
   });
   const run = async () => {
     // Let an op already on the wire land first, so the delete below catches it.
     await Promise.all([userId, groupsKey(userId), splitsKey(userId)].map((key) => flushes.get(key)));
-    for (const table of USER_TABLES) {
+    // That wait is bounded only by the deadlines above: a caller that has
+    // already given up must not have its account wiped by the loop below.
+    if (controller.signal.aborted) throw new Error('Server wipe aborted');
+    // Past this line the account can end up PARTLY wiped — every table is its
+    // own request, with no transaction around them — so the caller is told
+    // deleting began and stops reporting that nothing was removed.
+    onDeleteStarted?.();
+    for (const table of [...USER_TABLES, ...LEGACY_USER_TABLES]) {
       const { error } = await supabase.from(table).delete().eq('user_id', userId).abortSignal(controller.signal);
-      if (error && !isMissingTable(error)) throw error;
+      if (error && !isMissingTable(error) && !LEGACY_USER_TABLES.includes(table)) throw error;
     }
     for (const table of USER_TABLES) {
       const { count, error } = await supabase
@@ -529,6 +557,9 @@ export async function wipeServerData(userId, { timeoutMs = SERVER_WIPE_TIMEOUT_M
         .abortSignal(controller.signal);
       if (isMissingTable(error)) continue;
       if (error) throw error;
+      // A count that never arrived leaves the table unverified, which is not
+      // the same as proof that it is empty.
+      if (count == null) throw new Error(`Could not verify ${table} is empty`);
       if (count !== 0) throw new Error(`Server rows remain in ${table}`);
     }
   };
@@ -536,6 +567,7 @@ export async function wipeServerData(userId, { timeoutMs = SERVER_WIPE_TIMEOUT_M
     await Promise.race([run(), timedOut]);
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener?.('abort', abort);
   }
 }
 

@@ -17,7 +17,9 @@ const trackerKeys = (userId) =>
   TRACKER.map((name) => `@expense-tracker/${name}${userId === storage.LOCAL_USER ? '' : `:${userId}`}`);
 const queueKeys = (userId) =>
   [userId, `${userId}::groups`, `${userId}::splits`, `${userId}::income`].map((lane) => `@expense-tracker/pending-ops:${lane}`);
-const TABLES = ['expenses', 'groups', 'split_expenses', 'settings', 'income'];
+// `income` is the retired feature's table: still wiped, deliberately never verified.
+const TRACKER_TABLES = ['expenses', 'groups', 'split_expenses', 'settings'];
+const TABLES = [...TRACKER_TABLES, 'income'];
 
 const deferred = () => {
   let resolve;
@@ -34,7 +36,8 @@ function fakeServer() {
     calls: [],
     missing: new Set(),
     failDelete: new Set(),
-    refuseDelete: false, // RLS-style: no error, nothing deleted
+    refuseDelete: new Set(), // RLS-style: no error, nothing deleted
+    nullCount: new Set(), // a count query that comes back without a count
     hang: false,
     upsertGate: null,
   };
@@ -52,9 +55,10 @@ function fakeServer() {
     }
     if (q.op === 'delete') {
       if (server.failDelete.has(q.table)) return { error: { message: 'offline' } };
-      if (!server.refuseDelete) server.rows[q.table] = server.rows[q.table].filter((row) => row.user_id !== user);
+      if (!server.refuseDelete.has(q.table)) server.rows[q.table] = server.rows[q.table].filter((row) => row.user_id !== user);
       return { error: null };
     }
+    if (server.nullCount.has(q.table)) return { count: null, error: null };
     return { count: server.rows[q.table].filter((row) => row.user_id === user).length, error: null };
   };
   cloud.supabase.from.mockImplementation((table) => {
@@ -220,6 +224,33 @@ describe('a wedged step cannot lock the app', () => {
     await save;
   });
 
+  test('a step that outlives the deadline cannot delete anything afterwards', async () => {
+    await seed([...trackerKeys('local'), ...queueKeys('local')]);
+    const stuck = deferred();
+    jest.spyOn(sync, 'clearQueues').mockReturnValue(stuck.promise);
+    const { run, opts } = fixture();
+    await run({ timeoutMs: 20 });
+    expect(opts.inform).toHaveBeenCalledTimes(1);
+    // The chain is still live behind the race: it must not pick up where it
+    // left off now that the user has been told the delete failed.
+    stuck.resolve();
+    await tick();
+    await tick();
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+    for (const key of [...trackerKeys('local'), ...queueKeys('local')]) expect(await AsyncStorage.getItem(key)).toBe('old');
+    expect(opts.resetState).not.toHaveBeenCalled();
+  });
+
+  test('an already-cancelled cleanup removes nothing in either helper', async () => {
+    await seed([...trackerKeys('local'), ...queueKeys('local')]);
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(sync.clearQueues('local', { strict: true, signal: cancelled.signal })).rejects.toThrow('cancelled');
+    await expect(storage.clearUserStorage('local', { strict: true, signal: cancelled.signal })).rejects.toThrow('cancelled');
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+    for (const key of [...trackerKeys('local'), ...queueKeys('local')]) expect(await AsyncStorage.getItem(key)).toBe('old');
+  });
+
   test('a cleanup step that hangs reports failure and unlocks at the overall deadline', async () => {
     const hang = deferred();
     jest.spyOn(storage, 'clearUserStorage').mockReturnValue(hang.promise);
@@ -249,7 +280,7 @@ describe('cloud Delete All Data', () => {
     await run();
     for (const table of TABLES) expect(server.rows[table]).toEqual([{ id: `${table}-theirs`, user_id: 'other-user' }]);
     for (const call of server.calls) expect(call.filters).toContainEqual(['user_id', CLOUD_USER]);
-    expect(server.calls.filter((c) => c.op === 'count').map((c) => c.table).sort()).toEqual([...TABLES].sort());
+    expect(server.calls.filter((c) => c.op === 'count').map((c) => c.table).sort()).toEqual([...TRACKER_TABLES].sort());
     for (const key of [...trackerKeys(CLOUD_USER), ...queueKeys(CLOUD_USER)]) expect(await AsyncStorage.getItem(key)).toBeNull();
     expect(events).toEqual(['reset', 'signOut', 'success']);
     expect(opts.confirm).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteBodyCloud') }));
@@ -270,7 +301,7 @@ describe('cloud Delete All Data', () => {
 
   test.each([
     ['a delete errors (offline)', (server) => server.failDelete.add('groups')],
-    ['RLS silently refuses the delete', (server) => { server.refuseDelete = true; }],
+    ['RLS silently refuses the delete', (server) => TABLES.forEach((table) => server.refuseDelete.add(table))],
   ])('%s: failure is reported and the device keeps its data and queue', async (_label, breakServer) => {
     cloud.isSupabaseConfigured = true;
     const server = fakeServer();
@@ -342,6 +373,85 @@ describe('cloud Delete All Data', () => {
     }
   });
 
+  test.each([
+    ['errors', (server) => server.failDelete.add('income')],
+    ['silently keeps its rows', (server) => server.refuseDelete.add('income')],
+  ])('the retired income table never fails the delete when it %s', async (_label, breakIncome) => {
+    cloud.isSupabaseConfigured = true;
+    const server = fakeServer();
+    seedServer(server);
+    breakIncome(server);
+    const { run, opts } = fixture({ cloudMode: true });
+    await run();
+    for (const table of TRACKER_TABLES) expect(server.rows[table]).toEqual([{ id: `${table}-theirs`, user_id: 'other-user' }]);
+    expect(server.calls.some((c) => c.op === 'delete' && c.table === 'income')).toBe(true);
+    expect(server.calls.some((c) => c.op === 'count' && c.table === 'income')).toBe(false);
+    expect(opts.inform).not.toHaveBeenCalled();
+    expect(opts.onSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  test('a tracker table whose count never arrives is unverified, not empty', async () => {
+    cloud.isSupabaseConfigured = true;
+    const server = fakeServer();
+    seedServer(server);
+    server.nullCount.add('settings');
+    const { run, opts } = fixture({ cloudMode: true });
+    await run();
+    expect(opts.inform).toHaveBeenCalledWith(expect.objectContaining({ body: translate('en', 'acct.deleteFailedBody') }));
+    expect(opts.resetState).not.toHaveBeenCalled();
+    expect(opts.onSuccess).not.toHaveBeenCalled();
+  });
+
+  test('giving up before the first delete says nothing was removed, and nothing is', async () => {
+    cloud.isSupabaseConfigured = true;
+    const server = fakeServer();
+    seedServer(server);
+    const gate = deferred();
+    server.upsertGate = gate.promise;
+    await sync.enqueueExpenseUpsert(CLOUD_USER, { id: 'in-flight', amount: 1, currency: 'USD', createdAt: 1 });
+    await tick();
+    await seed(trackerKeys(CLOUD_USER));
+    const { run, opts } = fixture({ cloudMode: true });
+    // The deadline lands while the wipe is still waiting for that op to settle.
+    await run({ timeoutMs: 20 });
+    expect(opts.inform).toHaveBeenCalledWith(
+      expect.objectContaining({ body: translate('en', 'acct.deleteNothingRemovedBody') })
+    );
+    gate.resolve();
+    await tick();
+    await tick();
+    expect(server.calls.some((c) => c.op === 'delete')).toBe(false);
+    for (const table of TABLES) {
+      expect(server.rows[table]).toContainEqual({ id: `${table}-mine`, user_id: CLOUD_USER });
+    }
+    for (const key of trackerKeys(CLOUD_USER)) expect(await AsyncStorage.getItem(key)).toBe('old');
+    expect(opts.resetState).not.toHaveBeenCalled();
+    await sync.clearQueues(CLOUD_USER);
+  });
+
+  test.each([
+    ['rejects', async () => { throw new Error('no session'); }],
+    ['resolves with an error', async () => ({ error: { message: 'no session' } })],
+  ])('a sign-out that %s is not reported as success', async (_label, signOut) => {
+    cloud.isSupabaseConfigured = true;
+    const server = fakeServer();
+    seedServer(server);
+    const { run, opts, events } = fixture({ cloudMode: true, signOut: jest.fn(signOut) });
+    await run();
+    // The data really is gone — only the session on this device is not.
+    for (const table of TRACKER_TABLES) expect(server.rows[table]).toEqual([{ id: `${table}-theirs`, user_id: 'other-user' }]);
+    expect(events).toEqual(['reset']);
+    expect(opts.onSuccess).not.toHaveBeenCalled();
+    expect(opts.inform).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: translate('en', 'acct.deleteSignOutFailed'),
+        body: translate('en', 'acct.deleteSignOutFailedBody'),
+      })
+    );
+    expect(opts.setBusy.mock.calls).toEqual([[true], [false]]);
+    expect(opts.guard.current).toBe(false);
+  });
+
   test('an inconsistent configured build with the local sentinel does nothing', async () => {
     cloud.isSupabaseConfigured = true;
     fakeServer();
@@ -367,7 +477,9 @@ describe('localized deletion copy', () => {
     expect(translate(language, 'acct.deleteBody')).toContain(device);
     expect(translate(language, 'acct.deleteBodyCloud')).toContain(device);
     expect(translate(language, 'acct.deleteBodyCloud')).toContain(account);
-    expect(translate(language, 'acct.deleteFailedBody')).not.toBe('acct.deleteFailedBody');
+    for (const key of ['acct.deleteFailedBody', 'acct.deleteNothingRemovedBody', 'acct.deleteSignOutFailed', 'acct.deleteSignOutFailedBody']) {
+      expect(translate(language, key)).not.toBe(key);
+    }
     expect(translate(language, 'acct.deleteUnavailable')).toBe('acct.deleteUnavailable');
   });
 });
