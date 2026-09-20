@@ -20,7 +20,7 @@ npx expo start --tunnel    # dev server through ngrok tunnel (works across netwo
 npm run web                # run in the browser via react-native-web
 npm run ios                # build & run the native iOS dev client (expo run:ios; an ios/ prebuild exists)
 npm run android            # build & run the native Android dev client (expo run:android; generates android/ on first run)
-npm test                   # run Jest test suite (12 suites / 714 tests in src/__tests__/)
+npm test                   # run Jest test suite (12 suites / 716 tests in src/__tests__/)
 npm test -- --testPathPatterns=categories   # one test FILE (note: plural --testPathPatterns)
 npm test -- -t "converts between currencies"  # one test CASE by name
 npx expo export --platform web      # build check (catches syntax/import errors); regenerates dist/

@@ -452,6 +452,29 @@ describe('cloud Delete All Data', () => {
     expect(opts.guard.current).toBe(false);
   });
 
+  test.each([
+    ['the removal fails', () => jest.spyOn(AsyncStorage, 'multiRemove').mockRejectedValueOnce(new Error('disk'))],
+    ['a lane survives the removal', () => jest.spyOn(AsyncStorage, 'getItem').mockResolvedValueOnce('leftover')],
+  ])('a queue cleanup that fails because %s puts the unflushed ops back', async (_label, breakCleanup) => {
+    cloud.isSupabaseConfigured = true;
+    fakeServer();
+    const expense = { id: 'offline-edit', amount: 7, currency: 'USD', createdAt: 3 };
+    const lane = `@expense-tracker/pending-ops:${CLOUD_USER}`;
+    sync.suspendSync(CLOUD_USER); // nothing can flush, so the edit stays queued
+    try {
+      await sync.enqueueExpenseUpsert(CLOUD_USER, expense);
+      breakCleanup();
+      await expect(sync.clearQueues(CLOUD_USER, { strict: true })).rejects.toThrow();
+      // Delete All Data reports failure and resets nothing, so an edit that
+      // never reached the server has to survive to be synced later.
+      expect(sync.applyPendingOps(CLOUD_USER, [])).toEqual([expense]);
+      expect(JSON.parse(await AsyncStorage.getItem(lane))).toEqual([{ type: 'upsert', expense }]);
+    } finally {
+      sync.resumeSync(CLOUD_USER);
+      await sync.clearQueues(CLOUD_USER);
+    }
+  });
+
   test('an inconsistent configured build with the local sentinel does nothing', async () => {
     cloud.isSupabaseConfigured = true;
     fakeServer();

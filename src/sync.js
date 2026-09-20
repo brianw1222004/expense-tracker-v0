@@ -101,15 +101,30 @@ export async function clearQueues(userId, { strict = false, signal } = {}) {
     // Empty the in-memory lanes BEFORE touching their durable mirrors: if the
     // removal or its verification below fails we must not still be holding ops
     // that a later persistQueue would write straight back into the files this
-    // just deleted.
+    // just deleted. Snapshot them first, because a caller told "the delete
+    // failed, nothing was reset" must still have its unflushed ops — an offline
+    // edit that never reached the server would otherwise vanish with no trace.
+    const snapshot = laneKeys.map((key) => [key, queues.get(key)]);
     for (const key of laneKeys) {
       queues.set(key, []);
       queueLoads.delete(key);
     }
     const storageKeys = laneKeys.map((key) => `${QUEUE_KEY}:${key}`);
-    await AsyncStorage.multiRemove(storageKeys);
-    const remaining = await Promise.all(storageKeys.map((key) => AsyncStorage.getItem(key)));
-    if (remaining.some((value) => value !== null)) throw new Error('Local queue cleanup incomplete');
+    try {
+      await AsyncStorage.multiRemove(storageKeys);
+      const remaining = await Promise.all(storageKeys.map((key) => AsyncStorage.getItem(key)));
+      if (remaining.some((value) => value !== null)) throw new Error('Local queue cleanup incomplete');
+    } catch (error) {
+      // Put every lane back as it was — a lane that was never loaded returns to
+      // unloaded, so it re-reads its mirror — then re-persist the ops the
+      // removal may already have taken off disk (best-effort, as everywhere).
+      for (const [key, ops] of snapshot) {
+        if (ops === undefined) queues.delete(key);
+        else queues.set(key, ops);
+      }
+      await Promise.all(snapshot.filter(([, ops]) => ops?.length).map(([key]) => persistQueue(key)));
+      throw error;
+    }
     return;
   }
   for (const key of laneKeys) {
