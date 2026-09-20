@@ -5,10 +5,9 @@ import { useLanguage, useT } from '../i18n';
 import { monthKeyLabel } from '../format';
 import { HIcon } from '../icons';
 
-// The centered ‹ month › selector rendered under each tab's page title
-// (Dashboard, Expenses, Insight, Split Bills). Every page owns its own month
-// state — selections are deliberately independent, so changing the month on
-// one tab never affects another. Forward navigation caps at `currentMonthKey`.
+// The centered ‹ month › selector rendered under each main tab's title.
+// All instances receive the same root-owned month and handler. Forward
+// navigation caps at `currentMonthKey`.
 export default function MonthSelector({ monthKey, currentMonthKey, onShift, style }) {
   const { colors } = useTheme();
   const t = useT();

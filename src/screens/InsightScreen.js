@@ -10,7 +10,8 @@ import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT } from '../i18n';
-import { formatMoney, formatMoneyShort, shiftMonthKey } from '../format';
+import { formatMoney, formatMoneyShort } from '../format';
+import { monthAggregate } from '../browsingMonth';
 import { getCurrency } from '../currency';
 import { getCategoryLabel } from '../categories';
 import { categoryBarState } from '../budget';
@@ -37,7 +38,9 @@ export default function InsightScreen({
   regularCategories,
   externalCategories,
   months,
+  monthKey,
   currentMonthKey,
+  onShiftMonth,
   categoryOrder,
   onReorderCategories,
   onEditBudgets,
@@ -56,17 +59,11 @@ export default function InsightScreen({
   const [modalCategory, setModalCategory] = useState(null); // null | 'new' | category
   // Vertical scrolling pauses while a tile drag is live so the grid owns the gesture.
   const [scrollEnabled, setScrollEnabled] = useState(true);
-  // This page's month selection (the ‹ month › selector under the title) —
-  // scopes the budget gauge and every category tile. Owned locally: each tab's
-  // month is independent of the others'.
-  const [monthKey, setMonthKey] = useState(currentMonthKey);
-  const shiftMonth = (dir) => setMonthKey((key) => shiftMonthKey(key, dir));
-
   // The selected month's per-category totals (byMonth folds split shares in,
   // matching derive's current-month totals); {} for a month with no data so
   // every tile honestly shows 0.
   const totalsByCategory = useMemo(
-    () => months.find((m) => m.key === monthKey)?.byCategory ?? {},
+    () => monthAggregate(months, monthKey).byCategory,
     [months, monthKey]
   );
   const spentOf = (category) => totalsByCategory[category.id] ?? 0;
@@ -152,7 +149,7 @@ export default function InsightScreen({
         <MonthSelector
           monthKey={monthKey}
           currentMonthKey={currentMonthKey}
-          onShift={shiftMonth}
+          onShift={onShiftMonth}
           style={styles.monthSelector}
         />
 
