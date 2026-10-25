@@ -82,9 +82,7 @@ export default function DashboardScreen({
     >
       <Text style={styles.title}>{t('dash.title')}</Text>
 
-      {/* This page's ‹ month › selection, under the title — scopes the hero
-          card and the category summary card. Independent of the other tabs'
-          month selectors. */}
+      {/* The app-wide browsing month scopes the hero and category summary. */}
       <MonthSelector
         monthKey={monthKey}
         currentMonthKey={currentMonthKey}

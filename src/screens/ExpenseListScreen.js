@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme, cardShadow } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
-import { buildCalendarWeeks, dateKey, dayLabel, formatMoney, shiftMonthKey } from '../format';
+import { buildCalendarWeeks, dateKey, dayLabel, formatMoney } from '../format';
+import { defaultBrowsingDate } from '../browsingMonth';
 import EmptyState from '../components/EmptyState';
 import ExpenseRow from '../components/ExpenseRow';
 import HeaderGlow from '../components/HeaderGlow';
@@ -26,6 +27,9 @@ export default function ExpenseListScreen({
   onAddPress,
   onLoadDemo,
   onEditPress,
+  monthKey,
+  currentMonthKey,
+  onShiftMonth,
 }) {
   const { colors } = useTheme();
   const t = useT();
@@ -35,21 +39,27 @@ export default function ExpenseListScreen({
 
   const today = dateKey(Date.now());
   const [selectedDate, setSelectedDate] = useState(today);
-  const [calPeriod, setCalPeriod] = useState(() => ({
-    year: new Date().getFullYear(),
-    month: new Date().getMonth(),
-  }));
-  const calYear = calPeriod.year;
-  const calMonth = calPeriod.month;
+  const [calYear, monthNumber] = monthKey.split('-').map(Number);
+  const calMonth = monthNumber - 1;
   const [filter, setFilter] = useState('all');
   const [pendingDelete, setPendingDelete] = useState(null);
   const prevTodayRef = useRef(today);
+  const prevMonthKeyRef = useRef(monthKey);
   useEffect(() => {
-    if (prevTodayRef.current !== today) {
-      prevTodayRef.current = today;
-      setSelectedDate(today);
+    const todayChanged = prevTodayRef.current !== today;
+    const monthChanged = prevMonthKeyRef.current !== monthKey;
+    prevTodayRef.current = today;
+    prevMonthKeyRef.current = monthKey;
+    if (monthChanged || (todayChanged && monthKey === currentMonthKey)) {
+      setSelectedDate(defaultBrowsingDate(monthKey, today));
     }
-  }, [today]);
+  }, [currentMonthKey, monthKey, today]);
+  // Effects run after paint, so use the new month's default immediately while
+  // selectedDate is catching up. This prevents one frame of stale day rows
+  // after another tab changes the shared month.
+  const visibleSelectedDate = selectedDate.startsWith(monthKey)
+    ? selectedDate
+    : defaultBrowsingDate(monthKey, today);
 
   const dateNames = getDateNames(language);
   const grid = useMemo(() => buildCalendarWeeks(calYear, calMonth), [calYear, calMonth]);
@@ -68,10 +78,10 @@ export default function ExpenseListScreen({
   const selectedSection = useMemo(() => {
     for (const section of sections) {
       if (section.data.length === 0) continue;
-      if (dateKey(section.data[0].createdAt) === selectedDate) return section;
+      if (dateKey(section.data[0].createdAt) === visibleSelectedDate) return section;
     }
     return null;
-  }, [sections, selectedDate]);
+  }, [sections, visibleSelectedDate]);
 
   const presentCategories = useMemo(() => {
     const present = new Set();
@@ -101,22 +111,15 @@ export default function ExpenseListScreen({
     setSelectedDate(`${calYear}-${pad2(calMonth + 1)}-${pad2(day)}`);
   };
 
-  // This page's month selection (the ‹ month › selector under the title — the
-  // calendar card no longer has its own month nav). Stepping months also moves
-  // the selected day (today in the current month, the 1st otherwise) so the
-  // rows below always show the displayed month. Independent of the other tabs.
-  const calMonthKey = `${calYear}-${pad2(calMonth + 1)}`;
+  // The root-owned browsing month drives the calendar. The selected day stays
+  // local to this screen and resets only when that shared month changes.
   const shiftCalMonth = (dir) => {
-    const next = shiftMonthKey(calMonthKey, dir);
-    const [y, m] = next.split('-').map(Number);
-    setCalPeriod({ year: y, month: m - 1 });
-    setSelectedDate(next === today.slice(0, 7) ? today : `${next}-01`);
+    onShiftMonth(dir);
   };
 
-  const [sy, sm, sd] = selectedDate.split('-').map(Number);
+  const [sy, sm, sd] = visibleSelectedDate.split('-').map(Number);
   const selectedDayText = dayLabel(new Date(sy, sm - 1, sd).getTime(), language);
-  const selectedInMonth = selectedDate.startsWith(`${calYear}-${pad2(calMonth + 1)}`);
-  const selectedDayNum = selectedInMonth ? sd : null;
+  const selectedDayNum = sd;
 
   // Every branch keeps the fixed HeaderGlow wash so the page always matches
   // the glowWashTop status-bar strip App.js paints while the tab UI is up.
@@ -149,8 +152,8 @@ export default function ExpenseListScreen({
         <Text style={styles.title}>{t('list.title')}</Text>
 
         <MonthSelector
-          monthKey={calMonthKey}
-          currentMonthKey={today.slice(0, 7)}
+          monthKey={monthKey}
+          currentMonthKey={currentMonthKey}
           onShift={shiftCalMonth}
           style={styles.monthSelector}
         />

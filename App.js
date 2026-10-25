@@ -67,7 +67,12 @@ import { buildDemoExpenses } from './src/demoData';
 import { redenominateBudgets, getCurrency } from './src/currency';
 import { saveCategorySettings } from './src/categorySettings';
 import { getAllCategories, getRegularAll, getExternalAll, isPresetCategory } from './src/categories';
-import { dateKey, shiftMonthKey } from './src/format';
+import { dateKey } from './src/format';
+import {
+  dashboardBrowsingMonthView,
+  initialBrowsingMonthKey,
+  shiftBrowsingMonthKey,
+} from './src/browsingMonth';
 import { deriveViewData } from './src/derive';
 import { overallBalance, yourShareAsExpenses, groupBalances, removeMemberFromBill, YOU, DEFAULT_PAYMENT_METHOD_ID } from './src/splits';
 import { ThemeProvider, getTheme, spacing, fonts, panelShadow, ACCOUNT_FAB_SIZE } from './src/theme';
@@ -153,12 +158,9 @@ function ExpenseTracker() {
   // Split-bills: the open group's id (detail sheet). New bills are added through
   // the shared add popup (addEntryMode='shared'), not a separate sheet.
   const [activeGroupId, setActiveGroupId] = useState(null);
-  // The Dashboard's selected month (the ‹ month › selector under the title),
-  // scoping the hero card + category summary card. Every tab owns its own
-  // independent month selection (Expenses/Insight/Split keep theirs as local
-  // screen state since their data needs no App-level derivation) — changing the
-  // month on one page never affects another.
-  const [dashMonthKey, setDashMonthKey] = useState(() => dateKey(Date.now()).slice(0, 7));
+  // One session-only browsing month shared by every main tab. Record-entry
+  // dates remain local to their forms and are intentionally unrelated.
+  const [browsingMonthKey, setBrowsingMonthKey] = useState(initialBrowsingMonthKey);
   // The add popup sits over whichever tab is active. `addEntryMode` toggles its
   // two forms (personal expense vs. shared split bill). `sharedLockedGroupId`,
   // when set, locks the shared form to one group (launched from a group's "Add a
@@ -877,8 +879,8 @@ function ExpenseTracker() {
   const hasExpenses = expenses.length > 0;
   const currentMonthKey = dayStamp.slice(0, 7);
 
-  const shiftDashMonth = useCallback((dir) => {
-    setDashMonthKey((key) => shiftMonthKey(key, dir));
+  const shiftBrowsingMonth = useCallback((dir) => {
+    setBrowsingMonthKey((key) => shiftBrowsingMonthKey(key, dir));
   }, []);
   // The hero card's view of the selected month: total, previous-month total
   // (for the delta badge) and the per-day chart series. Months with no data
@@ -886,18 +888,10 @@ function ExpenseTracker() {
   // `prevDailyTotals` is the chart's dimmed comparison line — undefined (not a
   // zero-filled array) when that month has no data at all, so the chart draws
   // no second line rather than a flat one along the baseline.
-  const heroView = useMemo(() => {
-    const selected = months.find((m) => m.key === dashMonthKey);
-    const prev = months.find((m) => m.key === shiftMonthKey(dashMonthKey, -1));
-    const [y, mo] = dashMonthKey.split('-').map(Number);
-    const daysInMonth = new Date(y, mo, 0).getDate();
-    return {
-      total: selected?.total ?? 0,
-      prevTotal: prev?.total ?? 0,
-      dailyTotals: selected?.dailyTotals ?? new Array(daysInMonth).fill(0),
-      prevDailyTotals: prev?.dailyTotals,
-    };
-  }, [months, dashMonthKey]);
+  const heroView = useMemo(
+    () => dashboardBrowsingMonthView(months, browsingMonthKey),
+    [months, browsingMonthKey]
+  );
 
   let content = null;
   // True only on the main-UI branch below — gates chrome that must never render
@@ -946,8 +940,8 @@ function ExpenseTracker() {
               lastMonthTotal={heroView.prevTotal}
               dailyTotals={heroView.dailyTotals}
               prevDailyTotals={heroView.prevDailyTotals}
-              monthKey={dashMonthKey}
-              onShiftMonth={shiftDashMonth}
+              monthKey={browsingMonthKey}
+              onShiftMonth={shiftBrowsingMonth}
               displayCurrency={displayCurrency}
               onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
@@ -971,6 +965,9 @@ function ExpenseTracker() {
               onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
               onEditPress={setEditingExpense}
+              monthKey={browsingMonthKey}
+              currentMonthKey={currentMonthKey}
+              onShiftMonth={shiftBrowsingMonth}
             />
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('split')]} pointerEvents={tab === 'split' ? 'auto' : 'none'}>
@@ -979,7 +976,9 @@ function ExpenseTracker() {
               splitExpenses={splitExpenses}
               displayCurrency={displayCurrency}
               summary={splitSummary}
+              monthKey={browsingMonthKey}
               currentMonthKey={currentMonthKey}
+              onShiftMonth={shiftBrowsingMonth}
               customCategories={settings.customCategories}
               customPaymentMethods={settings.customPaymentMethods}
               onOpenGroup={setActiveGroupId}
@@ -999,7 +998,9 @@ function ExpenseTracker() {
               regularCategories={regularCategories}
               externalCategories={externalCategories}
               months={months}
+              monthKey={browsingMonthKey}
               currentMonthKey={currentMonthKey}
+              onShiftMonth={shiftBrowsingMonth}
               categoryOrder={settings.categoryOrder}
               onReorderCategories={(ids) => updateSettings({ categoryOrder: ids })}
               onEditBudgets={() => setOverlay('budget')}
