@@ -94,8 +94,8 @@ export function overallBalance(groups, splitExpenses, displayCurrency) {
 // Your share of each split bill, as expense-like items so the existing spending
 // aggregates (dashboard stats, category totals, budgets) count it — the user
 // chose "your share counts as spending". These are NOT real expenses: the id is
-// namespaced `split:` and they never enter the Expenses list. Amount stays in
-// the bill's entry currency; category carries through for the breakdown.
+// namespaced `split:` and they are never persisted as personal expenses.
+// Amount stays in the bill's entry currency; category carries through for the breakdown.
 export function deriveSharedSpendingActivity(splitExpenses) {
   const items = [];
   for (const bill of splitExpenses) {

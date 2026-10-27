@@ -1,12 +1,13 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { fonts, radius, spacing, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
 import { formatMoney } from '../format';
 import { HIcon } from '../icons';
+import { spendingRowInteractions } from '../spendingActivity';
 
-export default React.memo(function ExpenseRow({ expense, displayCurrency, categories, onRequestDelete, onEdit }) {
+export default React.memo(function ExpenseRow({ expense, displayCurrency, categories, groupName, onRequestDelete, onEdit }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -19,19 +20,24 @@ export default React.memo(function ExpenseRow({ expense, displayCurrency, catego
     borderLeftColor: `${category.color}33`,
   }), [category.color]);
 
-  const handleEdit = useCallback(() => onEdit(expense), [onEdit, expense]);
-  const handleDelete = useCallback(() => onRequestDelete(expense), [onRequestDelete, expense]);
+  const { onPress, onLongPress, accessibilityHintKey } = useMemo(
+    () => spendingRowInteractions(expense, { onEdit, onRequestDelete }),
+    [expense, onEdit, onRequestDelete]
+  );
 
   const label = expense.note || getCategoryLabel(category, t);
+  const sharedLabel = expense.sourceType === 'shared'
+    ? groupName ? t('list.sharedWithGroup', { group: groupName }) : t('list.sharedYourShare')
+    : null;
 
   return (
     <Pressable
-      onPress={handleEdit}
-      onLongPress={handleDelete}
+      onPress={onPress}
+      onLongPress={onLongPress}
       delayLongPress={350}
       accessibilityRole="button"
-      accessibilityLabel={`${label}, ${formatMoney(expense.displayAmount, displayCurrency)}`}
-      accessibilityHint={t('list.longPressToDelete')}
+      accessibilityLabel={`${label}${sharedLabel ? ', ' + sharedLabel : ''}, ${formatMoney(expense.displayAmount, displayCurrency)}`}
+      accessibilityHint={accessibilityHintKey ? t(accessibilityHintKey) : undefined}
       style={({ pressed }) => [
         styles.row,
         tintStyle,
@@ -46,6 +52,7 @@ export default React.memo(function ExpenseRow({ expense, displayCurrency, catego
           {expense.note || getCategoryLabel(category, t)}
         </Text>
         <Text style={styles.categoryLabel}>{getCategoryLabel(category, t)}</Text>
+        {sharedLabel && <Text style={styles.sharedLabel} numberOfLines={1}>{sharedLabel}</Text>}
       </View>
       <View style={styles.amounts}>
         <Text style={styles.amount}>-{formatMoney(expense.displayAmount, displayCurrency)}</Text>
@@ -94,6 +101,12 @@ const createStyles = (colors) =>
       fontSize: 13,
       fontFamily: fonts.regular,
       marginTop: 1,
+    },
+    sharedLabel: {
+      color: colors.accent,
+      fontSize: 12,
+      fontFamily: fonts.regular,
+      marginTop: 2,
     },
     amounts: {
       alignItems: 'flex-end',

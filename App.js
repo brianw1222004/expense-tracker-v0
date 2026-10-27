@@ -74,6 +74,7 @@ import {
   shiftBrowsingMonthKey,
 } from './src/browsingMonth';
 import { deriveViewData } from './src/derive';
+import { resolveSpendingEdit } from './src/spendingActivity';
 import { overallBalance, yourShareAsExpenses, groupBalances, removeMemberFromBill, YOU, DEFAULT_PAYMENT_METHOD_ID } from './src/splits';
 import { ThemeProvider, getTheme, spacing, fonts, panelShadow, ACCOUNT_FAB_SIZE } from './src/theme';
 import { I18nProvider, translate } from './src/i18n';
@@ -599,12 +600,19 @@ function ExpenseTracker() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
-  // Open the split-bill editor (from a group sheet's bill row). Closes the group
+  // Open the split-bill editor from a group sheet or shared spending row. Closes the group
   // sheet while the editor is up; the editor reopens it on save/delete/close.
   const openEditSplit = useCallback((bill) => {
     setActiveGroupId(null);
     setEditingSplit(bill);
   }, []);
+
+  const openEditSpendingActivity = useCallback((activity) => {
+    const target = resolveSpendingEdit(activity, expenses, splitExpenses, groups);
+    if (!target) return;
+    if (target.sourceType === 'shared') openEditSplit(target.record);
+    else setEditingExpense(target.record);
+  }, [expenses, splitExpenses, groups, openEditSplit]);
 
   const updateSplitExpense = ({ id, groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, meta }) => {
     const updated = { id, groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, ...(meta ? { meta } : {}) };
@@ -855,10 +863,10 @@ function ExpenseTracker() {
 
   // Your share of every split bill, as synthetic spending items. These fold into
   // the dashboard/category/budget aggregates (the user chose "your share counts
-  // as spending") but never enter the Expenses list — see deriveViewData.
+  // as spending") and the unified Expenses view — see deriveViewData.
   const splitShareItems = useMemo(() => yourShareAsExpenses(splitExpenses), [splitExpenses]);
 
-  const { sections, months, hasSpending } =
+  const { spendingSections, months, hasSpending } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language, settings.customCategories, undefined, splitShareItems),
       // dayStamp is a dep-only trigger: it forces re-derivation at midnight (so
@@ -876,7 +884,6 @@ function ExpenseTracker() {
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
 
   const loaded = dataUser != null && dataUser === userId;
-  const hasExpenses = expenses.length > 0;
   const currentMonthKey = dayStamp.slice(0, 7);
 
   const shiftBrowsingMonth = useCallback((dir) => {
@@ -956,15 +963,16 @@ function ExpenseTracker() {
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('list')]} pointerEvents={tab === 'list' ? 'auto' : 'none'}>
             <ExpenseListScreen
-              sections={sections}
+              spendingSections={spendingSections}
               loaded={loaded}
-              hasExpenses={hasExpenses}
+              hasSpending={hasSpending}
+              groups={groups}
               displayCurrency={displayCurrency}
               categories={allCategories}
               onDelete={deleteExpense}
               onAddPress={() => openAdd()}
               onLoadDemo={loadDemo}
-              onEditPress={setEditingExpense}
+              onEditPress={openEditSpendingActivity}
               monthKey={browsingMonthKey}
               currentMonthKey={currentMonthKey}
               onShiftMonth={shiftBrowsingMonth}

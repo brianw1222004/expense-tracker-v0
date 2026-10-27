@@ -6,6 +6,7 @@ import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
 import { buildCalendarWeeks, dateKey, dayLabel, formatMoney } from '../format';
 import { defaultBrowsingDate } from '../browsingMonth';
+import { canDeleteSpendingActivity, spendingDays, spendingForDay } from '../spendingActivity';
 import EmptyState from '../components/EmptyState';
 import ExpenseRow from '../components/ExpenseRow';
 import HeaderGlow from '../components/HeaderGlow';
@@ -18,9 +19,10 @@ function pad2(n) {
 }
 
 export default function ExpenseListScreen({
-  sections,
+  spendingSections,
   loaded,
-  hasExpenses,
+  hasSpending,
+  groups,
   categories,
   displayCurrency,
   onDelete,
@@ -64,47 +66,27 @@ export default function ExpenseListScreen({
   const dateNames = getDateNames(language);
   const grid = useMemo(() => buildCalendarWeeks(calYear, calMonth), [calYear, calMonth]);
 
-  const expenseDays = useMemo(() => {
-    const days = new Set();
-    const prefix = `${calYear}-${pad2(calMonth + 1)}`;
-    for (const section of sections) {
-      if (section.data.length === 0) continue;
-      const key = dateKey(section.data[0].createdAt);
-      if (key.startsWith(prefix)) days.add(parseInt(key.slice(8), 10));
-    }
-    return days;
-  }, [sections, calYear, calMonth]);
-
-  const selectedSection = useMemo(() => {
-    for (const section of sections) {
-      if (section.data.length === 0) continue;
-      if (dateKey(section.data[0].createdAt) === visibleSelectedDate) return section;
-    }
-    return null;
-  }, [sections, visibleSelectedDate]);
+  const expenseDays = useMemo(
+    () => spendingDays(spendingSections, monthKey),
+    [spendingSections, monthKey]
+  );
+  const groupNames = useMemo(() => new Map(groups.map((group) => [group.id, group.name])), [groups]);
 
   const presentCategories = useMemo(() => {
     const present = new Set();
-    for (const section of sections) {
+    for (const section of spendingSections) {
       for (const item of section.data) present.add(getCategory(item.category, categories).id);
     }
     return (categories ?? []).filter((c) => present.has(c.id));
-  }, [sections, categories]);
+  }, [spendingSections, categories]);
 
   const activeFilter =
     filter !== 'all' && !presentCategories.some((c) => c.id === filter) ? 'all' : filter;
 
-  const { filteredExpenses, filteredTotal } = useMemo(() => {
-    const expenses = !selectedSection
-      ? []
-      : activeFilter === 'all'
-      ? selectedSection.data
-      : selectedSection.data.filter(
-          (item) => getCategory(item.category, categories).id === activeFilter
-        );
-    const total = expenses.reduce((sum, e) => sum + e.displayAmount, 0);
-    return { filteredExpenses: expenses, filteredTotal: total };
-  }, [selectedSection, activeFilter, categories]);
+  const { filteredExpenses, filteredTotal } = useMemo(
+    () => spendingForDay(spendingSections, visibleSelectedDate, activeFilter, categories),
+    [spendingSections, visibleSelectedDate, activeFilter, categories]
+  );
 
   const selectDay = (day) => {
     if (!day) return;
@@ -131,7 +113,7 @@ export default function ExpenseListScreen({
     );
   }
 
-  if (!hasExpenses) {
+  if (!hasSpending) {
     return (
       <View style={styles.container}>
         <HeaderGlow id="listHeaderGlow" />
@@ -258,11 +240,14 @@ export default function ExpenseListScreen({
         ) : (
           filteredExpenses.map((expense) => (
             <ExpenseRow
-              key={expense.id}
+              key={expense.rowKey}
               expense={expense}
               displayCurrency={displayCurrency}
               categories={categories}
-              onRequestDelete={setPendingDelete}
+              groupName={groupNames.get(expense.groupId)}
+              onRequestDelete={(item) => {
+                if (canDeleteSpendingActivity(item)) setPendingDelete(item);
+              }}
               onEdit={onEditPress}
             />
           ))
@@ -311,7 +296,10 @@ export default function ExpenseListScreen({
                 <Text style={styles.modalBtnCancelText}>{t('common.cancel')}</Text>
               </Pressable>
               <Pressable
-                onPress={() => { onDelete(pendingDelete.id); setPendingDelete(null); }}
+                onPress={() => {
+                  if (canDeleteSpendingActivity(pendingDelete)) onDelete(pendingDelete.id);
+                  setPendingDelete(null);
+                }}
                 accessibilityRole="button"
                 style={({ pressed }) => [
                   styles.modalBtn,

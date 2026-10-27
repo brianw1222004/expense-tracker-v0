@@ -283,3 +283,192 @@ describe('Money Domain spending integration', () => {
     expect(view.hasSpending).toBe(true);
   });
 });
+
+describe('unified spendingSections', () => {
+  const shared = (overrides = {}) => ({
+    id: 'bill', groupId: 'g1', description: 'Dinner', category: 'food',
+    amount: 80, currency: 'USD', paidBy: YOU, shares: { [YOU]: 30, alex: 50 },
+    createdAt: ts(2026, 5, 10), ...overrides,
+  });
+  const project = (personal = [], bills = [], currency = 'USD', categories = []) =>
+    deriveViewData(personal, currency, 'en', categories, NOW, deriveSharedSpendingActivity(bills));
+
+  it('adds explicit personal source metadata without changing direct-only sections', () => {
+    const expense = make('personal', 25, 'USD', 'food', ts(2026, 5, 10));
+    const view = project([expense]);
+    expect(view.sections).toEqual([{ total: 25, data: [{ ...expense, displayAmount: 25 }] }]);
+    expect(view.spendingSections).toEqual([{
+      total: 25, data: [{ ...expense, displayAmount: 25, sourceType: 'personal', rowKey: '["personal","personal"]' }],
+    }]);
+    expect(view.hasSpending).toBe(true);
+    expect(view.monthTotal).toBe(25);
+  });
+
+  it.each([YOU, 'alex'])('shows shared-only spending when %s paid without adding a personal expense', (paidBy) => {
+    const view = project([], [shared({ paidBy })]);
+    expect(view.sections).toEqual([]);
+    expect(view.spendingSections).toEqual([{
+      total: 30,
+      data: [{ id: 'split:bill', splitId: 'bill', groupId: 'g1', amount: 30, currency: 'USD',
+        category: 'food', note: 'Dinner', createdAt: ts(2026, 5, 10), displayAmount: 30,
+        sourceType: 'shared', rowKey: '["shared","split:bill"]' }],
+    }]);
+    expect(view.hasSpending).toBe(true);
+    expect(view.monthTotal).toBe(30);
+    expect(view.dailyTotals[9]).toBe(30);
+  });
+
+  it('sorts a mixed day newest-first while valuing every personal amount and share exactly once', () => {
+    const morning = ts(2026, 5, 10);
+    const personal = [
+      make('early', 10, 'USD', 'transport', morning),
+      make('middle', 20, 'USD', 'food', morning + 100),
+    ];
+    const view = project(personal, [shared({ createdAt: morning + 200 })]);
+    expect(view.spendingSections[0].data.map(({ id }) => id)).toEqual(['split:bill', 'middle', 'early']);
+    expect(view.spendingSections[0].total).toBe(60);
+    expect(view.sections[0].total).toBe(30);
+    expect(view.monthTotal).toBe(60);
+    expect(view.totalsByCategory).toEqual({ food: 50, transport: 10 });
+    expect(view.dailyTotals[9]).toBe(60);
+    expect(view.months[0].total).toBe(60);
+    expect(view.months[0].byCategory).toEqual({ food: 50, transport: 10 });
+  });
+
+  it('keeps mixed-source days and months newest-first with matching monthly daily series', () => {
+    const view = project([
+      make('may-personal', 20, 'USD', 'food', ts(2026, 4, 20)),
+      make('june-personal', 40, 'USD', 'food', ts(2026, 5, 9)),
+    ], [
+      shared({ id: 'may', createdAt: ts(2026, 4, 20) }),
+      shared({ id: 'june', createdAt: ts(2026, 5, 10) }),
+    ]);
+    expect(view.spendingSections.map(({ total, data }) => ({ total, ids: data.map(({ id }) => id) }))).toEqual([
+      { total: 30, ids: ['split:june'] }, { total: 40, ids: ['june-personal'] },
+      { total: 50, ids: ['may-personal', 'split:may'] },
+    ]);
+    expect(view.monthTotal).toBe(70);
+    expect(view.lastMonthTotal).toBe(50);
+    expect(view.dailyTotals[8]).toBe(40);
+    expect(view.dailyTotals[9]).toBe(30);
+    expect(view.months[1].dailyTotals[19]).toBe(50);
+  });
+
+  it('keeps a deterministic source order for equal timestamps', () => {
+    const view = project([
+      make('p-first', 1, 'USD', 'food', ts(2026, 5, 10)),
+      make('p-second', 2, 'USD', 'food', ts(2026, 5, 10)),
+    ], [shared({ id: 's-first' }), shared({ id: 's-second' })]);
+    expect(view.spendingSections[0].data.map(({ id }) => id)).toEqual([
+      'p-first', 'p-second', 'split:s-first', 'split:s-second',
+    ]);
+  });
+
+  it('uses separate stable keys when a personal id collides with a synthetic id', () => {
+    const personal = [make('split:bill', 5, 'USD', 'food', ts(2026, 5, 10))];
+    const view = project(personal, [shared()]);
+    const keys = view.spendingSections[0].data.map(({ rowKey }) => rowKey);
+    expect(keys).toEqual(['["personal","split:bill"]', '["shared","split:bill"]']);
+    expect(new Set(keys).size).toBe(2);
+    expect(project(personal, [shared()]).spendingSections[0].data.map(({ rowKey }) => rowKey)).toEqual(keys);
+  });
+
+  it('normalizes stale/missing categories for activity rows while preserving legacy sections', () => {
+    const custom = [{ id: 'c_trip', label: 'Trip', color: '#123456', custom: true }];
+    const personal = [make('personal', 10, 'USD', 'retired', ts(2026, 5, 10))];
+    const view = project(personal, [
+      shared({ id: 'missing', category: undefined }),
+      shared({ id: 'custom', category: 'c_trip' }),
+    ], 'USD', custom);
+    expect(view.spendingSections[0].data.map(({ category }) => category)).toEqual(['other', 'other', 'c_trip']);
+    expect(view.totalsByCategory).toEqual({ other: 40, c_trip: 30 });
+    expect(view.sections[0].data[0].category).toBe('retired');
+    expect(personal[0].category).toBe('retired');
+  });
+
+  it('preserves fractional reporting amounts even for zero-decimal display currencies', () => {
+    const view = project([make('personal', 1, 'USD', 'food', ts(2026, 5, 10))], [
+      shared({ shares: { [YOU]: 1, alex: 1 } }),
+    ], 'JPY');
+    expect(view.spendingSections[0].data.map(({ displayAmount }) => displayAmount)).toEqual([157.5, 157.5]);
+    expect(view.spendingSections[0].total).toBe(315);
+    expect(view.monthTotal).toBe(315);
+  });
+
+  it('reuses the financial accumulation order even when display sorting changes floating-point sums', () => {
+    const morning = ts(2026, 5, 10);
+    const view = project([make('large', 1e16, 'USD', 'food', morning)], [
+      shared({ id: 'credit', shares: { [YOU]: 1 }, createdAt: morning + 200 }),
+      shared({ id: 'small', shares: { [YOU]: 1 }, createdAt: morning + 100 }),
+    ]);
+    expect(view.spendingSections[0].data.map(({ id }) => id)).toEqual(['split:credit', 'split:small', 'large']);
+    // Full-precision financial accrual remains personal first, then source shares.
+    expect(view.spendingSections[0].total).toBe(1e16);
+    expect(view.dailyTotals[9]).toBe(1e16);
+    expect(view.monthTotal).toBe(1e16);
+  });
+
+  it('excludes settlements, absent/zero shares, and other-member-only bills from all spending views', () => {
+    const view = project([], [
+      shared({ id: 'settlement', settlement: true, from: 'alex', to: YOU }),
+      shared({ id: 'zero', shares: { [YOU]: 0, alex: 80 } }),
+      shared({ id: 'others', paidBy: 'alex', shares: { alex: 40, brian: 40 } }),
+      shared({ id: 'missing', shares: undefined }),
+    ]);
+    expect(view.spendingSections).toEqual([]);
+    expect(view.sections).toEqual([]);
+    expect(view.monthTotal).toBe(0);
+    expect(view.months).toEqual([]);
+    expect(view.hasSpending).toBe(false);
+    expect(view.dailyTotals.every((total) => total === 0)).toBe(true);
+  });
+
+  it('updates activity amounts and descriptions after a source bill edit without duplicating it', () => {
+    const original = shared();
+    const before = project([], [original]);
+    const edited = project([], [{ ...original, description: 'Revised dinner', shares: { [YOU]: 12, alex: 68 } }]);
+    expect(before.monthTotal).toBe(30);
+    expect(edited.monthTotal).toBe(12);
+    expect(edited.spendingSections[0].data).toHaveLength(1);
+    expect(edited.spendingSections[0].data[0]).toMatchObject({
+      id: 'split:bill', splitId: 'bill', amount: 12, displayAmount: 12, note: 'Revised dinner',
+    });
+    expect(edited.spendingSections[0].data[0].rowKey).toBe(before.spendingSections[0].data[0].rowKey);
+  });
+
+  it('removes deleted shared activity and leaves personal rows and amounts intact', () => {
+    const personal = [make('personal', 7, 'USD', 'food', ts(2026, 5, 10))];
+    expect(project(personal, [shared()]).monthTotal).toBe(37);
+    const after = project(personal, []);
+    expect(after.spendingSections[0].data.map(({ id }) => id)).toEqual(['personal']);
+    expect(after.monthTotal).toBe(7);
+    expect(after.spendingSections[0].total).toBe(7);
+  });
+
+  it('keeps source identifiers and per-share valuation across groups and currencies', () => {
+    const view = project([], [
+      shared({ id: 'euro', groupId: 'g-eur', currency: 'EUR', shares: { [YOU]: 92, alex: 92 } }),
+      shared({ id: 'yen', groupId: 'g-jpy', currency: 'JPY', shares: { [YOU]: 1575, brian: 1575 } }),
+    ]);
+    expect(view.spendingSections[0].data.map(({ splitId, groupId, displayAmount }) => ({ splitId, groupId, displayAmount }))).toEqual([
+      { splitId: 'euro', groupId: 'g-eur', displayAmount: 100 },
+      { splitId: 'yen', groupId: 'g-jpy', displayAmount: 10 },
+    ]);
+    expect(view.spendingSections[0].total).toBe(110);
+    expect(view.monthTotal).toBe(110);
+    expect(view.dailyTotals[9]).toBe(110);
+  });
+
+  it('does not mutate frozen sources or attach presentation metadata to persisted records', () => {
+    const personal = Object.freeze([Object.freeze(make('p', 10, 'USD', 'food', ts(2026, 5, 10)))]);
+    const record = Object.freeze(shared({ shares: Object.freeze({ [YOU]: 30, alex: 50 }) }));
+    const records = Object.freeze([record]);
+    const activity = Object.freeze(deriveSharedSpendingActivity(records).map(Object.freeze));
+    const before = JSON.stringify({ personal, records, activity });
+    const view = deriveViewData(personal, 'USD', 'en', [], NOW, activity);
+    view.spendingSections[0].data[0].amount = 999;
+    expect(JSON.stringify({ personal, records, activity })).toBe(before);
+    expect(view.sections[0].data[0].amount).toBe(10);
+    expect(view.monthTotal).toBe(40);
+  });
+});

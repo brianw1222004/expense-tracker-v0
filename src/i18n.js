@@ -170,6 +170,9 @@ const STRINGS = {
     'list.noneOnDay': 'No expenses on this day.',
     'list.deleteTitle': 'Delete expense?',
     'list.longPressToDelete': 'Long press to delete',
+    'list.sharedYourShare': 'Shared · Your share',
+    'list.sharedWithGroup': 'Shared · Your share · {group}',
+    'list.editSharedBill': 'Edit shared bill',
 
     'add.amountLabel': 'Amount',
     'add.notePlaceholder': 'What was it for?',
@@ -435,6 +438,9 @@ const STRINGS = {
     'list.noneOnDay': '這天沒有支出。',
     'list.deleteTitle': '刪除這筆支出？',
     'list.longPressToDelete': '長按刪除',
+    'list.sharedYourShare': '分帳 · 你的份額',
+    'list.sharedWithGroup': '分帳 · 你的份額 · {group}',
+    'list.editSharedBill': '編輯分帳帳單',
 
     'add.amountLabel': '金額',
     'add.notePlaceholder': '這筆錢花在哪裡？',
@@ -697,6 +703,9 @@ const STRINGS = {
     'list.noneOnDay': 'Sin gastos en este día.',
     'list.deleteTitle': '¿Eliminar gasto?',
     'list.longPressToDelete': 'Mantén presionado para eliminar',
+    'list.sharedYourShare': 'Compartido · Tu parte',
+    'list.sharedWithGroup': 'Compartido · Tu parte · {group}',
+    'list.editSharedBill': 'Editar gasto compartido',
 
     'add.amountLabel': 'Monto',
     'add.notePlaceholder': '¿En qué fue?',

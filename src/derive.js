@@ -15,15 +15,16 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
 
   let monthTotal = 0;
   const totalsByCategory = {};
-  const byDay = new Map();      // expenses only → the Expenses list `sections`
+  const byDay = new Map();      // expenses only → legacy `sections`
   const spendByDay = new Map(); // expenses + extra → the dashboard daily chart
+  const spendingByDay = new Map(); // presentation rows, valued in the same pass
   const byMonth = new Map();    // expenses + extra → the Categories screen
 
   // Folds one spending item into every aggregate EXCEPT the day-grouped
   // `sections` (which stay direct-expenses-only). `extraSpending` (your share of
-  // split bills) flows through here so it counts toward stats/budgets/breakdowns
-  // without ever appearing as an editable row in the Expenses list.
-  function accrue(item) {
+  // split bills) flows through here once, contributing to the aggregates and
+  // the unified activity rows without becoming a persisted personal expense.
+  function accrue(item, sourceType) {
     const displayAmount = valueSpendingForReporting(item, displayCurrency);
     // Normalize stale stored category ids to their fallback ("Other") here so
     // the breakdown/compare aggregates group them the same way the list does.
@@ -36,6 +37,14 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
       totalsByCategory[catId] = (totalsByCategory[catId] ?? 0) + displayAmount;
     }
     spendByDay.set(key, (spendByDay.get(key) ?? 0) + displayAmount);
+    if (!spendingByDay.has(key)) spendingByDay.set(key, []);
+    spendingByDay.get(key).push({
+      ...item,
+      category: catId,
+      displayAmount,
+      sourceType,
+      rowKey: JSON.stringify([sourceType, item.id]),
+    });
 
     if (!byMonth.has(mKey)) {
       byMonth.set(mKey, { key: mKey, total: 0, byCategory: {} });
@@ -50,7 +59,7 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
   const sorted = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
 
   for (const expense of sorted) {
-    const displayAmount = accrue(expense);
+    const displayAmount = accrue(expense, 'personal');
     const key = dateKey(expense.createdAt);
 
     if (!byDay.has(key)) {
@@ -63,7 +72,7 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
 
   // Your share of split bills counts as spending in every aggregate above, but
   // is not a direct expense, so it never enters `byDay`/`sections`.
-  for (const item of extraSpending) accrue(item);
+  for (const item of extraSpending) accrue(item, 'shared');
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const dailyTotals = [];
@@ -91,6 +100,14 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
 
   return {
     sections: [...byDay.values()],
+    // Sort only presentation rows: the financial accumulation order above
+    // stays unchanged, and totals reuse the existing daily chart valuation.
+    spendingSections: [...spendingByDay.entries()]
+      .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
+      .map(([key, data]) => ({
+        total: spendByDay.get(key),
+        data: data.sort((a, b) => b.createdAt - a.createdAt),
+      })),
     months: [...byMonth.values()].sort((a, b) => (a.key < b.key ? 1 : -1)),
     monthTotal,
     lastMonthTotal,
