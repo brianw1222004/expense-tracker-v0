@@ -3,6 +3,7 @@
 // App.js untested; it's now in src/derive.js with an injectable `now` clock.
 const { deriveViewData } = require('../derive');
 const { convert } = require('../currency');
+const { YOU, deriveSharedSpendingActivity } = require('../money');
 
 // Fixed clock: 15 June 2026, midday local. June has 30 days.
 const NOW = new Date(2026, 5, 15, 12, 0, 0);
@@ -200,5 +201,85 @@ describe('deriveViewData() extraSpending arg', () => {
     const extra = [splitItem('b1', 35, 'USD', 'food', ts(2026, 5, 15))]; // today = June 15
     const v = deriveViewData([], 'USD', 'en', [], NOW, extra);
     expect(v.dailyTotals[14]).toBeCloseTo(35, 5); // June 15, indexed day-1
+  });
+});
+
+describe('Money Domain spending integration', () => {
+  const sharedBill = (overrides = {}) => ({
+    id: 'shared', groupId: 'g1', amount: 184, currency: 'EUR',
+    category: 'food', description: 'Shared dinner', paidBy: YOU,
+    shares: { [YOU]: 92, alex: 92 }, createdAt: ts(2026, 5, 10),
+    ...overrides,
+  });
+
+  it('combines personal spending and your consumed share while sections keep only personal rows', () => {
+    const personal = [
+      make('older', 20, 'USD', 'food', ts(2026, 5, 9)),
+      make('newer', 92, 'EUR', 'transport', ts(2026, 5, 10)),
+    ];
+    const activity = deriveSharedSpendingActivity([sharedBill()]);
+    const view = deriveViewData(personal, 'USD', 'en', [], NOW, activity);
+    expect(view.monthTotal).toBe(220);
+    expect(view.totalsByCategory).toEqual({ food: 120, transport: 100 });
+    expect(view.dailyTotals[8]).toBe(20);
+    expect(view.dailyTotals[9]).toBe(200);
+    expect(view.months[0]).toMatchObject({
+      key: '2026-06', total: 220, byCategory: { food: 120, transport: 100 },
+    });
+    expect(view.months[0].dailyTotals).toEqual(view.dailyTotals);
+    expect(view.sections.map(({ total, data }) => ({ total, ids: data.map(({ id }) => id) }))).toEqual([
+      { total: 100, ids: ['newer'] }, { total: 20, ids: ['older'] },
+    ]);
+    expect(view.sections[0].data[0].displayAmount).toBe(100);
+  });
+
+  it('keeps fractional static reporting values without rounding to reporting-currency precision', () => {
+    const personal = [make('personal', 1, 'USD', 'food', ts(2026, 5, 10))];
+    const activity = deriveSharedSpendingActivity([
+      sharedBill({ currency: 'USD', shares: { [YOU]: 1, alex: 1 } }),
+    ]);
+    const view = deriveViewData(personal, 'JPY', 'en', [], NOW, activity);
+    expect(view.sections[0].total).toBe(157.5);
+    expect(view.sections[0].data[0].displayAmount).toBe(157.5);
+    expect(view.monthTotal).toBe(315);
+    expect(view.totalsByCategory.food).toBe(315);
+    expect(view.dailyTotals[9]).toBe(315);
+  });
+
+  it('keeps settlement payments out of spending across months and payer directions', () => {
+    const personal = [make('personal', 25, 'USD', 'food', ts(2026, 5, 10))];
+    const records = [
+      sharedBill(),
+      sharedBill({ id: 'may', paidBy: 'alex', createdAt: ts(2026, 4, 20) }),
+      { id: 'received', groupId: 'g1', settlement: true, from: 'alex', to: YOU,
+        amount: 500, currency: 'USD', shares: { [YOU]: 500 }, createdAt: ts(2026, 5, 10) },
+      { id: 'paid', groupId: 'g1', settlement: true, from: YOU, to: 'alex',
+        amount: 300, currency: 'USD', createdAt: ts(2026, 4, 20) },
+    ];
+    const view = deriveViewData(personal, 'USD', 'en', [], NOW, deriveSharedSpendingActivity(records));
+    expect(view.monthTotal).toBe(125);
+    expect(view.lastMonthTotal).toBe(100);
+    expect(view.totalsByCategory).toEqual({ food: 125 });
+    expect(view.months.map(({ key, total }) => ({ key, total }))).toEqual([
+      { key: '2026-06', total: 125 }, { key: '2026-05', total: 100 },
+    ]);
+    expect(view.dailyTotals[9]).toBe(125);
+    expect(view.months[1].dailyTotals[19]).toBe(100);
+    expect(view.sections).toHaveLength(1);
+    expect(view.sections[0].data.map(({ id }) => id)).toEqual(['personal']);
+    expect(view.sections[0].total).toBe(25);
+  });
+
+  it('normalizes missing and unknown shared categories to other only during reporting', () => {
+    const activity = deriveSharedSpendingActivity([
+      sharedBill({ id: 'missing', category: undefined }),
+      sharedBill({ id: 'unknown', category: 'retired-category' }),
+    ]);
+    expect(activity.map(({ category }) => category)).toEqual(['other', 'retired-category']);
+    const view = deriveViewData([], 'USD', 'en', [], NOW, activity);
+    expect(view.totalsByCategory).toEqual({ other: 200 });
+    expect(view.monthTotal).toBe(200);
+    expect(view.sections).toEqual([]);
+    expect(view.hasSpending).toBe(true);
   });
 });

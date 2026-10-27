@@ -1,5 +1,5 @@
 import { dateKey } from './format';
-import { convert } from './currency';
+import { valueSpendingForReporting } from './money';
 import { getCategory } from './categories';
 
 // One pass over expenses computes everything the UI shows, all converted to the
@@ -24,7 +24,7 @@ export function deriveViewData(expenses, displayCurrency, language, customCatego
   // split bills) flows through here so it counts toward stats/budgets/breakdowns
   // without ever appearing as an editable row in the Expenses list.
   function accrue(item) {
-    const displayAmount = convert(item.amount, item.currency, displayCurrency);
+    const displayAmount = valueSpendingForReporting(item, displayCurrency);
     // Normalize stale stored category ids to their fallback ("Other") here so
     // the breakdown/compare aggregates group them the same way the list does.
     const catId = getCategory(item.category, customCategories).id;
