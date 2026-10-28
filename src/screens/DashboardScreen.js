@@ -13,6 +13,8 @@ import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT, useLanguage, getDateNames } from '../i18n';
 import { formatMoney, formatMoneyShort, shiftMonthKey } from '../format';
+import { HistoricalMonthPreview } from '../components/HistoricalFxPreview';
+import { historicalPreviewRows } from '../historicalFxPreview';
 
 // The hero chart's granularity toggle: the selected month's per-day line
 // (default) vs. the cross-month trend of the last six months' totals.
@@ -22,6 +24,9 @@ const CHART_MODES = [
 ];
 
 export default function DashboardScreen({
+  fxPreviewEnabled = false,
+  fxUserScope,
+  spendingSections = [],
   loaded,
   hasExpenses,
   monthTotal,
@@ -48,6 +53,8 @@ export default function DashboardScreen({
   const isCurrentMonth = monthKey === currentMonthKey;
   const [chartMode, setChartMode] = useState('daily');
   const language = useLanguage();
+  const historicalRows = useMemo(() => __DEV__ && fxPreviewEnabled
+    ? historicalPreviewRows(spendingSections, monthKey) : [], [fxPreviewEnabled, spendingSections, monthKey]);
 
   // The chart's Monthly series: the last six months ending at the selected
   // month, zero-filled where there's no data. Labels are the language's month
@@ -130,6 +137,10 @@ export default function DashboardScreen({
           />
         )}
       </View>
+
+      {__DEV__ && fxPreviewEnabled && (
+        <HistoricalMonthPreview rows={historicalRows} currency={displayCurrency} userScope={fxUserScope} monthKey={monthKey} />
+      )}
 
       {hasExpenses && (
         <CategorySummaryCard

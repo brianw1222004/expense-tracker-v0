@@ -3,6 +3,19 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## FX-3A - Developer Historical Spending Previews
+
+- **Added:** Developer-only, read-only historical FX previews for Expenses and
+  Dashboard, covering personal spending and consumed shared-bill shares.
+  Shows observation dates and stale/unavailable indicators, with complete-month
+  total checks, bounded and deduplicated lookups, and scoped cancellation across
+  UI changes. Delete All Data now clears the user's FX cache safely. Includes
+  22 focused deterministic tests.
+- **Compatibility:** Production dashboard totals and charts remain unchanged;
+  existing static conversion stays active. No changes to settlement calculations,
+  group balances, transaction amount persistence, or Supabase schema. Historical
+  FX is not activated in production.
+
 ## FX-2C - Historical Rate Selection and Offline Cache
 
 - **Added:** Opt-in historical observations up to seven calendar days before a

@@ -1,5 +1,7 @@
 import { clearUserStorage, LOCAL_USER } from './storage';
 import { clearQueues, resumeSync, suspendSync, wipeServerData } from './sync';
+import { suspendFxRates, resumeFxRates } from './fxRateService';
+import { fxRateCache } from './fxRateCache';
 
 // Last-resort bound on the whole cleanup, so the locked Account sheet always
 // unlocks. The server wipe and the cache drain carry their own shorter
@@ -40,6 +42,7 @@ export async function deleteAllData({
   const cloud = cloudConfigured && Boolean(userId) && userId !== LOCAL_USER;
   let busy = false;
   let suspended = false;
+  let fxSuspended = false;
   try {
     // A configured build holding the local sentinel (or no user) is inconsistent.
     if (!ready || cloudConfigured !== cloud || (!cloud && userId !== LOCAL_USER)) return;
@@ -50,6 +53,8 @@ export async function deleteAllData({
     if (!confirmed) return;
     busy = true;
     setBusy(true);
+    suspendFxRates(userId);
+    fxSuspended = true;
     if (cloud) {
       suspendSync(userId);
       suspended = true;
@@ -70,6 +75,7 @@ export async function deleteAllData({
         started = true; // clearQueues empties the in-memory lanes as its first act
         await clearQueues(userId, { strict: true, signal: cancel.signal });
         await clearUserStorage(userId, { strict: true, signal: cancel.signal });
+        await fxRateCache.clear(userId, { strict: true, signal: cancel.signal });
       })(), timeoutMs, () => cancel.abort());
     } catch {
       await inform({
@@ -100,6 +106,7 @@ export async function deleteAllData({
     // Resumed only after the lanes were emptied (or the wipe failed with its
     // queued ops intact), so there is nothing stale left to push.
     if (suspended) resumeSync(userId);
+    if (fxSuspended) resumeFxRates(userId);
     if (busy) setBusy(false);
     guard.current = false;
   }

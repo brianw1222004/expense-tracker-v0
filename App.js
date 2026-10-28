@@ -941,6 +941,9 @@ function ExpenseTracker() {
           </View>
           <Animated.View style={[styles.screen, screenStyle('dashboard')]} pointerEvents={tab === 'dashboard' ? 'auto' : 'none'}>
             <DashboardScreen
+              fxPreviewEnabled={__DEV__ && loaded && tab === 'dashboard' && chromeVisible && !deletingData && !accountLocked}
+              fxUserScope={__DEV__ && loaded ? userId : null}
+              spendingSections={spendingSections}
               loaded={loaded}
               hasExpenses={hasSpending}
               monthTotal={heroView.total}
@@ -963,6 +966,8 @@ function ExpenseTracker() {
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('list')]} pointerEvents={tab === 'list' ? 'auto' : 'none'}>
             <ExpenseListScreen
+              fxPreviewEnabled={__DEV__ && loaded && tab === 'list' && chromeVisible && !deletingData && !accountLocked}
+              fxUserScope={__DEV__ && loaded ? userId : null}
               spendingSections={spendingSections}
               loaded={loaded}
               hasSpending={hasSpending}

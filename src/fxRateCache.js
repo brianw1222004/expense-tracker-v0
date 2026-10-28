@@ -80,28 +80,35 @@ export function createFxRateCache(storage = AsyncStorage) {
         return entry ? { quote: entry.quote, provenance: entry.provenance } : null;
       } catch { return null; }
     },
-    async set(scope, input, result) {
+    async set(scope, input, result, { signal } = {}) {
       if (!validScope(scope)) return false;
       try {
         const record = observationRecord(input, result);
         if (!record) return false;
         return await enqueue(async () => {
+          if (signal?.aborted) return false;
           let entries;
           try { entries = await readEntries(scope); } catch { entries = []; }
           entries = entries.filter((entry) => entry.key !== record.key);
           entries.push(record);
           const raw = JSON.stringify({ version: 1, entries: entries.slice(-FX_CACHE_MAX_ENTRIES) });
           if (raw.length > MAX_RECORD_CHARS) return false;
+          if (signal?.aborted) return false;
           await storage.setItem(storageKey(scope), raw);
           return true;
         });
       } catch { return false; }
     },
-    async clear(scope) {
+    async clear(scope, { signal, strict = false } = {}) {
       if (!validScope(scope)) return false;
       try {
-        return await enqueue(async () => { await storage.removeItem(storageKey(scope)); return true; });
-      } catch { return false; }
+        return await enqueue(async () => {
+          if (signal?.aborted) throw new Error('FX cache cleanup cancelled');
+          await storage.removeItem(storageKey(scope));
+          if (strict && await storage.getItem(storageKey(scope)) !== null) throw new Error('FX cache cleanup incomplete');
+          return true;
+        });
+      } catch (error) { if (strict) throw error; return false; }
     },
   };
 }

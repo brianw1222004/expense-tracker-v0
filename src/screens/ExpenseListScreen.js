@@ -13,12 +13,15 @@ import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
+import useHistoricalFxPreview from '../useHistoricalFxPreview';
 
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
 export default function ExpenseListScreen({
+  fxPreviewEnabled = false,
+  fxUserScope,
   spendingSections,
   loaded,
   hasSpending,
@@ -87,6 +90,8 @@ export default function ExpenseListScreen({
     () => spendingForDay(spendingSections, visibleSelectedDate, activeFilter, categories),
     [spendingSections, visibleSelectedDate, activeFilter, categories]
   );
+  const historical = useHistoricalFxPreview(filteredExpenses, displayCurrency, fxUserScope,
+    __DEV__ && fxPreviewEnabled && loaded);
 
   const selectDay = (day) => {
     if (!day) return;
@@ -242,6 +247,7 @@ export default function ExpenseListScreen({
             <ExpenseRow
               key={expense.rowKey}
               expense={expense}
+              fxPreview={__DEV__ && fxPreviewEnabled ? historical.entries[expense.rowKey] : null}
               displayCurrency={displayCurrency}
               categories={categories}
               groupName={groupNames.get(expense.groupId)}

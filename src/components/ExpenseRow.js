@@ -6,8 +6,9 @@ import { getCategory, getCategoryLabel } from '../categories';
 import { formatMoney } from '../format';
 import { HIcon } from '../icons';
 import { spendingRowInteractions } from '../spendingActivity';
+import { HistoricalFxRow } from './HistoricalFxPreview';
 
-export default React.memo(function ExpenseRow({ expense, displayCurrency, categories, groupName, onRequestDelete, onEdit }) {
+export default React.memo(function ExpenseRow({ expense, displayCurrency, categories, groupName, onRequestDelete, onEdit, fxPreview }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -53,6 +54,7 @@ export default React.memo(function ExpenseRow({ expense, displayCurrency, catego
         </Text>
         <Text style={styles.categoryLabel}>{getCategoryLabel(category, t)}</Text>
         {sharedLabel && <Text style={styles.sharedLabel} numberOfLines={1}>{sharedLabel}</Text>}
+        {__DEV__ && converted && fxPreview && <HistoricalFxRow value={fxPreview} currency={displayCurrency} />}
       </View>
       <View style={styles.amounts}>
         <Text style={styles.amount}>-{formatMoney(expense.displayAmount, displayCurrency)}</Text>

@@ -4,12 +4,45 @@ import { fxRateCache } from './fxRateCache';
 
 export const FX_CACHE_FRESH_MS = 24 * 60 * 60 * 1000;
 const failure = (status, reason) => ({ status, reason });
+const scopes = new Map();
+function scopeState(scope) {
+  if (!scopes.has(scope)) scopes.set(scope, { blocked: false, controllers: new Set() });
+  return scopes.get(scope);
+}
+
+// Delete All Data blocks new lookups and aborts old ones before clearing cache.
+// Aborted controllers stay aborted after resume, including stalled cache writes.
+export function suspendFxRates(scope) {
+  const state = scopeState(scope);
+  state.blocked = true;
+  for (const controller of state.controllers) controller.abort();
+}
+export function resumeFxRates(scope) { scopeState(scope).blocked = false; }
 
 /** Inactive reporting-rate selection only: no amounts or transaction writes.
  * now returns epoch milliseconds. Cache defaults to the isolated AsyncStorage
  * cache; transport/signal/timeout options are forwarded to the BOC adapter.
  */
 export async function getHistoricalFxRate(userScope, input, options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return failure('invalid-request', 'invalid-options');
+  const external = options.signal;
+  if (external != null && (typeof external.aborted !== 'boolean'
+      || typeof external.addEventListener !== 'function' || typeof external.removeEventListener !== 'function')) return failure('invalid-request', 'invalid-options');
+  const state = scopeState(userScope);
+  if (state.blocked || external?.aborted) return failure('cancelled', 'request-aborted');
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  external?.addEventListener('abort', abort, { once: true });
+  state.controllers.add(controller);
+  try {
+    return await selectHistoricalFxRate(userScope, input, { ...options, signal: controller.signal });
+  } finally {
+    state.controllers.delete(controller);
+    external?.removeEventListener('abort', abort);
+  }
+}
+
+async function selectHistoricalFxRate(userScope, input, options) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) return failure('invalid-request', 'invalid-options');
   const { cache = fxRateCache, now = Date.now, fetchImpl, signal, timeoutMs } = options;
   if (typeof userScope !== 'string' || !userScope || userScope.trim() !== userScope) return failure('invalid-request', 'invalid-user-scope');
@@ -37,7 +70,7 @@ export async function getHistoricalFxRate(userScope, input, options = {}) {
   });
   if (cancelled()) return failure('cancelled', 'request-aborted');
   if (result.status === 'available') {
-    const saved = await cache.set(userScope, request, result);
+    const saved = await cache.set(userScope, request, result, { signal });
     if (cancelled()) return failure('cancelled', 'request-aborted');
     return { ...result, cache: { source: 'network', stale: false, stored: saved } };
   }

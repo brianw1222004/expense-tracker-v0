@@ -1,8 +1,9 @@
 # FX foundation and historical rate selection
 
-Status: inactive foundation for review. No production caller uses the FX modules.
+Status: development-only preview for review. Production reporting still uses static rates.
 The existing static `convert()`, Money Domain functions, financial projections,
-UI, existing storage keys, sync queues, and Supabase schema remain unchanged.
+production UI, existing storage keys, sync queues, and Supabase schema remain unchanged.
+FX-3A adds developer-only historical previews for Expenses and Dashboard.
 FX-2C adds a separate opt-in local rate cache, not transaction persistence.
 
 ## Financial meaning
@@ -305,14 +306,53 @@ record. User scoping prevents accidental account sharing through this API, not
 malicious access to device storage. The storage bound is per user, not a global
 limit across all historical account scopes.
 
-Existing account deletion remains unchanged because FX is inactive. Before
-activation, integrate `await fxRateCache.clear(userScope)` into user-data deletion,
-check its boolean result, verify removal, and stop/drain in-flight rate requests
-before clearing so a later request cannot repopulate deleted data. A single cache
-instance queues its existing writes before clear, but it cannot prevent a future
-service request from writing again. Multiple runtimes/cache instances are not
-transactionally coordinated. Do not activate FX until this cleanup and the
-appropriate UI/offline indication have been implemented and reviewed.
+FX-3A integrates cleanup into Delete All Data because the developer preview can
+persist rates. After confirmation, new lookups for that user are suspended and
+existing service controllers are aborted. The normal server/queue/tracker cleanup
+order remains intact, followed by strict FX cache removal and absence verification
+inside the existing overall timeout. State resets only after every step succeeds.
+The cache queue drains already-started native writes before removal; aborted
+queued writes check their signal again before storage. Late fetch results cannot
+write after resume because their controllers remain aborted. A timed-out queued
+clear checks the deletion signal before starting removal. Native storage work
+already in progress cannot be undone, matching existing partial-failure semantics.
+Other users' FX scopes are untouched. Suspension is released in the existing
+finally path; new legitimate requests can run after failure/retry or completion.
+Multiple runtimes/cache instances are not transactionally coordinated.
+
+## FX-3A developer-only historical spending preview
+
+Explicit `__DEV__` guards enable a read-only preview only on the active Expenses
+or Dashboard tab, with loaded data for the current user. Opening overlays or
+starting account deletion disables the preview. Production hero totals, charts,
+financial projections, static rates, expense records, and settlement rules do not
+use these historical values. No reporting or converted expense amount is stored.
+
+Expenses values only the currently selected day's filtered unified spending
+rows. The original amount stays visible; cross-currency rows add a Historical FX
+label, converted amount, actual observation date, and stale-cache indication.
+Loading and unavailable states display no historical amount. Dashboard adds a
+separate small card for the selected month, never replacing the hero or charts.
+It displays a complete historical total only when every entry has a valid
+valuation, including same-currency identities; otherwise it displays readiness
+counts and loading/unavailable status without a partial total.
+
+Both previews consume the existing unified spending projection: personal expenses
+plus the user's consumed share of shared bills, excluding settlements. They do
+not add full bill amounts to the shares. Transaction days use the app's local
+`dateKey(createdAt)` convention. Rate requests use the existing user ID or
+explicit LOCAL_USER scope, are deduplicated by directed pair and date, and have
+at most three concurrent lookups in a visible preview batch. Only the current
+day/month is requested; no background history scan or automatic retries are added.
+The existing rate service and `valueWithFxQuote` use the explicit
+`previous-observation` policy. Original transaction and effective dates remain
+distinct. Scope, currency, month/day, filter, record, tab, and unmount changes
+cancel the old batch and ignore late results. The hook also hides old results
+immediately when its input key changes, before effect cleanup runs.
+
+This is not a production rollout. Real-device behavior, cross-runtime deletion,
+provider coverage/licensing, and consumer-facing localization/UX still require
+review before enabling historical FX outside development.
 
 ## Proposed future reporting precedence (not implemented)
 
@@ -400,7 +440,7 @@ These were consulted as design references on 2026-10-27. No source code was copi
 The later milestone numbering is not assigned here. Before activation, settle:
 
 - Provider coverage/licensing, provenance trust, provider-local effective dates,
-  corrections, production stale/offline UX, and account-deletion integration.
+  corrections, production stale/offline UX, and device/cross-runtime deletion validation.
 - Historical observation selection versus knowledge-as-of reporting, source
   precedence, and auditability when providers revise same-date quotes.
 - Explicit inversion/cross-rate paths and metadata, and avoiding mixed dates or
@@ -412,5 +452,5 @@ The later milestone numbering is not assigned here. Before activation, settle:
 - Decimal/range/rounding strategy and review of the existing currency precision
   metadata before any storage or arithmetic migration.
 
-FX-1 provides no automatic answer to these questions and does not activate the
-new module in App, Money Domain, Unified Spending, persistence, or settlement flows.
+FX-1 provides no automatic answer to these questions and does not activate
+production FX in App, Money Domain, Unified Spending, or settlement flows.
