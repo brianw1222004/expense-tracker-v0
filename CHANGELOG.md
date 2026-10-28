@@ -3,6 +3,17 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## FX-2B - Historical Exchange Rate Provider
+
+- **Added:** Frankfurter v2 historical exchange-rate adapter with explicit BOC
+  provider selection and one API request per currency pair. Validates dates,
+  currencies, positive finite rates, and source attribution. Includes timeout,
+  cancellation, error handling, and 104 deterministic adapter regression tests.
+- **Behavior:** Requires an exact observation date and distinguishes unavailable
+  data from network failures. Non-CAD quotes are marked as provider-derived.
+- **Compatibility:** FX-2B remains inactive in production. Existing expense and
+  split calculations are unchanged; no cache, UI, database, or sync changes.
+
 ## FX-1 - Exchange Rate Foundation
 
 - **Added:** Explicit exchange-rate quote validation with manual, historical,
