@@ -1,4 +1,4 @@
-import { isFxCurrency, isFxDate, validateFxQuote } from './fx';
+import { isFxCurrency, isFxDate, validateFxQuote, fxDateMismatchReason } from './fx';
 
 // Inactive provider adapter: one request, no retries, cache, or app integration.
 const ENDPOINT = 'https://api.frankfurter.dev/v2/rates';
@@ -7,7 +7,7 @@ const MAX_TIMEOUT_MS = 8000;
 const failure = (status, reason) => ({ status, reason });
 const positive = (value) => typeof value === 'number' && Number.isFinite(value) && value > 0;
 
-function requestSnapshot(input) {
+export function snapshotFxRequest(input) {
   if (!input || typeof input !== 'object') return null;
   const prototype = Object.getPrototypeOf(input);
   if (prototype !== Object.prototype && prototype !== null) return null;
@@ -69,20 +69,22 @@ function readObservation(rows, request) {
  * Success: { status: 'available', quote, provenance }; failures have status/reason
  * and no quote/amount. Same-currency identity belongs to FX-1, not this provider.
  * Non-native directions are provider-derived; no independent leg verification.
+ * datePolicy defaults to exact; previous-observation opts into at most 7 days.
  */
 export async function fetchBocHistoricalQuote(input, options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) return failure('invalid-request', 'invalid-options');
   const {
     fetchImpl = globalThis.fetch, now = () => new Date().toISOString(),
-    signal, timeoutMs = MAX_TIMEOUT_MS,
+    signal, timeoutMs = MAX_TIMEOUT_MS, datePolicy = 'exact',
   } = options;
   let request;
-  try { request = requestSnapshot(input); } catch { /* Treat malformed records as invalid requests. */ }
+  try { request = snapshotFxRequest(input); } catch { /* Treat malformed records as invalid requests. */ }
   if (!request) return failure('invalid-request', 'invalid-request-record');
   const { baseCurrency, quoteCurrency, transactionDate } = request;
   if (!isFxCurrency(baseCurrency) || !isFxCurrency(quoteCurrency)) return failure('invalid-request', 'invalid-currency');
   if (baseCurrency === quoteCurrency) return failure('invalid-request', 'identical-pair');
   if (!isFxDate(transactionDate)) return failure('invalid-request', 'invalid-transaction-date');
+  if (datePolicy !== 'exact' && datePolicy !== 'previous-observation') return failure('invalid-request', 'invalid-date-policy');
   if (typeof fetchImpl !== 'function' || typeof now !== 'function'
       || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS
       || (signal != null && (typeof signal.aborted !== 'boolean'
@@ -121,8 +123,9 @@ export async function fetchBocHistoricalQuote(input, options = {}) {
     const observation = validated.observation;
     provenance.observationDate = observation.effectiveDate;
     provenance.attribution = observation.attribution;
-    if (observation.effectiveDate !== transactionDate) {
-      return { ...failure('unavailable', 'observation-date-mismatch'), provenance };
+    const dateReason = fxDateMismatchReason(observation.effectiveDate, transactionDate, 'historical', datePolicy);
+    if (dateReason) {
+      return { ...failure('unavailable', datePolicy === 'exact' ? 'observation-date-mismatch' : dateReason), provenance };
     }
     let retrievedAt;
     try { retrievedAt = now(); } catch { return { ...failure('invalid-request', 'invalid-retrieval-clock'), provenance }; }

@@ -1,8 +1,9 @@
-# FX-1: pure exchange rate foundation
+# FX foundation and historical rate selection
 
-Status: local foundation for review. No production caller uses `src/fx.js`.
+Status: inactive foundation for review. No production caller uses the FX modules.
 The existing static `convert()`, Money Domain functions, financial projections,
-UI, AsyncStorage, sync queues, and Supabase schema remain unchanged.
+UI, existing storage keys, sync queues, and Supabase schema remain unchanged.
+FX-2C adds a separate opt-in local rate cache, not transaction persistence.
 
 ## Financial meaning
 
@@ -104,7 +105,7 @@ contract above. Each validator returns `{ valid: true }` or
 `{ valid: false, reason }`; it does not coerce or mutate values.
 
 ```js
-valueWithFxQuote(original, targetCurrency, transactionDate, quote)
+valueWithFxQuote(original, targetCurrency, transactionDate, quote, options?)
 ```
 
 `original` is `{ amount, currency }`. `transactionDate` is an explicit local
@@ -115,7 +116,10 @@ substitute for the app's existing local `dateKey` semantics.
 
 Request amount/currency/date validation occurs before identity conversion.
 For different currencies, the quote must match the requested pair in the same
-direction and have exactly the transaction date. No rate is fetched or selected.
+direction and, by default, have exactly the transaction date. The explicit
+`{ datePolicy: 'previous-observation' }` option accepts historical observations
+up to seven calendar days earlier, as described below. No rate is fetched or
+selected by this pure function. Manual and legacy-estimate dates remain exact.
 
 | Status | Fields and meaning |
 | --- | --- |
@@ -164,28 +168,151 @@ retrieved much later than its effective date; this does not turn it into a
 current-date rate. The API values with the supplied observation, not an
 "as known at the original transaction time" knowledge snapshot.
 
-FX-1 implements these minimal policies:
+The default pure valuation and provider boundaries retain these policies:
 
 - Exact pair and exact effective date only. A future-dated quote is rejected.
-  A prior quote also remains unusable; the module does not silently carry it
-  forward or infer market calendars.
+  A prior quote remains unusable without the explicit historical date-policy
+  option; neither boundary infers market calendars.
 - Weekend, holiday, and other unavailable dates yield missing valuation unless
   an exact-date explicit quote is supplied. No forward fill or backward fill.
 - No implicit rate inversion, pair swapping, cross-rate triangulation, or USD
   intermediary. Reverse and cross pairs return `pair-mismatch`. This avoids
   silently choosing precision, path, provider, or date semantics.
-- No cache, staleness calculation, current-rate lookup, same-day revision
+- The pure valuation has no cache, staleness calculation, current-rate lookup, same-day revision
   selection, provider priority, or clock dependency. Same-date observations
   with different retrieval times/providers are separate candidate inputs, not
   entries that FX-1 merges or ranks.
 
-Future work must explicitly choose acceptable previous-business-day policies,
-maximum age, freshness versus historical validity, offline behavior, same-day
-provider revision rules, provider preferences, and treatment of mixed-provider
-cross rates. A newer retrieval timestamp alone does not establish a better or
+FX-2C implements the limited historical selection and offline policy below.
+Further provider revision rules, provider preferences, and treatment of
+mixed-provider cross rates remain future work. A newer retrieval timestamp
+alone does not establish a better or
 more historically appropriate rate. Any eventual inversion must retain its
 original pair/rate and provenance as derived metadata and test reciprocal
 precision; it is not implemented here.
+
+## FX-2B/2C provider and previous-observation policy
+
+The inactive Frankfurter v2 adapter explicitly requests BOC with one GET per
+directed pair and requested date, using `providers=BOC&expand=providers`. It
+validates the response pair, positive finite rate, date, and BOC attribution.
+Non-CAD quote directions (including CAD/foreign inverses) are classified
+`provider-derived`; foreign/CAD directions are `native`. This describes source
+direction, not independent bank-rate verification. No CAD-leg requests or
+client-side numeric derivation are performed.
+
+Both `valueWithFxQuote(..., { datePolicy })` and
+`fetchBocHistoricalQuote(request, { datePolicy, ...options })` default to
+`datePolicy: 'exact'`. The explicit `previous-observation` option permits only
+historical observations on or before the transaction date and no more than
+seven calendar days old, inclusive. Calendar-day age is calculated at UTC
+midnight, independently of device time zones or daylight-saving transitions.
+Manual and legacy-estimate quotes still require an exact effective date.
+Unknown policies are rejected with `invalid-date-policy`.
+
+For example, Sunday 2026-10-18 may use Friday 2026-10-16. October 11 is the
+oldest accepted date for that Sunday; October 10 is too old. October 19 is
+future-dated and rejected. This accepts Frankfurter's carried-forward observation
+from the original single request, rather than searching seven dates. No rate or
+date is invented, and no future rate is used. Too-old historical observations
+report `observation-too-old`; future observations report `future-effective-date`
+under the opt-in policy. Existing exact-date failure reasons remain unchanged.
+
+The pure valuation still returns the original transaction date and amount;
+the quote retains the actual `effectiveDate`, rate, provider, and `retrievedAt`.
+The provider separately retains requested date, actual observation date,
+classification, URL, HTTP status, and BOC attribution. FX-1 quote fields and
+result statuses are unchanged.
+
+## FX-2C local cache and rate service
+
+`src/fxRateCache.js` uses the already-installed AsyncStorage, with no dependencies
+or database changes. `createFxRateCache(storage?)` provides `get(scope, request)`,
+`set(scope, request, availableResult)`, and `clear(scope)`. The default shared
+instance is `fxRateCache`; importing it performs no storage access. Use one
+instance in a runtime so its small write queue serializes read/modify/write and
+explicit clear operations. Reads wait for queued writes. `get` returns the
+validated quote/provenance or null; `set` and `clear` return success booleans.
+
+Each exact, explicit nonempty user scope has one versioned storage key:
+`@expense-tracker/fx-rates/v1:` followed by `JSON.stringify(userScope)`.
+Within it, the entry key is
+`JSON.stringify(['frankfurter-v2:BOC', baseCurrency, quoteCurrency, transactionDate])`.
+No default or shared anonymous scope is inferred. A future local-only caller must
+choose an explicit scope. The cache never enumerates or reads another user's key.
+
+Each user record retains at most 100 entries, evicting the earliest saved keys;
+overwriting a key moves it to the end. Reads do not change eviction order.
+Serialized records are limited to 262,144 characters. Only successful historical
+quotes and their selected provenance fields are persisted: no expense amounts,
+notes, IDs, or transaction records. Stored data is revalidated against the directed
+pair, requested date, seven-day policy, fixed provider, FX-1 quote schema, and
+matching BOC attribution. Unknown quote fields or corrupt entries are unusable;
+unrelated result/provenance fields are not copied. Corrupt/missing storage yields
+a miss; a later successful save replaces a broken record. Network failures and
+invalid observations are never cached. Storage errors do not invent quotes.
+
+The orchestration API is:
+
+```js
+getHistoricalFxRate(userScope, { baseCurrency, quoteCurrency, transactionDate }, {
+  // Optional: cache, fetchImpl, signal, timeoutMs, now (epoch milliseconds).
+})
+```
+
+This service explicitly selects the seven-day historical policy. A cached
+observation is fresh for **24 hours from its original retrieval timestamp**,
+regardless of how old the transaction is. At 24 hours it expires and a new single
+BOC request is attempted. This simple daily refresh permits historical revisions
+without maintaining a revision history; overwriting the cache never updates an
+existing transaction or stored reporting/settlement amount. Retrieval timestamps
+ahead of the service clock are not reused.
+
+- Fresh hit: `status: 'available'`, original quote/provenance,
+  `cache: { source: 'cache', stale: false }`, and zero HTTP calls.
+- Successful fetch: the validated observation is saved and returned with
+  `cache: { source: 'network', stale: false, stored: true }`. If storage fails,
+  `stored` is false; the successful network quote is still usable.
+- Expired valid cache plus a temporary failure (offline/network, timeout,
+  HTTP 408/429/5xx): return the original cached observation with
+  `cache: { source: 'cache', stale: true, refreshFailure: { status, reason } }`.
+  Do not change its retrieval timestamp or write a failure into storage.
+- No usable cache: return the adapter's missing/failure state, without a quote
+  or converted amount. HTTP 404, provider-rejected requests, invalid responses,
+  out-of-policy dates, and cancellation do not trigger stale fallback.
+
+Stale refers to **retrieval freshness**, not relaxation of the seven-day
+transaction-to-observation age limit. A historically valid expired entry may be
+reused offline indefinitely; the stale flag and original retrieval time make
+that choice visible. No extra stale-age cutoff is imposed in this milestone.
+The cache key includes requested date, so another nearby date is not silently
+substituted from cache. The API trusts Frankfurter's served BOC attribution;
+hidden leg dates, provider revisions, or economic outliers are not independently
+verified. A source response can be valid without an observation for a given date.
+
+Timeout and AbortSignal handling remain in the provider adapter and are forwarded
+by the service. Cancelled service calls do not return stale or fresh cached quotes.
+Native storage operations themselves are not abortable; the service rechecks
+cancellation after them. There is no background refresh, retry loop, provider
+fallback, current-date substitution, persistence of converted amounts, or settlement
+logic in this service. A future caller must opt into the matching date policy
+when passing a selected earlier quote to the pure valuation function.
+
+### Before production activation
+
+AsyncStorage is unencrypted and local; cache data is not a trusted bank audit
+record. User scoping prevents accidental account sharing through this API, not
+malicious access to device storage. The storage bound is per user, not a global
+limit across all historical account scopes.
+
+Existing account deletion remains unchanged because FX is inactive. Before
+activation, integrate `await fxRateCache.clear(userScope)` into user-data deletion,
+check its boolean result, verify removal, and stop/drain in-flight rate requests
+before clearing so a later request cannot repopulate deleted data. A single cache
+instance queues its existing writes before clear, but it cannot prevent a future
+service request from writing again. Multiple runtimes/cache instances are not
+transactionally coordinated. Do not activate FX until this cleanup and the
+appropriate UI/offline indication have been implemented and reviewed.
 
 ## Proposed future reporting precedence (not implemented)
 
@@ -256,9 +383,9 @@ These were consulted as design references on 2026-10-27. No source code was copi
   Its price database, automatic inverse pairs, commodity accounting, and
   acquisition tools exceed this app's current scope.
 - **Frankfurter:** reviewed its [official API documentation](https://frankfurter.dev/).
-  Relevant: dated pair data and provider attribution. No provider is selected,
-  no API client is added, and blended/provider-specific observations are not
-  silently equated.
+  Relevant: dated pair data and provider attribution. The original FX-1 milestone
+  selected no provider; FX-2B/2C now explicitly use BOC in the inactive adapter
+  described above. Blended/provider-specific observations are not silently equated.
 - **Money pattern:** reviewed [Fowler's Money description](https://martinfowler.com/eaaCatalog/money.html).
   Relevant: bind numeric values to currencies and make rounding boundaries
   explicit. A class hierarchy or a wholesale arithmetic rewrite is unnecessary
@@ -273,7 +400,7 @@ These were consulted as design references on 2026-10-27. No source code was copi
 The later milestone numbering is not assigned here. Before activation, settle:
 
 - Provider coverage/licensing, provenance trust, provider-local effective dates,
-  stale-cache policy, weekends/holidays, corrections, and offline pending states.
+  corrections, production stale/offline UX, and account-deletion integration.
 - Historical observation selection versus knowledge-as-of reporting, source
   precedence, and auditability when providers revise same-date quotes.
 - Explicit inversion/cross-rate paths and metadata, and avoiding mixed dates or

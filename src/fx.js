@@ -98,16 +98,29 @@ export function validateFxQuote(quote) {
   return validation.valid ? { valid: true } : validation;
 }
 
+// Shared by the pure valuation and provider/cache boundaries, after date and
+// quote validation. UTC midnight subtraction counts calendar days across DST.
+export function fxDateMismatchReason(effectiveDate, transactionDate, sourceType, datePolicy = 'exact') {
+  if (datePolicy !== 'exact' && datePolicy !== 'previous-observation') return 'invalid-date-policy';
+  if (effectiveDate > transactionDate) return 'future-effective-date';
+  if (effectiveDate === transactionDate) return null;
+  if (datePolicy === 'exact' || sourceType !== 'historical') return 'effective-date-mismatch';
+  const age = (Date.parse(transactionDate + 'T00:00:00Z') - Date.parse(effectiveDate + 'T00:00:00Z')) / 86400000;
+  return age <= 7 ? null : 'observation-too-old';
+}
+
 /**
  * Value an original { amount, currency } using one explicitly supplied quote.
  * This does not select rates or determine settlement authority. No clock,
  * provider, legacy fallback, inversion, or intermediate rounding is involved.
  */
-export function valueWithFxQuote(original, targetCurrency, transactionDate, quote = null) {
+export function valueWithFxQuote(original, targetCurrency, transactionDate, quote = null, options = {}) {
   const moneyValidation = readFxMoney(original);
   if (!moneyValidation.valid) return { status: 'invalid-input', reason: moneyValidation.reason };
   if (!isFxCurrency(targetCurrency)) return { status: 'invalid-input', reason: 'invalid-target-currency' };
   if (!isFxDate(transactionDate)) return { status: 'invalid-input', reason: 'invalid-transaction-date' };
+  const datePolicy = options?.datePolicy ?? 'exact';
+  if (datePolicy !== 'exact' && datePolicy !== 'previous-observation') return { status: 'invalid-input', reason: 'invalid-date-policy' };
 
   const money = moneyValidation.snapshot;
   const context = {
@@ -126,8 +139,8 @@ export function valueWithFxQuote(original, targetCurrency, transactionDate, quot
   if (!quoteValidation.valid) return missing(quoteValidation.reason);
   const acceptedQuote = quoteValidation.snapshot;
   if (acceptedQuote.baseCurrency !== money.currency || acceptedQuote.quoteCurrency !== targetCurrency) return missing('pair-mismatch');
-  if (acceptedQuote.effectiveDate > transactionDate) return missing('future-effective-date');
-  if (acceptedQuote.effectiveDate !== transactionDate) return missing('effective-date-mismatch');
+  const dateReason = fxDateMismatchReason(acceptedQuote.effectiveDate, transactionDate, acceptedQuote.sourceType, datePolicy);
+  if (dateReason) return missing(dateReason);
 
   const amount = money.amount * acceptedQuote.rate;
   if (!Number.isFinite(amount) || (money.amount !== 0 && amount === 0)) return missing('unrepresentable-result');

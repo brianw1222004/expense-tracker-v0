@@ -3,6 +3,19 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## FX-2C - Historical Rate Selection and Offline Cache
+
+- **Added:** Opt-in historical observations up to seven calendar days before a
+  transaction. User-scoped AsyncStorage rate cache with a 100-entry limit,
+  24-hour freshness, and offline reuse explicitly marked stale. A historical
+  rate service combines cache lookup, provider lookup, and date selection.
+  Includes 59 deterministic regression tests.
+- **Changed:** Pure FX valuation and the BOC adapter support an optional
+  historical date policy; exact-date behavior remains the default.
+- **Compatibility:** FX remains inactive in production. Existing expense and
+  split calculations are unchanged, with no Supabase or UI changes.
+  Account-deletion integration remains required before production activation.
+
 ## FX-2B - Historical Exchange Rate Provider
 
 - **Added:** Frankfurter v2 historical exchange-rate adapter with explicit BOC
