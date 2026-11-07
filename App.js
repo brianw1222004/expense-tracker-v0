@@ -1017,7 +1017,6 @@ function ExpenseTracker() {
               categoryOrder={settings.categoryOrder}
               onReorderCategories={(ids) => updateSettings({ categoryOrder: ids })}
               onEditBudgets={() => setOverlay('budget')}
-              onChangeCurrency={(code) => updateSettings({ displayCurrency: code })}
               onAddCategory={addCustomCategory}
               onUpdateCategory={updateCustomCategory}
               onDeleteCategory={deleteCustomCategory}
@@ -1167,6 +1166,7 @@ function ExpenseTracker() {
 
         <AccountScreen
           visible={overlay === 'account'}
+          settingsLoaded={loaded}
           settings={settings}
           onUpdateSettings={(patch) => { if (!accountLocked) updateSettings(patch); }}
           accountEmail={session?.user?.email}

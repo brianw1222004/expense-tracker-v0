@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, THEMES, useTheme } from '../theme';
 import { LANGUAGES, useT } from '../i18n';
 import { HIcon } from '../icons';
 import Sheet from '../components/Sheet';
+import CurrencyPicker from '../components/CurrencyPicker';
 
 // Account view. A bottom sheet opened by the floating account button — mirrors
 // BudgetScreen's Modal/backdrop/sheet mechanism (the RN Modal's
@@ -14,7 +15,7 @@ import Sheet from '../components/Sheet';
 // The account card leads the sheet with no section header of its own (the page
 // title already says "Account"); Language and Theme get iconized uppercase
 // headers over cards of `SelectRow`s.
-export default function AccountScreen({ visible, settings, onUpdateSettings, accountEmail, onSignOut, onDeleteAllData, deletingData = false, interactionLocked = false, deleteDisabled = false, onClose }) {
+export default function AccountScreen({ visible, settingsLoaded = false, settings, onUpdateSettings, accountEmail, onSignOut, onDeleteAllData, deletingData = false, interactionLocked = false, deleteDisabled = false, onClose }) {
   const { colors } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -23,6 +24,11 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
   // and any failure alert included), so the chrome must look inert for that
   // window, not only while cleanup runs.
   const locked = deletingData || interactionLocked;
+  const currencyDisabled = locked || !settingsLoaded;
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  useEffect(() => {
+    if (!visible || currencyDisabled) setCurrencyOpen(false);
+  }, [visible, currencyDisabled]);
 
   // The selected index drives the divider rule as well as the pill: a hairline
   // is drawn only BETWEEN two unselected rows, so nothing crowds the capsule.
@@ -90,6 +96,23 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
               </>
             )}
 
+            <SectionHeader icon="coins-01" label={t('acct.displayCurrency')} styles={styles} colors={colors} />
+            <View style={styles.card}>
+              <Pressable
+                onPress={() => { if (visible && !currencyDisabled) setCurrencyOpen(true); }}
+                disabled={currencyDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={`${t('acct.displayCurrency')}: ${settings.displayCurrency}`}
+                accessibilityHint={t('acct.displayCurrencyNote')}
+                accessibilityState={{ disabled: currencyDisabled, expanded: currencyOpen }}
+                style={({ pressed }) => [styles.row, styles.currencyRow, pressed && styles.rowPressed, currencyDisabled && { opacity: 0.5 }]}
+              >
+                <Text style={[styles.rowLabel, styles.currencyCode]}>{settings.displayCurrency}</Text>
+                <HIcon name="chevron-right" size={18} color={colors.icon} />
+              </Pressable>
+            </View>
+            <Text style={styles.sectionNote}>{t('acct.displayCurrencyNote')}</Text>
+
             <SectionHeader icon="global" label={t('acct.language')} styles={styles} colors={colors} />
             <View style={styles.card}>
               {LANGUAGES.map((entry, index) => (
@@ -138,6 +161,17 @@ export default function AccountScreen({ visible, settings, onUpdateSettings, acc
               </Pressable>
             </View>
           </ScrollView>
+      {/* Keep the picker inside the sheet's native modal, outside its scroll area. */}
+      <CurrencyPicker
+        visible={visible && currencyOpen && !currencyDisabled}
+        value={settings.displayCurrency}
+        onSelect={(code) => {
+          if (!visible || currencyDisabled) return;
+          onUpdateSettings({ displayCurrency: code });
+          setCurrencyOpen(false);
+        }}
+        onClose={() => setCurrencyOpen(false)}
+      />
     </Sheet>
   );
 }
@@ -269,6 +303,14 @@ const createStyles = (colors) =>
     rowDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
+    },
+    currencyRow: {
+      minHeight: 44,
+    },
+    currencyCode: {
+      color: colors.accent,
+      fontFamily: fonts.bold,
+      letterSpacing: 0.4,
     },
     rowPressed: {
       backgroundColor: colors.cardPressed,

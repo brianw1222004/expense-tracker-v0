@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AddCategoryModal from '../components/AddCategoryModal';
-import CurrencyPicker from '../components/CurrencyPicker';
-import CurrencyPill from '../components/CurrencyPill';
 import EmptyState from '../components/EmptyState';
 import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
@@ -19,7 +17,7 @@ import { HIcon } from '../icons';
 
 // The Insight tab: the budget view compressed into two cards. A "Budget" card
 // with a compact horizontal bar gauge (the old BudgetGauge donut was retired)
-// plus the display-currency pill and "Edit budgets" on its header; below it a
+// plus "Edit budgets" on its header; below it a
 // merged "Categories" card — a single-column list of clean category rows
 // (color-matched name + month amount over an indented progress bar — budget
 // when one is set, else this month vs the same category last month — led by a
@@ -44,7 +42,6 @@ export default function InsightScreen({
   categoryOrder,
   onReorderCategories,
   onEditBudgets,
-  onChangeCurrency,
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
@@ -55,7 +52,6 @@ export default function InsightScreen({
   const t = useT();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [currencyOpen, setCurrencyOpen] = useState(false);
   const [modalCategory, setModalCategory] = useState(null); // null | 'new' | category
   // Vertical scrolling pauses while a tile drag is live so the grid owns the gesture.
   const [scrollEnabled, setScrollEnabled] = useState(true);
@@ -164,11 +160,6 @@ export default function InsightScreen({
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle} numberOfLines={1}>{t('budget.title')}</Text>
                 <View style={styles.headerActions}>
-                  <CurrencyPill
-                    value={displayCurrency}
-                    onPress={() => setCurrencyOpen(true)}
-                    accessibilityLabel={t('currency.choose')}
-                  />
                   <Pressable
                     onPress={onEditBudgets}
                     accessibilityRole="button"
@@ -247,16 +238,6 @@ export default function InsightScreen({
           </>
         )}
       </ScrollView>
-
-      <CurrencyPicker
-        visible={currencyOpen}
-        value={displayCurrency}
-        onSelect={(code) => {
-          onChangeCurrency(code);
-          setCurrencyOpen(false);
-        }}
-        onClose={() => setCurrencyOpen(false)}
-      />
 
       <AddCategoryModal
         visible={modalCategory != null}

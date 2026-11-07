@@ -3,6 +3,16 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## UX-5B1 - Display Currency in Account Settings
+
+- **Added:** A localized Display Currency setting in the gear-accessed Account
+  sheet, with the selected code, reporting explanation, and existing picker.
+- **Changed:** Currency selection moves from Insight to Account; dismissing the
+  picker returns to the settings sheet. Loading and account locks disable it.
+- **Compatibility:** Keeps the existing settings update, persistence, server
+  sync, and budget conversion flow. Transaction data, reporting calculations,
+  historical FX previews, split balances, and settlements remain unchanged.
+
 ## UX-3 - Expenses Calendar Today Shortcut
 
 - **Added:** A compact Today text button beside the Expenses month controls,
