@@ -311,6 +311,7 @@ describe('settings sync mapping', () => {
       theme: 'sand',
       language: 'zh',
       onboardingDone: true,
+      lastPersonalExpenseCurrency: 'JPY',
     });
     expect(picked).toEqual({
       displayCurrency: 'EUR',

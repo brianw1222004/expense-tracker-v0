@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  Text,
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -64,7 +65,7 @@ import {
 } from './src/sync';
 import { supabase, isSupabaseConfigured } from './src/supabase';
 import { buildDemoExpenses } from './src/demoData';
-import { redenominateBudgets, getCurrency } from './src/currency';
+import { redenominateBudgets, getCurrency, isSupportedCurrency } from './src/currency';
 import { saveCategorySettings } from './src/categorySettings';
 import { getAllCategories, getRegularAll, getExternalAll, isPresetCategory } from './src/categories';
 import { dateKey } from './src/format';
@@ -148,6 +149,7 @@ function ExpenseTracker() {
   // value already there, so a load isn't written straight back and Delete All
   // Data's reset doesn't re-create the keys it just verified as gone.
   const cachedRef = useRef({});
+  const personalSaveRef = useRef(false);
   // Supabase session. With Supabase unconfigured the app runs local-only and
   // skips auth entirely (sessionLoaded starts true, userId is LOCAL_USER).
   const [session, setSession] = useState(null);
@@ -171,9 +173,8 @@ function ExpenseTracker() {
   const [sharedLockedGroupId, setSharedLockedGroupId] = useState(null);
   const [sharedInitialGroupId, setSharedInitialGroupId] = useState(null);
   const [returnToSharedAddAfterCreateGroup, setReturnToSharedAddAfterCreateGroup] = useState(false);
-  // Bumped on every popup open so the shared form remounts fresh each time (it's
-  // kept mounted while closed, so without this a reopen would show stale state /
-  // the previously locked group).
+  // Bumped on every popup open so add forms start fresh. While open, their
+  // identity stays stable across preference changes and server refreshes.
   const [addNonce, setAddNonce] = useState(0);
   const [editingExpense, setEditingExpense] = useState(null);
   // The split bill currently open in the editor (re-decide paid-by / split), or null.
@@ -195,6 +196,11 @@ function ExpenseTracker() {
   const insets = useSafeAreaInsets();
 
   const userId = isSupabaseConfigured ? session?.user?.id ?? null : LOCAL_USER;
+  // Identity changes invalidate a pending save's UI effects, including A -> B -> A.
+  const personalScopeRef = useRef({ userId });
+  if (personalScopeRef.current.userId !== userId) personalScopeRef.current = { userId };
+  personalScopeRef.current.ready = Boolean(userId && dataUser === userId);
+  if (personalScopeRef.current.ready) personalScopeRef.current.settings = settings;
   const language = settings.language;
   const theme = getTheme(settings.theme);
 
@@ -287,6 +293,8 @@ function ExpenseTracker() {
     // A new account-switch load supersedes any in-flight sync.
     const seq = (syncSeqRef.current += 1);
     setDataUser(null);
+    setAddOpen(false);
+    setEditingExpense(null);
     // Clear any prior account's sync-error pill so it can't flash over the next
     // account's data before its first sync resolves.
     setSyncError(false);
@@ -399,16 +407,18 @@ function ExpenseTracker() {
 
   // Open the add popup on the Personal side (from the tab-bar "+").
   const openAdd = useCallback(() => {
+    if (!userId || dataUser !== userId || personalSaveRef.current) return;
     setAddEntryMode('personal');
     setSharedLockedGroupId(null);
     setSharedInitialGroupId(null);
     setAddNonce((n) => n + 1);
     setAddOpen(true);
-  }, []);
+  }, [userId, dataUser]);
 
   // Close the add popup; if it was launched from a group's "Add a bill" (locked
   // to that group), reopen that group's detail sheet so the user lands back there.
   const closeAdd = useCallback(() => {
+    if (personalSaveRef.current) return;
     setAddOpen(false);
     if (sharedLockedGroupId) {
       setActiveGroupId(sharedLockedGroupId);
@@ -425,6 +435,7 @@ function ExpenseTracker() {
     if (Platform.OS !== 'android') return undefined;
     if (!addOpen && !editingExpense && !editingSplit) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (personalSaveRef.current) return true;
       if (editingSplit) {
         // Mirror the editor's onClose round-trip back to the group sheet.
         const g = editingSplit.groupId;
@@ -469,7 +480,53 @@ function ExpenseTracker() {
     setAddOpen(true);
   }, []);
 
-  const addExpense = ({ amount, currency, note, category, createdAt }) => {
+  const persistPersonalExpense = async (expense, editing) => {
+    if (!userId || dataUser !== userId || personalSaveRef.current || deleteDataGuard.current ||
+        !isSupportedCurrency(expense.currency) || !Number.isFinite(expense.amount) || expense.amount <= 0 ||
+        (editing && !expenses.some((item) => item.id === expense.id))) return false;
+    const scope = personalScopeRef.current;
+    const savingUserId = userId;
+    const ownsCurrentData = () => personalScopeRef.current.userId === savingUserId && personalScopeRef.current.ready;
+    personalSaveRef.current = true;
+    try {
+      const next = editing
+        ? expenses.map((item) => item.id === expense.id ? expense : item)
+        : [expense, ...expenses];
+      // Local durability is the success boundary; offline server sync stays queued.
+      await saveExpenses(savingUserId, next, { strict: true });
+      if (personalScopeRef.current === scope && deleteDataGuard.current) return false;
+      // Queue the durable expense for its original owner even after a switch.
+      await enqueueExpenseUpsert(savingUserId, expense);
+      if (ownsCurrentData()) {
+        setExpenses((prev) => editing
+          ? prev.map((item) => item.id === expense.id ? expense : item)
+          : [expense, ...prev.filter((item) => item.id !== expense.id)]);
+      }
+      // Preference failure must not turn a saved expense into a failed retry.
+      try {
+        const ownerSettings = ownsCurrentData() ? settingsRef.current : scope.settings;
+        await saveSettings(savingUserId, { ...ownerSettings, lastPersonalExpenseCurrency: expense.currency }, { strict: true });
+        if (ownsCurrentData()) {
+          setSettings((prev) => ({ ...prev, lastPersonalExpenseCurrency: expense.currency }));
+        }
+      } catch {
+        Promise.resolve().then(() => {
+          if (personalScopeRef.current !== scope) return;
+          return alertInfo({
+            title: translate(language, 'add.currencyRememberFailedTitle'),
+            body: translate(language, 'add.currencyRememberFailed'),
+            okLabel: translate(language, 'common.ok'),
+          });
+        }).catch(() => {});
+      }
+      return true;
+    } finally {
+      personalSaveRef.current = false;
+    }
+  };
+
+  const addExpense = async ({ amount, currency, note, category, createdAt }) => {
+    const scope = personalScopeRef.current;
     const expense = {
       id: makeId('e'),
       amount,
@@ -478,20 +535,23 @@ function ExpenseTracker() {
       category,
       createdAt: createdAt ?? Date.now(),
     };
-    setExpenses((prev) => [expense, ...prev]);
-    enqueueExpenseUpsert(userId, expense);
+    if (!await persistPersonalExpense(expense, false)) return false;
+    if (personalScopeRef.current !== scope) return true;
     setAddOpen(false);
     setRewardNonce((n) => n + 1);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     AccessibilityInfo.announceForAccessibility(translate(language, 'add.added'));
+    return true;
   };
 
-  const updateExpense = ({ id, amount, currency, note, category, createdAt }) => {
+  const updateExpense = async ({ id, amount, currency, note, category, createdAt }) => {
+    const scope = personalScopeRef.current;
     const updated = { id, amount, currency, note, category, createdAt };
-    setExpenses((prev) => prev.map((e) => (e.id === id ? updated : e)));
-    enqueueExpenseUpsert(userId, updated);
+    if (!await persistPersonalExpense(updated, true)) return false;
+    if (personalScopeRef.current !== scope) return true;
     setEditingExpense(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    return true;
   };
 
   const deleteExpense = (id) => {
@@ -1084,8 +1144,8 @@ function ExpenseTracker() {
 
         {/* Add popup with a Personal/Shared toggle: Personal adds an expense
             (AddEntryScreen), Shared adds a split bill (SharedSplitForm). The
-            active form stays mounted while the popup is closed (AddExpenseModal
-            hides it with display:none) so a half-typed entry survives dismissal. */}
+            active form stays mounted through the closing animation; the next
+            opening gets a fresh draft through its key. */}
         <AddExpenseModal visible={addOpen} onClose={closeAdd}>
           {addEntryMode === 'shared' ? (
             <SharedSplitForm
@@ -1103,9 +1163,12 @@ function ExpenseTracker() {
             />
           ) : (
             <AddEntryScreen
+              key={`${userId}:${addNonce}`}
+              visible={addOpen}
               entryMode={addEntryMode}
               onChangeEntryMode={setAddEntryMode}
               displayCurrency={displayCurrency}
+              defaultCurrency={settings.lastPersonalExpenseCurrency ?? displayCurrency}
               categories={allCategories}
               onSubmit={addExpense}
               onClose={closeAdd}
@@ -1113,15 +1176,17 @@ function ExpenseTracker() {
           )}
         </AddExpenseModal>
 
-        <AddExpenseModal visible={editingExpense != null} onClose={() => setEditingExpense(null)}>
+        <AddExpenseModal visible={editingExpense != null} onClose={() => { if (!personalSaveRef.current) setEditingExpense(null); }}>
           {editingExpense && (
             <AddEntryScreen
+              key={`${userId}:${editingExpense.id}`}
+              visible={editingExpense != null}
               displayCurrency={displayCurrency}
               categories={allCategories}
               editEntry={editingExpense}
               onSubmit={updateExpense}
               onDelete={deleteExpense}
-              onClose={() => setEditingExpense(null)}
+              onClose={() => { if (!personalSaveRef.current) setEditingExpense(null); }}
             />
           )}
         </AddExpenseModal>

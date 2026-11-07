@@ -7,7 +7,7 @@ import { getCurrency } from '../currency';
 // the accent color. Tapping opens the shared CurrencyPicker popup. Used anywhere
 // a currency is decided. `style` tweaks the pill container; `textStyle` lets a
 // caller scale the code text (e.g. a larger header variant).
-export default function CurrencyPill({ value, onPress, accessibilityLabel, style, textStyle }) {
+export default function CurrencyPill({ value, onPress, accessibilityLabel, style, textStyle, disabled = false }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const code = getCurrency(value).code;
@@ -15,9 +15,11 @@ export default function CurrencyPill({ value, onPress, accessibilityLabel, style
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [styles.pill, pressed && styles.pillPressed, style]}
+      style={({ pressed }) => [styles.pill, pressed && styles.pillPressed, style, disabled && { opacity: 0.5 }]}
     >
       <Text style={[styles.code, textStyle]}>{code}</Text>
     </Pressable>

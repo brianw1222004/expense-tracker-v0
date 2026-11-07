@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DEFAULT_CURRENCY } from './currency';
+import { DEFAULT_CURRENCY, isSupportedCurrency } from './currency';
 import { DEFAULT_PAYMENT_METHOD_ID } from './splits';
 
 const STORAGE_KEY = '@expense-tracker/expenses';
@@ -11,13 +11,14 @@ const SPLITS_KEY = '@expense-tracker/splits';
 // before removing keys. Ordinary saves retain their best-effort behavior.
 const pendingWrites = new Map();
 
-async function saveCache(userId, key, value) {
+async function saveCache(userId, key, value, { strict = false } = {}) {
   const writes = pendingWrites.get(userId) ?? new Set();
   pendingWrites.set(userId, writes);
   const write = (async () => {
     try {
       await AsyncStorage.setItem(scopedKey(key, userId), JSON.stringify(value));
-    } catch {
+    } catch (error) {
+      if (strict) throw error;
       // Ordinary persistence remains best-effort.
     }
   })();
@@ -42,12 +43,13 @@ function scopedKey(base, userId) {
 // monthlyBudget and every categoryBudgets value are in the display currency;
 // 0 / missing means "no budget set". Everything here syncs through the Supabase
 // settings row (see toSettingsRow in sync.js) EXCEPT theme / language /
-// onboardingDone, which are per-device preferences and stay DEVICE-LOCAL.
+// onboardingDone / lastPersonalExpenseCurrency, which stay DEVICE-LOCAL.
 // Pulled settings are merged over local (never replace it), and sync.js omits
 // server columns that are NULL — i.e. no device has pushed them yet — so the
 // local value always stands until something is actually synced.
 export const DEFAULT_SETTINGS = {
   displayCurrency: DEFAULT_CURRENCY,
+  lastPersonalExpenseCurrency: null,
   monthlyBudget: 0,
   categoryBudgets: {},
   // Manual tile order on the Insight Categories grid (drag-to-reorder);
@@ -74,8 +76,8 @@ export async function loadExpenses(userId) {
   }
 }
 
-export async function saveExpenses(userId, expenses) {
-  await saveCache(userId, STORAGE_KEY, expenses);
+export async function saveExpenses(userId, expenses, options) {
+  await saveCache(userId, STORAGE_KEY, expenses, options);
 }
 
 // Fresh categoryBudgets object every call — the shallow spread would otherwise
@@ -95,6 +97,9 @@ function withDefaults(parsed) {
   if (!Array.isArray(merged.customPaymentMethods)) {
     merged.customPaymentMethods = [];
   }
+  if (!isSupportedCurrency(merged.lastPersonalExpenseCurrency)) {
+    merged.lastPersonalExpenseCurrency = null;
+  }
   if (parsed && typeof parsed === 'object' && parsed.onboardingDone === undefined) {
     merged.onboardingDone = true;
   }
@@ -111,8 +116,8 @@ export async function loadSettings(userId) {
   }
 }
 
-export async function saveSettings(userId, settings) {
-  await saveCache(userId, SETTINGS_KEY, settings);
+export async function saveSettings(userId, settings, options) {
+  await saveCache(userId, SETTINGS_KEY, settings, options);
 }
 
 // Split-bills groups and shared bills — synced to Supabase via the groups and

@@ -3,6 +3,28 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## UX-5B2 - Remember Personal Expense Currency
+
+- **Added:** A validated, user-scoped, device-local currency preference updated
+  only after a personal expense creation or edit is saved locally.
+- **Changed:** New personal drafts snapshot the remembered currency, falling
+  back to Display Currency. Reopening Add creates a fresh draft. Personal saves
+  await local persistence and retain the form with a localized error on failure.
+- **Fixed:** Switching a whole-number personal draft from USD-style decimal
+  formatting to JPY/TWD/KRW removes the zero decimal suffix so Save remains
+  available. Real fractional amounts still require correction before saving.
+- **Fixed:** Personal saves queue their original account's upsert after a local
+  write even when accounts change; explicit expense ownership prevents a new
+  session from claiming the row. Preference-write failures retain the saved
+  expense and explain that the previous default remains active. The currency
+  picker is disabled during saving and cleared when the form closes.
+- **Fixed:** Settings upserts, including the legacy-schema fallback, retain
+  their queue owner's account ID. A mismatched session cannot overwrite another
+  account's settings; rejected settings and expense operations remain retryable.
+- **Compatibility:** The preference stays outside server settings mappings.
+  Display Currency, shared bills, group currencies, budgets, reporting, FX
+  previews, balances, and settlements keep their existing behavior.
+
 ## UX-5B1 - Display Currency in Account Settings
 
 - **Added:** A localized Display Currency setting in the gear-accessed Account

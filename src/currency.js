@@ -19,6 +19,10 @@ export const CURRENCIES = [
   { code: 'INR', symbol: '₹', name: 'Indian Rupee', decimals: 2, flag: '🇮🇳' },
 ];
 
+export function isSupportedCurrency(code) {
+  return CURRENCIES.some((currency) => currency.code === code);
+}
+
 // Units of each currency per 1 USD. Static snapshot — swapping in live rates
 // (e.g. exchangerate.host) only means replacing this map / the body of convert().
 const RATES_TO_USD = {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Keyboard,
@@ -14,7 +14,7 @@ import { fonts, spacing, radius, useTheme } from '../theme';
 import { useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
 import { HIcon } from '../icons';
-import { getCurrency } from '../currency';
+import { getCurrency, isSupportedCurrency } from '../currency';
 import { dateKey, isValidAmountText, cleanAmountInput } from '../format';
 import CalendarField, { dateForOffset, offsetForDay } from '../components/CalendarField';
 import EntryModeToggle from '../components/EntryModeToggle';
@@ -36,9 +36,11 @@ const CATS_PER_PAGE = 8;
 // `onChangeEntryMode` is provided (the add popup, not the edit popup) the header
 // shows the Personal/Shared toggle; in edit mode it shows the title + a Delete.
 export default function AddEntryScreen({
+  visible = true,
   entryMode,
   onChangeEntryMode,
   displayCurrency,
+  defaultCurrency,
   categories,
   editEntry,
   onSubmit,
@@ -80,20 +82,29 @@ export default function AddEntryScreen({
   });
   const [note, setNote] = useState(isEdit ? (editEntry.note || '') : '');
   const [selectedId, setSelectedId] = useState(initSelected);
-  const [manualCurrency, setManualCurrency] = useState(isEdit ? editEntry.currency : null);
+  // Capture once per draft. Later reporting/preference changes never relabel it.
+  const [manualCurrency, setManualCurrency] = useState(() => isEdit
+    ? editEntry.currency
+    : isSupportedCurrency(defaultCurrency) ? defaultCurrency : displayCurrency);
   const [dayOffset, setDayOffset] = useState(() => {
     if (!isEdit) return 0;
     const d = new Date(editEntry.createdAt);
     return offsetForDay(d.getFullYear(), d.getMonth(), d.getDate());
   });
   const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const savingRef = useRef(false);
+  useEffect(() => {
+    if (!visible) setCurrencyOpen(false);
+  }, [visible]);
   // Color transitions interpolate from the previously shown color to the newly
   // picked one; colors can't animate on the native driver.
   const colorAnim = useRef(new Animated.Value(1)).current;
   const colorFrom = useRef(colorOf(initSelected));
   const colorTo = useRef(colorOf(initSelected));
 
-  const currencyCode = manualCurrency ?? displayCurrency;
+  const currencyCode = manualCurrency;
   const currency = getCurrency(currencyCode);
 
   // Strict shape check before parseFloat: bare parseFloat accepts '1.2.3' as 1.2
@@ -107,15 +118,14 @@ export default function AddEntryScreen({
     setAmountText('');
     setNote('');
     setSelectedId(firstId);
-    setManualCurrency(null);
     setDayOffset(0);
     colorFrom.current = colorOf(firstId);
     colorTo.current = colorOf(firstId);
     colorAnim.setValue(1);
   };
 
-  const handleSubmit = () => {
-    if (!isValid) return;
+  const handleSubmit = async () => {
+    if (!isValid || savingRef.current) return;
     const factor = 10 ** currency.decimals;
     let createdAt;
     if (isEdit) {
@@ -133,13 +143,27 @@ export default function AddEntryScreen({
       createdAt,
     };
     if (isEdit) data.id = editEntry.id;
-    onSubmit(data);
-    if (!isEdit) reset();
-    Keyboard.dismiss();
+    savingRef.current = true;
+    setCurrencyOpen(false);
+    setSaving(true);
+    setSaveError(false);
+    try {
+      if (await onSubmit(data) === false) {
+        setSaveError(true);
+        return;
+      }
+      if (!isEdit) reset();
+      Keyboard.dismiss();
+    } catch {
+      setSaveError(true);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    if (!isEdit) return;
+    if (!isEdit || savingRef.current) return;
     const ok = await confirmDestructive({
       title: t('edit.delete'),
       body: t('edit.deleteConfirm'),
@@ -182,13 +206,14 @@ export default function AddEntryScreen({
           <View style={styles.headerSide} />
           <View style={styles.headerCenter}>
             {onChangeEntryMode ? (
-              <EntryModeToggle value={entryMode} onChange={onChangeEntryMode} />
+              <EntryModeToggle value={entryMode} onChange={(mode) => { if (!savingRef.current) onChangeEntryMode(mode); }} />
             ) : (
               <Text style={styles.title}>{t('edit.title')}</Text>
             )}
           </View>
           <Pressable
             onPress={onClose}
+            disabled={saving}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={t('common.close')}
@@ -205,7 +230,8 @@ export default function AddEntryScreen({
             <View style={styles.currencyTriggerWrap}>
               <CurrencyPill
                 value={currencyCode}
-                onPress={() => setCurrencyOpen(true)}
+                disabled={saving || !visible}
+                onPress={() => { if (visible && !savingRef.current) setCurrencyOpen(true); }}
                 accessibilityLabel={t('currency.choose')}
                 style={styles.currencyPill}
                 textStyle={styles.currencyPillText}
@@ -314,22 +340,24 @@ export default function AddEntryScreen({
 
         <Pressable
           onPress={handleSubmit}
-          disabled={!isValid}
+          disabled={!isValid || saving}
           accessibilityRole="button"
-          accessibilityState={{ disabled: !isValid }}
+          accessibilityState={{ disabled: !isValid || saving, busy: saving }}
           style={({ pressed }) => [
             styles.saveButton,
             { backgroundColor: colors.accent },
-            !isValid && styles.saveButtonDisabled,
-            pressed && isValid && styles.saveButtonPressed,
+            (!isValid || saving) && styles.saveButtonDisabled,
+            pressed && isValid && !saving && styles.saveButtonPressed,
           ]}
         >
-          <Text style={styles.saveButtonText}>{t(isEdit ? 'edit.save' : 'add.save')}</Text>
+          <Text style={styles.saveButtonText}>{t(saving ? 'add.saving' : isEdit ? 'edit.save' : 'add.save')}</Text>
         </Pressable>
+        {saveError && <Text accessibilityRole="alert" style={styles.saveError}>{t('add.saveFailed')}</Text>}
 
         {isEdit && (
           <Pressable
             onPress={handleDelete}
+            disabled={saving}
             accessibilityRole="button"
             style={({ pressed }) => [styles.deleteButton, pressed && styles.chipPressed]}
           >
@@ -339,9 +367,14 @@ export default function AddEntryScreen({
       </ScrollView>
 
       <CurrencyPicker
-        visible={currencyOpen}
+        visible={visible && currencyOpen && !saving}
         value={currencyCode}
         onSelect={(code) => {
+          if (!visible || savingRef.current) return;
+          if (getCurrency(code).decimals === 0) {
+            // Drop decimal-currency formatting without rounding real fractions.
+            setAmountText((text) => /^\d+[.,]0+$/.test(text) ? text.replace(/[.,]0+$/, '') : text);
+          }
           setManualCurrency(code);
           setCurrencyOpen(false);
         }}
@@ -353,6 +386,13 @@ export default function AddEntryScreen({
 
 const createStyles = (colors) =>
   StyleSheet.create({
+    saveError: {
+      color: colors.danger,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      textAlign: 'center',
+      marginTop: spacing.sm,
+    },
     ...popupChromeStyles(colors),
     amountArea: {
       marginBottom: spacing.sm,

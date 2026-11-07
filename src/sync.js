@@ -263,8 +263,8 @@ export function enqueueSplitsReplace(userId, splits) {
   return enqueueSplit(userId, { type: 'replace', splits });
 }
 
-// user_id is never sent: the column default (auth.uid()) fills it server-side,
-// and Row Level Security guarantees we only ever touch our own rows.
+// Expense upserts add their queue owner's user_id in runOp so an auth change
+// during an asynchronous save cannot insert the row under the new account.
 function toRow(expense) {
   return {
     id: expense.id,
@@ -411,7 +411,7 @@ async function replaceRows(table, rows, userId) {
 
 async function runOp(op, userId) {
   if (op.type === 'upsert') {
-    const { error } = await supabase.from('expenses').upsert(toRow(op.expense));
+    const { error } = await supabase.from('expenses').upsert({ ...toRow(op.expense), user_id: userId });
     if (error) throw error;
   } else if (op.type === 'delete') {
     const { error } = await supabase.from('expenses').delete().eq('id', op.id).eq('user_id', userId);
@@ -419,7 +419,9 @@ async function runOp(op, userId) {
   } else if (op.type === 'replace') {
     await replaceRows('expenses', op.expenses.map(toRow), userId);
   } else if (op.type === 'settings') {
-    const { error } = await supabase.from('settings').upsert(toSettingsRow(op.settings));
+    // Bind both payloads to the queue owner. RLS must reject a different
+    // authenticated session so flushQueue retains the op for the owner to retry.
+    const { error } = await supabase.from('settings').upsert({ ...toSettingsRow(op.settings), user_id: userId });
     if (error) {
       // A database created before the extra settings columns rejects the full
       // row with an unknown-column error (PGRST204). Fall back to the original
@@ -428,6 +430,7 @@ async function runOp(op, userId) {
       const unknownColumn = error.code === 'PGRST204' || /column/i.test(error.message ?? '');
       if (!unknownColumn) throw error;
       const legacy = await supabase.from('settings').upsert({
+        user_id: userId,
         display_currency: op.settings.displayCurrency,
         monthly_budget: op.settings.monthlyBudget,
       });

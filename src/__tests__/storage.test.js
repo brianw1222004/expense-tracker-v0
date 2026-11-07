@@ -15,6 +15,7 @@ const {
   saveSettings,
   loadExpenses,
   saveExpenses,
+  clearUserStorage,
 } = require('../storage');
 
 // ---------------------------------------------------------------------------
@@ -25,6 +26,59 @@ beforeEach(async () => {
   // Also clear mock call history so call-count assertions start from zero.
   AsyncStorage.setItem.mockClear();
   AsyncStorage.getItem.mockClear();
+});
+
+describe('device-local personal expense currency', () => {
+  test('defaults to no preference and survives a settings reload', async () => {
+    expect((await loadSettings(LOCAL_USER)).lastPersonalExpenseCurrency).toBeNull();
+    await saveSettings(LOCAL_USER, { displayCurrency: 'TWD', lastPersonalExpenseCurrency: 'USD' });
+    expect(await loadSettings(LOCAL_USER)).toMatchObject({ displayCurrency: 'TWD', lastPersonalExpenseCurrency: 'USD' });
+  });
+
+  test.each(['XXX', 'usd', '', 12, ['USD'], { code: 'USD' }])('rejects an unsupported stored preference: %j', async (value) => {
+    await saveSettings(LOCAL_USER, { lastPersonalExpenseCurrency: value });
+    expect((await loadSettings(LOCAL_USER)).lastPersonalExpenseCurrency).toBeNull();
+  });
+
+  test('isolates the preference between local mode and accounts', async () => {
+    await saveSettings(LOCAL_USER, { lastPersonalExpenseCurrency: 'USD' });
+    await saveSettings('alice', { lastPersonalExpenseCurrency: 'JPY' });
+    expect((await loadSettings(LOCAL_USER)).lastPersonalExpenseCurrency).toBe('USD');
+    expect((await loadSettings('alice')).lastPersonalExpenseCurrency).toBe('JPY');
+    expect((await loadSettings('bob')).lastPersonalExpenseCurrency).toBeNull();
+  });
+
+  test('clears the preference with its account data without touching another account', async () => {
+    await saveSettings('alice', { lastPersonalExpenseCurrency: 'USD' });
+    await saveSettings('bob', { lastPersonalExpenseCurrency: 'JPY' });
+    await clearUserStorage('alice', { strict: true });
+    expect((await loadSettings('alice')).lastPersonalExpenseCurrency).toBeNull();
+    expect((await loadSettings('bob')).lastPersonalExpenseCurrency).toBe('JPY');
+  });
+
+  test('strict personal saves surface storage failures without changing existing data', async () => {
+    const original = [{ id: 'old', currency: 'USD', amount: 10 }];
+    await saveExpenses(LOCAL_USER, original);
+    await saveSettings(LOCAL_USER, { lastPersonalExpenseCurrency: 'USD' });
+    AsyncStorage.setItem.mockRejectedValueOnce(new Error('storage full'));
+    await expect(saveExpenses(LOCAL_USER, [{ id: 'new', currency: 'JPY', amount: 20 }], { strict: true })).rejects.toThrow('storage full');
+    expect(await loadExpenses(LOCAL_USER)).toEqual(original);
+    expect((await loadSettings(LOCAL_USER)).lastPersonalExpenseCurrency).toBe('USD');
+    // Existing callers retain their best-effort behavior.
+    AsyncStorage.setItem.mockRejectedValueOnce(new Error('storage full'));
+    await expect(saveExpenses(LOCAL_USER, [])).resolves.toBeUndefined();
+  });
+
+  test('strict preference persistence reports failure while legacy settings writes stay best-effort', async () => {
+    const previous = { ...DEFAULT_SETTINGS, lastPersonalExpenseCurrency: 'USD' };
+    await saveSettings('alice', previous);
+    AsyncStorage.setItem.mockRejectedValueOnce(new Error('settings storage full'));
+    await expect(saveSettings('alice', { ...previous, lastPersonalExpenseCurrency: 'JPY' }, { strict: true }))
+      .rejects.toThrow('settings storage full');
+    expect((await loadSettings('alice')).lastPersonalExpenseCurrency).toBe('USD');
+    AsyncStorage.setItem.mockRejectedValueOnce(new Error('settings storage full'));
+    await expect(saveSettings('alice', previous)).resolves.toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
