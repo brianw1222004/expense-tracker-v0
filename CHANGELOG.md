@@ -3,6 +3,15 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## UX-3 - Expenses Calendar Today Shortcut
+
+- **Added:** A compact Today text button beside the Expenses month controls,
+  with a 44-point minimum touch target.
+- **Changed:** Tapping Today returns to the device's current local month and
+  date, updates the day list, and hides the shortcut while today is selected.
+- **Compatibility:** Reuses shared month navigation and existing localization;
+  preserves category filters, expense data, calculations, and storage models.
+
 ## FX-3A - Developer Historical Spending Previews
 
 - **Added:** Developer-only, read-only historical FX previews for Expenses and

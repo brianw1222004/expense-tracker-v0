@@ -104,6 +104,15 @@ export default function ExpenseListScreen({
     onShiftMonth(dir);
   };
 
+  const goToToday = () => {
+    // Read again at tap time in case the local date changed since rendering.
+    const todayKey = dateKey(Date.now());
+    const [year, month] = todayKey.split('-').map(Number);
+    const monthDelta = (year - calYear) * 12 + month - monthNumber;
+    if (monthDelta !== 0) shiftCalMonth(monthDelta);
+    setSelectedDate(todayKey);
+  };
+
   const [sy, sm, sd] = visibleSelectedDate.split('-').map(Number);
   const selectedDayText = dayLabel(new Date(sy, sm - 1, sd).getTime(), language);
   const selectedDayNum = sd;
@@ -138,12 +147,24 @@ export default function ExpenseListScreen({
       >
         <Text style={styles.title}>{t('list.title')}</Text>
 
-        <MonthSelector
-          monthKey={monthKey}
-          currentMonthKey={currentMonthKey}
-          onShift={shiftCalMonth}
-          style={styles.monthSelector}
-        />
+        <View style={styles.monthSelector}>
+          <MonthSelector
+            monthKey={monthKey}
+            currentMonthKey={currentMonthKey}
+            onShift={shiftCalMonth}
+          />
+          {visibleSelectedDate !== today && (
+            <Pressable
+              onPress={goToToday}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.todayButton, pressed && styles.modalBtnPressed]}
+            >
+              <View style={styles.todayPill}>
+                <Text style={styles.todayLabel} numberOfLines={1}>{t('date.today')}</Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
 
         <View style={styles.calendarCard}>
           <View style={styles.calWeekRow}>
@@ -364,7 +385,33 @@ const createStyles = (colors) =>
     },
 
     monthSelector: {
-      marginBottom: spacing.md,
+      minHeight: 44,
+      justifyContent: 'center',
+      marginBottom: spacing.xs,
+    },
+    todayButton: {
+      position: 'absolute',
+      right: spacing.md,
+      top: 0,
+      minHeight: 44,
+      minWidth: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    todayPill: {
+      height: 30,
+      paddingHorizontal: spacing.sm,
+      backgroundColor: colors.cardPressed,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    todayLabel: {
+      color: colors.accent,
+      fontSize: 13,
+      fontFamily: fonts.medium,
     },
     calendarCard: {
       backgroundColor: colors.card,
