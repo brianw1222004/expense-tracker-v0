@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
   Pressable,
@@ -117,6 +117,8 @@ export default function SharedSplitForm({
     : 'equal';
 
   const [selectedGroupId, setSelectedGroupId] = useState(initialGroup?.id ?? null);
+  const appliedInitialGroup = useRef(initialGroupId);
+  const submitted = useRef(false);
   const [included, setIncluded] = useState(() =>
     Object.fromEntries(peopleFor(initialGroup).map((p) => [p.id, isEdit ? seedShares[p.id] != null : true]))
   );
@@ -207,6 +209,14 @@ export default function SharedSplitForm({
     setPaidBy(YOU);
     setManualCurrency(null);
   };
+  useEffect(() => {
+    if (isEdit || !initialGroupId || appliedInitialGroup.current === initialGroupId ||
+        !groups.some((group) => group.id === initialGroupId)) return;
+    appliedInitialGroup.current = initialGroupId;
+    // Resuming Create Group keeps amount/description/date/category, while the
+    // existing group switch resets participants, payer, allocations, and currency.
+    selectGroup(initialGroupId);
+  }, [initialGroupId, groups]);
 
   const amount = parseFloat(amountText.replace(',', '.'));
   const amountValid = isValidAmountText(amountText.replace(',', '.'), cur.decimals) && amount > 0;
@@ -279,7 +289,7 @@ export default function SharedSplitForm({
     taxOk;
 
   const handleAdd = () => {
-    if (!canAdd) return;
+    if (!canAdd || submitted.current) return;
     let amountToSave;
     let shares;
     // Persist the raw split inputs (percentages / tax subtotals+rates) alongside
@@ -320,12 +330,20 @@ export default function SharedSplitForm({
       createdAt,
       meta,
     };
-    if (isEdit) {
-      payload.id = editBill.id;
-      onSave(payload);
-    } else {
-      onAdd(payload);
+    submitted.current = true;
+    let result;
+    try {
+      if (isEdit) {
+        payload.id = editBill.id;
+        result = onSave(payload);
+      } else {
+        result = onAdd(payload);
+      }
+    } catch (error) {
+      submitted.current = false;
+      throw error;
     }
+    if (result === false) { submitted.current = false; return; }
     Keyboard.dismiss();
   };
 

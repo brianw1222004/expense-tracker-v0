@@ -29,7 +29,7 @@ import { HIcon } from '../icons';
 // and that month's recent-bill preview rows on a nested surface BESIDE it (the
 // preview takes the wider share) — each card tinted to its payment-method
 // color with a deeper colored left edge (the expense-row treatment). Tapping a
-// card opens the group's detail sheet; the "+" opens the create-group sheet.
+// group heading/summary opens Group Detail; bill previews open the bill editor.
 // The card's total and net are shown in the DISPLAY currency (converted from
 // the group's own currency) so the summary and the cards agree; per-member
 // balances stay in the GROUP currency, matching the group sheet they preview.
@@ -45,6 +45,8 @@ export default function SplitBillsScreen({
   customPaymentMethods,
   onOpenGroup,
   onCreateGroup,
+  onAddBill,
+  onEditBill,
 }) {
   const { colors } = useTheme();
   const t = useT();
@@ -133,15 +135,26 @@ export default function SplitBillsScreen({
 
       <View style={styles.sectionRow}>
         <Text style={styles.sectionTitle}>{t('split.groups')}</Text>
-        <Pressable
-          onPress={onCreateGroup}
-          accessibilityRole="button"
-          accessibilityLabel={t('split.newGroup')}
-          style={({ pressed }) => [styles.newGroupPill, pressed && styles.newGroupPillPressed]}
-        >
-          <HIcon name="plus-sign" size={14} color={colors.accent} />
-          <Text style={styles.newGroupText}>{t('split.newGroup')}</Text>
-        </Pressable>
+        <View style={styles.quickActions}>
+          <Pressable
+            onPress={onAddBill}
+            accessibilityRole="button"
+            accessibilityLabel={t('split.addBill')}
+            style={({ pressed }) => [styles.newGroupPill, pressed && styles.newGroupPillPressed]}
+          >
+            <HIcon name="invoice-01" size={14} color={colors.accent} />
+            <Text style={styles.newGroupText}>{t('split.addBill')}</Text>
+          </Pressable>
+          <Pressable
+            onPress={onCreateGroup}
+            accessibilityRole="button"
+            accessibilityLabel={t('split.newGroup')}
+            style={({ pressed }) => [styles.newGroupPill, pressed && styles.newGroupPillPressed]}
+          >
+            <HIcon name="plus-sign" size={14} color={colors.accent} />
+            <Text style={styles.newGroupText}>{t('split.newGroup')}</Text>
+          </Pressable>
+        </View>
       </View>
 
       {hasGroups ? (
@@ -158,6 +171,7 @@ export default function SplitBillsScreen({
               customCategories={customCategories}
               customPaymentMethods={customPaymentMethods}
               onOpenGroup={onOpenGroup}
+              onEditBill={onEditBill}
               styles={styles}
               colors={colors}
               t={t}
@@ -208,7 +222,7 @@ function SummaryTile({ label, amount, count, tone, icon, displayCurrency, styles
 // How many bill tiles a card previews before collapsing into "+N more".
 const MAX_CARD_BILLS = 2;
 
-const GroupCard = React.memo(function GroupCard({ group, bills, billCount, totalSpent, splitExpenses, displayCurrency, customCategories, customPaymentMethods, onOpenGroup, styles, colors, t }) {
+const GroupCard = React.memo(function GroupCard({ group, bills, billCount, totalSpent, splitExpenses, displayCurrency, customCategories, customPaymentMethods, onOpenGroup, onEditBill, styles, colors, t }) {
   const language = useLanguage();
   const handlePress = useCallback(() => onOpenGroup(group.id), [onOpenGroup, group.id]);
   const net = convert(groupNet(group, splitExpenses), group.currency, displayCurrency);
@@ -223,6 +237,8 @@ const GroupCard = React.memo(function GroupCard({ group, bills, billCount, total
       : net < 0
       ? t('split.youOweShort', { amount: formatMoney(-net, displayCurrency) })
       : t('split.settled');
+  const spendingText = formatMoney(totalSpent, displayCurrency);
+  const billCountText = billCount === 1 ? t('split.billCountOne') : t('split.billCount', { count: billCount });
 
   const shownBills = bills.slice(0, MAX_CARD_BILLS);
   const extraBills = bills.length - shownBills.length;
@@ -234,16 +250,14 @@ const GroupCard = React.memo(function GroupCard({ group, bills, billCount, total
   const stackOverflow = stackPeople.length - shownStack.length;
 
   return (
-    <Pressable
-      onPress={handlePress}
-      accessibilityRole="button"
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.groupTile,
         { backgroundColor: `${pmColor}0A`, borderLeftColor: `${pmColor}33` },
-        pressed && styles.groupTilePressed,
       ]}
     >
-      <View style={styles.groupHeaderRow}>
+      <Pressable onPress={handlePress} accessibilityRole="button" accessibilityLabel={group.name}
+        style={({ pressed }) => [styles.groupHeaderRow, pressed && styles.groupTilePressed]}>
         <View style={[styles.groupIcon, { backgroundColor: `${pmColor}26` }]}>
           <HIcon name={getGroupIcon(group.icon)} size={22} color={pmColor} />
         </View>
@@ -268,26 +282,28 @@ const GroupCard = React.memo(function GroupCard({ group, bills, billCount, total
             </View>
           )}
         </View>
-      </View>
+      </Pressable>
 
       {/* Total block and the bills preview sit SIDE BY SIDE: the figure keeps
           the left, the preview panel takes the rest of the width (which is why
           its rows run on the compact type/short date — they have roughly half
           a card to fit in). */}
       <View style={styles.groupBody}>
-        <View style={styles.groupTotalCol}>
+        <Pressable onPress={handlePress} accessibilityRole="button"
+          accessibilityLabel={`${group.name}, ${t('split.spentThisMonth')} ${spendingText} ${displayCurrency}, ${billCountText}, ${balanceText}${net !== 0 ? ` ${displayCurrency}` : ''}`}
+          style={({ pressed }) => [styles.groupTotalCol, pressed && styles.groupTilePressed]}>
           <Text style={styles.groupTotalLabel}>{t('split.spentThisMonth')}</Text>
           <Text style={styles.groupTotal} numberOfLines={1} adjustsFontSizeToFit>
-            {formatMoney(totalSpent, displayCurrency)}
+            {spendingText}
           </Text>
           <Text style={styles.groupActivityCount} numberOfLines={1}>
-            {billCount === 1 ? t('split.billCountOne') : t('split.billCount', { count: billCount })}
+            {billCountText}
           </Text>
           <View style={styles.groupNetRow}>
             <View style={[styles.groupNetDot, { backgroundColor: tone }]} />
             <Text style={[styles.groupBalance, { color: tone }]} numberOfLines={1}>{balanceText}</Text>
           </View>
-        </View>
+        </Pressable>
 
         <View style={styles.groupBillCol}>
           {shownBills.length === 0 ? (
@@ -306,7 +322,9 @@ const GroupCard = React.memo(function GroupCard({ group, bills, billCount, total
                 // be misread against that converted total.
                 const foreignCurrency = bill.currency !== displayCurrency;
                 return (
-                  <View key={bill.id} style={[styles.groupBillRow, i > 0 && styles.groupBillDivider]}>
+                  <Pressable key={bill.id} onPress={() => onEditBill(bill.id)} accessibilityRole="button"
+                    accessibilityLabel={`${t('split.editBillLabel', { name: bill.description || t('split.bill') })}, ${formatMoney(bill.amount, bill.currency)} ${bill.currency}, ${shortDayLabel(bill.createdAt, language)}`}
+                    style={({ pressed }) => [styles.groupBillRow, i > 0 && styles.groupBillDivider, pressed && styles.groupTilePressed]}>
                     <View style={[styles.groupBillIcon, { backgroundColor: `${cat.color}1F` }]}>
                       <HIcon name={cat.emoji} size={13} color={cat.color} strokeWidth={1.8} />
                     </View>
@@ -324,17 +342,19 @@ const GroupCard = React.memo(function GroupCard({ group, bills, billCount, total
                       </Text>
                       <Text style={[styles.groupBillShare, { color: posTone }]} numberOfLines={1}>{posText}</Text>
                     </View>
-                  </View>
+                  </Pressable>
                 );
               })}
               {extraBills > 0 && (
-                <Text style={styles.groupBillMore}>{t('split.moreMembers', { count: extraBills })}</Text>
+                <Pressable onPress={handlePress} accessibilityRole="button" accessibilityLabel={group.name} style={styles.moreBillsButton}>
+                  <Text style={styles.groupBillMore}>{t('split.moreMembers', { count: extraBills })}</Text>
+                </Pressable>
               )}
             </View>
           )}
         </View>
       </View>
-    </Pressable>
+    </View>
   );
 });
 
@@ -462,7 +482,17 @@ const createStyles = (colors) =>
       fontFamily: fonts.bold,
       fontSize: 15,
     },
+    quickActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      flexShrink: 1,
+    },
+    moreBillsButton: {
+      minHeight: 44,
+      justifyContent: 'center',
+    },
     newGroupPill: {
+      minHeight: 44,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
@@ -498,6 +528,7 @@ const createStyles = (colors) =>
       backgroundColor: colors.cardPressed,
     },
     groupHeaderRow: {
+      minHeight: 44,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm + 2,
@@ -619,6 +650,7 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.sm,
     },
     groupBillRow: {
+      minHeight: 44,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs + 2,

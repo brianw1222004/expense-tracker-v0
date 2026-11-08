@@ -11,13 +11,13 @@ import { HIcon } from '../icons';
 // lists than the anchored AnchorMenu: used by the Shared add form's Category
 // chip and the group sheet's remove-member choice (which passes `subtitle` for
 // a line of context under the title).
-export default function OptionPicker({ visible, title, subtitle, options = [], value, onSelect, onClose }) {
+export default function OptionPicker({ visible, title, subtitle, options = [], value, onSelect, onClose, onDismiss }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose} onDismiss={onDismiss}>
       <View style={styles.overlay}>
         <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
         <View style={styles.card}>

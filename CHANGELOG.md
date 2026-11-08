@@ -3,6 +3,22 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## UX-2 - Split Bills Quick Actions
+
+- **Added:** Add Bill on Split Bills opens a chooser of all account groups,
+  including a Create Group option. Recent bill previews open the existing editor
+  directly, with separate group-navigation targets.
+- **Changed:** Quick add/edit returns to Split Bills on save, cancel, delete, or
+  back; Group Detail and UX-1 Add First Bill retain their group return behavior.
+  Creating a group during Add Bill skips success and retains independent draft
+  fields while resetting group-dependent split inputs.
+- **Fixed:** Group-summary navigation buttons expose the displayed spending total,
+  currency, bill count, and owed/owing or settled balance to screen readers in all
+  supported languages.
+- **Compatibility:** Temporary navigation is account-scoped, stale records are
+  rejected, and repeated submissions are guarded. Existing bill persistence,
+  currencies, balances, settlements, reporting, and FX logic remain unchanged.
+
 ## UX-1 - Create Group Success Flow
 
 - **Added:** A compact, localized Group Created sheet with a subtle success

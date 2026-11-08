@@ -25,6 +25,7 @@ import SplitBillsScreen from './src/screens/SplitBillsScreen';
 import GroupDetailScreen from './src/screens/GroupDetailScreen';
 import CreateGroupScreen from './src/screens/CreateGroupScreen';
 import GroupCreatedSheet from './src/components/GroupCreatedSheet';
+import OptionPicker from './src/components/OptionPicker';
 import SharedSplitForm from './src/screens/SharedSplitForm';
 import BudgetScreen from './src/screens/BudgetScreen';
 import AuthScreen from './src/screens/AuthScreen';
@@ -177,6 +178,9 @@ function ExpenseTracker() {
   const [returnToSharedAddAfterCreateGroup, setReturnToSharedAddAfterCreateGroup] = useState(false);
   const [groupCreatedFlow, setGroupCreatedFlow] = useState(null);
   const groupCreatedFlowRef = useRef(null);
+  const billSessionRef = useRef(null);
+  const [billGroupChooser, setBillGroupChooser] = useState(null);
+  const billGroupChooserRef = useRef(null);
   // Bumped on every popup open so add forms start fresh. While open, their
   // identity stays stable across preference changes and server refreshes.
   const [addNonce, setAddNonce] = useState(0);
@@ -207,9 +211,11 @@ function ExpenseTracker() {
   if (personalScopeRef.current.ready) personalScopeRef.current.settings = settings;
   const groupCreationScope = personalScopeRef.current;
   const groupNavigationRef = useRef(null);
-  groupNavigationRef.current = { userId, ready: Boolean(userId && dataUser === userId), groups, overlay };
+  groupNavigationRef.current = { userId, ready: Boolean(userId && dataUser === userId), groups, splitExpenses, overlay };
   // Invalidate synchronously so stale callbacks cannot survive an A -> B -> A switch.
   if (groupCreatedFlowRef.current?.userId !== userId) groupCreatedFlowRef.current = null;
+  if (billSessionRef.current?.scope !== groupCreationScope) billSessionRef.current = null;
+  if (billGroupChooserRef.current?.scope !== groupCreationScope) billGroupChooserRef.current = null;
   const language = settings.language;
   const theme = getTheme(settings.theme);
 
@@ -303,6 +309,7 @@ function ExpenseTracker() {
     const seq = (syncSeqRef.current += 1);
     setDataUser(null);
     clearGroupCreatedFlow();
+    clearBillNavigation();
     setReturnToSharedAddAfterCreateGroup(false);
     setOverlay((current) => current === 'createGroup' ? null : current);
     setAddOpen(false);
@@ -420,6 +427,7 @@ function ExpenseTracker() {
   // Open the add popup on the Personal side (from the tab-bar "+").
   const openAdd = useCallback(() => {
     if (!userId || dataUser !== userId || personalSaveRef.current) return;
+    billSessionRef.current = null;
     setAddEntryMode('personal');
     setSharedLockedGroupId(null);
     setSharedInitialGroupId(null);
@@ -427,16 +435,54 @@ function ExpenseTracker() {
     setAddOpen(true);
   }, [userId, dataUser]);
 
-  // Close the add popup; if it was launched from a group's "Add a bill" (locked
-  // to that group), reopen that group's detail sheet so the user lands back there.
-  const closeAdd = useCallback(() => {
-    if (personalSaveRef.current) return;
+  const isCurrentBillSession = (session, includeSuspended = false) => {
+    const current = groupNavigationRef.current;
+    return !!session && billSessionRef.current === session && session.scope === personalScopeRef.current &&
+      session.userId === current.userId && current.ready && !deleteDataGuard.current && (includeSuspended || !session.suspended);
+  };
+  const beginBillSession = (kind, origin, groupId = null, billId = null) => {
+    const session = { kind, origin, groupId, billId, userId: groupNavigationRef.current.userId, scope: personalScopeRef.current };
+    billSessionRef.current = session;
+    return session;
+  };
+  const closeBillForm = useCallback((session) => {
+    if (!isCurrentBillSession(session)) return;
+    billSessionRef.current = null;
     setAddOpen(false);
-    if (sharedLockedGroupId) {
-      setActiveGroupId(sharedLockedGroupId);
-      setSharedLockedGroupId(null);
-    }
-  }, [sharedLockedGroupId]);
+    setEditingSplit(null);
+    setSharedLockedGroupId(null);
+    const groupExists = groupNavigationRef.current.groups.some((group) => group.id === session.groupId);
+    setActiveGroupId(session.origin === 'group' && groupExists ? session.groupId : null);
+  }, []);
+  const clearBillNavigation = () => {
+    billSessionRef.current = null;
+    billGroupChooserRef.current = null;
+    setBillGroupChooser(null);
+    setEditingSplit(null);
+    setAddOpen(false);
+    setActiveGroupId(null);
+    setSharedLockedGroupId(null);
+    setSharedInitialGroupId(null);
+  };
+  const changeEntryMode = (mode) => {
+    if (personalScopeRef.current !== groupCreationScope || !groupNavigationRef.current.ready || personalSaveRef.current) return;
+    if (mode === 'shared' && !billSessionRef.current) beginBillSession('add', 'tab');
+    if (mode === 'personal') billSessionRef.current = null;
+    setAddEntryMode(mode);
+  };
+  const closeAdd = useCallback((session = billSessionRef.current) => {
+    if (personalSaveRef.current) return;
+    if (session !== billSessionRef.current) return;
+    if (session) { closeBillForm(session); return; }
+    setAddOpen(false);
+  }, [closeBillForm]);
+  useEffect(() => {
+    const session = billSessionRef.current;
+    if (!session || !isCurrentBillSession(session)) return;
+    const missingGroup = session.groupId && !groups.some((group) => group.id === session.groupId);
+    const missingBill = session.kind === 'edit' && !splitExpenses.some((bill) => bill.id === session.billId && !bill.settlement);
+    if (missingBill || (missingGroup && (session.kind === 'edit' || session.origin === 'group'))) closeBillForm(session);
+  }, [groups, splitExpenses, addOpen, editingSplit, closeBillForm]);
 
   // Android hardware/gesture back closes the add/edit popups. AddExpenseModal
   // is a plain View (not an RN Modal), so nothing installs onRequestClose for
@@ -449,10 +495,7 @@ function ExpenseTracker() {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (personalSaveRef.current) return true;
       if (editingSplit) {
-        // Mirror the editor's onClose round-trip back to the group sheet.
-        const g = editingSplit.groupId;
-        setEditingSplit(null);
-        if (g) setActiveGroupId(g);
+        closeBillForm(billSessionRef.current);
       } else if (editingExpense) {
         setEditingExpense(null);
       } else {
@@ -461,20 +504,25 @@ function ExpenseTracker() {
       return true;
     });
     return () => sub.remove();
-  }, [addOpen, editingExpense, editingSplit, closeAdd]);
+  }, [addOpen, editingExpense, editingSplit, closeAdd, closeBillForm]);
 
   // Open the shared add popup locked to one group (from GroupDetailScreen's "Add
   // a bill"). Closes the group sheet while the popup is up; closeAdd reopens it.
-  const openSharedAddForGroup = useCallback((groupId) => {
+  const openSharedAddForGroup = useCallback((groupId, origin = 'group') => {
+    const current = groupNavigationRef.current;
+    if (!current.ready || deleteDataGuard.current || billSessionRef.current || !current.groups.some((group) => group.id === groupId)) return;
+    beginBillSession('add', origin, groupId);
     setActiveGroupId(null);
-    setSharedLockedGroupId(groupId);
-    setSharedInitialGroupId(null);
+    setSharedLockedGroupId(origin === 'group' ? groupId : null);
+    setSharedInitialGroupId(origin === 'group' ? null : groupId);
     setAddEntryMode('shared');
     setAddNonce((n) => n + 1);
     setAddOpen(true);
   }, []);
 
-  const openCreateGroupFromSharedAdd = useCallback(() => {
+  const openCreateGroupFromSharedAdd = useCallback((session = billSessionRef.current) => {
+    if (!isCurrentBillSession(session) || session.kind !== 'add') return;
+    session.suspended = true;
     setReturnToSharedAddAfterCreateGroup(true);
     setAddOpen(false);
     setSharedLockedGroupId(null);
@@ -484,13 +532,55 @@ function ExpenseTracker() {
   }, []);
 
   const reopenSharedAdd = useCallback((initialGroupId = null) => {
+    const session = billSessionRef.current;
+    if (!isCurrentBillSession(session, true)) return;
+    billSessionRef.current = { ...session, suspended: false, groupId: initialGroupId ?? session.groupId };
     setReturnToSharedAddAfterCreateGroup(false);
     setAddEntryMode('shared');
     setSharedLockedGroupId(null);
     setSharedInitialGroupId(initialGroupId);
-    setAddNonce((n) => n + 1);
+    // Keep the mounted form's independent draft fields while selecting the new group.
     setAddOpen(true);
   }, []);
+
+  const openQuickAddBill = useCallback(() => {
+    const current = groupNavigationRef.current;
+    if (personalScopeRef.current !== groupCreationScope || !current.ready || deleteDataGuard.current ||
+        billGroupChooserRef.current || billSessionRef.current || groupCreatedFlowRef.current) return;
+    const chooser = { scope: groupCreationScope, phase: 'choosing', groupId: null };
+    billGroupChooserRef.current = chooser;
+    setBillGroupChooser(chooser);
+  }, [groupCreationScope]);
+  const closeBillGroupChooser = (chooser) => {
+    if (!chooser || billGroupChooserRef.current !== chooser || chooser.phase !== 'choosing') return;
+    billGroupChooserRef.current = null;
+    setBillGroupChooser(null);
+  };
+  const selectBillGroup = (chooser, groupId) => {
+    if (!chooser || billGroupChooserRef.current !== chooser || chooser.scope !== personalScopeRef.current ||
+        chooser.phase !== 'choosing' || !groupNavigationRef.current.ready || deleteDataGuard.current) return;
+    if (groupId !== '__new_group__' && !groupNavigationRef.current.groups.some((group) => group.id === groupId)) {
+      closeBillGroupChooser(chooser); return;
+    }
+    const closing = { ...chooser, phase: 'closing', groupId };
+    billGroupChooserRef.current = closing;
+    setBillGroupChooser(closing);
+  };
+  const finishBillGroupChooser = (chooser) => {
+    if (!chooser || billGroupChooserRef.current !== chooser || chooser.phase !== 'closing') return;
+    billGroupChooserRef.current = null;
+    setBillGroupChooser(null);
+    if (chooser.scope !== personalScopeRef.current || !groupNavigationRef.current.ready || deleteDataGuard.current) return;
+    if (chooser.groupId === '__new_group__') {
+      beginBillSession('add', 'split');
+      setAddEntryMode('shared');
+      setAddNonce((n) => n + 1);
+      openCreateGroupFromSharedAdd();
+    } else openSharedAddForGroup(chooser.groupId, 'split');
+  };
+  useEffect(() => {
+    if (Platform.OS === 'android' && billGroupChooser?.phase === 'closing') finishBillGroupChooser(billGroupChooser);
+  }, [billGroupChooser]);
 
   const clearGroupCreatedFlow = () => {
     groupCreatedFlowRef.current = null;
@@ -694,7 +784,9 @@ function ExpenseTracker() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
-  const addSplitExpense = ({ groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, meta }) => {
+  const addSplitExpense = ({ groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, meta }, session) => {
+    if (!isCurrentBillSession(session) || session.kind !== 'add' ||
+        !groupNavigationRef.current.groups.some((group) => group.id === groupId)) return false;
     const bill = {
       id: makeId('s'),
       groupId,
@@ -710,16 +802,34 @@ function ExpenseTracker() {
     };
     setSplitExpenses((prev) => [bill, ...prev]);
     enqueueSplitUpsert(userId, bill);
-    closeAdd();
+    closeBillForm(session);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    return true;
   };
 
   // Open the split-bill editor from a group sheet or shared spending row. Closes the group
   // sheet while the editor is up; the editor reopens it on save/delete/close.
-  const openEditSplit = useCallback((bill) => {
+  const openEditSplit = useCallback((bill, origin = 'group') => {
+    const current = groupNavigationRef.current;
+    if (!current.ready || deleteDataGuard.current || billSessionRef.current?.kind === 'edit' || !bill || bill.settlement ||
+        !current.splitExpenses.some((item) => item.id === bill.id && item.groupId === bill.groupId && !item.settlement) ||
+        !current.groups.some((group) => group.id === bill.groupId)) return;
+    beginBillSession('edit', origin, bill.groupId, bill.id);
     setActiveGroupId(null);
+    setAddOpen(false);
     setEditingSplit(bill);
   }, []);
+  const openSplitBillFromMain = useCallback((id) => {
+    if (personalScopeRef.current !== groupCreationScope) return;
+    const bill = groupNavigationRef.current.splitExpenses.find((item) => item.id === id);
+    if (bill) openEditSplit(bill, 'split');
+  }, [groupCreationScope, openEditSplit]);
+  const openGroupFromSplit = useCallback((id) => {
+    const current = groupNavigationRef.current;
+    if (personalScopeRef.current !== groupCreationScope || !current.ready || deleteDataGuard.current ||
+        !current.groups.some((group) => group.id === id)) return;
+    setActiveGroupId(id);
+  }, [groupCreationScope]);
 
   const openEditSpendingActivity = useCallback((activity) => {
     const target = resolveSpendingEdit(activity, expenses, splitExpenses, groups);
@@ -728,20 +838,26 @@ function ExpenseTracker() {
     else setEditingExpense(target.record);
   }, [expenses, splitExpenses, groups, openEditSplit]);
 
-  const updateSplitExpense = ({ id, groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, meta }) => {
+  const updateSplitExpense = ({ id, groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, meta }, session) => {
+    if (!isCurrentBillSession(session) || session.kind !== 'edit' || session.billId !== id || session.groupId !== groupId ||
+        !groupNavigationRef.current.splitExpenses.some((bill) => bill.id === id && !bill.settlement) ||
+        !groupNavigationRef.current.groups.some((group) => group.id === groupId)) return false;
     const updated = { id, groupId, description, amount, currency, category, paidBy, mode, shares, createdAt, ...(meta ? { meta } : {}) };
     setSplitExpenses((prev) => prev.map((b) => (b.id === id ? updated : b)));
     enqueueSplitUpsert(userId, updated);
-    setEditingSplit(null);
-    setActiveGroupId(groupId);
+    closeBillForm(session);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    return true;
   };
 
-  const deleteSplitExpense = (id) => {
+  const deleteSplitExpense = (id, session = null) => {
+    if (session && (!isCurrentBillSession(session) || session.kind !== 'edit' || session.billId !== id ||
+        !groupNavigationRef.current.splitExpenses.some((bill) => bill.id === id))) return false;
     setSplitExpenses((prev) => prev.filter((b) => b.id !== id));
     enqueueSplitDelete(userId, id);
     // If deleted from the editor, dismiss it and return to the group sheet.
-    setEditingSplit((cur) => {
+    if (session) closeBillForm(session);
+    else setEditingSplit((cur) => {
       if (cur && cur.id === id) {
         setActiveGroupId(cur.groupId);
         return null;
@@ -749,6 +865,7 @@ function ExpenseTracker() {
       return cur;
     });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    return true;
   };
 
   const settleUp = (groupId, memberId) => {
@@ -836,6 +953,7 @@ function ExpenseTracker() {
     });
     if (!confirmed) return;
     clearGroupCreatedFlow();
+    clearBillNavigation();
     setOverlay(null);
     // best-effort push of anything still queued on ALL THREE lanes (each lane
     // has its own queue: expenses/settings, groups, splits).
@@ -877,6 +995,7 @@ function ExpenseTracker() {
           setSplitExpenses(reset.splits);
           setSettings(reset.settings);
           clearGroupCreatedFlow();
+          clearBillNavigation();
           setOverlay(null);
         },
         signOut: () => supabase.auth.signOut({ scope: 'local' }),
@@ -1000,6 +1119,7 @@ function ExpenseTracker() {
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
 
   const loaded = dataUser != null && dataUser === userId;
+  const billSession = billSessionRef.current;
   const orderedCurrencies = useMemo(
     () => loaded ? currenciesByFrequency(expenses, splitExpenses) : currenciesByFrequency(),
     [loaded, expenses, splitExpenses]
@@ -1043,6 +1163,7 @@ function ExpenseTracker() {
     const chromeVisible =
       overlay == null &&
       groupCreatedFlow == null &&
+      billGroupChooser == null &&
       !addOpen &&
       editingExpense == null &&
       editingSplit == null &&
@@ -1115,8 +1236,11 @@ function ExpenseTracker() {
               onShiftMonth={shiftBrowsingMonth}
               customCategories={settings.customCategories}
               customPaymentMethods={settings.customPaymentMethods}
-              onOpenGroup={setActiveGroupId}
+              onOpenGroup={openGroupFromSplit}
+              onAddBill={openQuickAddBill}
+              onEditBill={openSplitBillFromMain}
               onCreateGroup={() => {
+                if (personalScopeRef.current !== groupCreationScope || !groupNavigationRef.current.ready || deleteDataGuard.current) return;
                 setReturnToSharedAddAfterCreateGroup(false);
                 setOverlay('createGroup');
               }}
@@ -1207,21 +1331,21 @@ function ExpenseTracker() {
             (AddEntryScreen), Shared adds a split bill (SharedSplitForm). The
             active form stays mounted through the closing animation; the next
             opening gets a fresh draft through its key. */}
-        <AddExpenseModal visible={addOpen} onClose={closeAdd}>
+        <AddExpenseModal visible={addOpen} onClose={() => closeAdd(billSession)}>
           {addEntryMode === 'shared' ? (
             <SharedSplitForm
               key={addNonce}
               currencies={orderedCurrencies}
               entryMode={addEntryMode}
-              onChangeEntryMode={setAddEntryMode}
+              onChangeEntryMode={changeEntryMode}
               lockedGroupId={sharedLockedGroupId}
               initialGroupId={sharedInitialGroupId}
               groups={groups}
               categories={allCategories}
               displayCurrency={displayCurrency}
-              onAdd={addSplitExpense}
-              onCreateGroup={openCreateGroupFromSharedAdd}
-              onClose={closeAdd}
+              onAdd={(data) => addSplitExpense(data, billSession)}
+              onCreateGroup={() => openCreateGroupFromSharedAdd(billSession)}
+              onClose={() => closeAdd(billSession)}
             />
           ) : (
             <AddEntryScreen
@@ -1229,12 +1353,12 @@ function ExpenseTracker() {
               currencies={orderedCurrencies}
               visible={addOpen}
               entryMode={addEntryMode}
-              onChangeEntryMode={setAddEntryMode}
+              onChangeEntryMode={changeEntryMode}
               displayCurrency={displayCurrency}
               defaultCurrency={settings.lastPersonalExpenseCurrency ?? displayCurrency}
               categories={allCategories}
               onSubmit={addExpense}
-              onClose={closeAdd}
+              onClose={() => closeAdd(billSession)}
             />
           )}
         </AddExpenseModal>
@@ -1259,11 +1383,7 @@ function ExpenseTracker() {
             returns to the group sheet (mirrors the add-a-bill round-trip). */}
         <AddExpenseModal
           visible={editingSplit != null}
-          onClose={() => {
-            const g = editingSplit?.groupId;
-            setEditingSplit(null);
-            if (g) setActiveGroupId(g);
-          }}
+          onClose={() => closeBillForm(billSession)}
         >
           {editingSplit && (
             <SharedSplitForm
@@ -1274,13 +1394,9 @@ function ExpenseTracker() {
               groups={groups}
               categories={allCategories}
               displayCurrency={displayCurrency}
-              onSave={updateSplitExpense}
-              onDelete={deleteSplitExpense}
-              onClose={() => {
-                const g = editingSplit.groupId;
-                setEditingSplit(null);
-                if (g) setActiveGroupId(g);
-              }}
+              onSave={(data) => updateSplitExpense(data, billSession)}
+              onDelete={(id) => deleteSplitExpense(id, billSession)}
+              onClose={() => closeBillForm(billSession)}
             />
           )}
         </AddExpenseModal>
@@ -1334,6 +1450,17 @@ function ExpenseTracker() {
           onDismiss={() => finishGroupCreatedTransition(groupCreatedFlow, 'success')}
         />
 
+        <OptionPicker
+          visible={billGroupChooser?.phase === 'choosing' && billGroupChooserRef.current === billGroupChooser && loaded}
+          title={translate(language, 'split.chooseGroup')}
+          subtitle={groups.length === 0 ? translate(language, 'split.emptyHint') : undefined}
+          options={loaded ? [...groups.map((group) => ({ id: group.id, label: group.name, icon: 'user-group' })),
+            { id: '__new_group__', label: translate(language, 'split.createGroup'), icon: 'plus-sign' }] : []}
+          onSelect={(id) => selectBillGroup(billGroupChooser, id)}
+          onClose={() => closeBillGroupChooser(billGroupChooser)}
+          onDismiss={() => finishBillGroupChooser(billGroupChooser)}
+        />
+
         <GroupDetailScreen
           currencies={orderedCurrencies}
           visible={activeGroupId != null}
@@ -1343,8 +1470,8 @@ function ExpenseTracker() {
           customPaymentMethods={settings.customPaymentMethods}
           onAddPaymentMethod={addCustomPaymentMethod}
           onRemovePaymentMethod={removeCustomPaymentMethod}
-          onAddBill={openSharedAddForGroup}
-          onEditBill={openEditSplit}
+          onAddBill={(id) => { if (personalScopeRef.current === groupCreationScope) openSharedAddForGroup(id); }}
+          onEditBill={(bill) => { if (personalScopeRef.current === groupCreationScope) openEditSplit(bill); }}
           onDeleteBill={deleteSplitExpense}
           onSettle={settleUp}
           onUpdateGroup={updateGroup}
