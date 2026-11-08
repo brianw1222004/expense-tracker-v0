@@ -12,8 +12,10 @@ import { formatMoney, formatMoneyShort } from '../format';
 import { monthAggregate } from '../browsingMonth';
 import { getCurrency } from '../currency';
 import { getCategoryLabel } from '../categories';
-import { categoryBarState } from '../budget';
+import { categoryBarState, reportingCategoryBarState } from '../budget';
 import { HIcon } from '../icons';
+import ReportingFxStatus from '../components/ReportingFxStatus';
+import { budgetPresentation, categoryReporting, formatReportingAmount, isReportingAmount, mergeReportingCoverage, reportingStatusKeys } from '../reportingPresentation';
 
 // The Insight tab: the budget view compressed into two cards. A "Budget" card
 // with a compact horizontal bar gauge (the old BudgetGauge donut was retired)
@@ -28,6 +30,8 @@ import { HIcon } from '../icons';
 // opens AddCategoryModal, so category management — including editing/deleting
 // presets — lives here.
 export default function InsightScreen({
+  fxMode = false,
+  fxReady = true,
   loaded,
   hasExpenses,
   displayCurrency,
@@ -58,11 +62,13 @@ export default function InsightScreen({
   // The selected month's per-category totals (byMonth folds split shares in,
   // matching derive's current-month totals); {} for a month with no data so
   // every tile honestly shows 0.
-  const totalsByCategory = useMemo(
-    () => monthAggregate(months, monthKey).byCategory,
-    [months, monthKey]
+  const viewMonth = useMemo(
+    () => monthAggregate(months, monthKey, fxMode),
+    [months, monthKey, fxMode]
   );
-  const spentOf = (category) => totalsByCategory[category.id] ?? 0;
+  const totalsByCategory = viewMonth.byCategory;
+  const spentOf = (category) => fxMode ? categoryReporting(viewMonth, category.id).amount : totalsByCategory[category.id] ?? 0;
+  const coverageOf = (category) => fxMode ? categoryReporting(viewMonth, category.id).coverage : undefined;
   const hasBudgetFor = (category) => (categoryBudgets?.[category.id] ?? 0) > 0;
 
   // Manual position (from a drag) wins; anything not yet ordered appends after,
@@ -82,12 +88,14 @@ export default function InsightScreen({
         category,
         budget: categoryBudgets?.[category.id] ?? 0,
         thisVal: spentOf(category),
+        ...(fxMode ? { coverage: coverageOf(category), fxMode } : {}),
       }))
-      .filter((row) => row.thisVal > 0 || row.budget > 0 || row.category.custom)
+      .filter((row) => row.thisVal > 0 || row.budget > 0 || row.category.custom || (fxMode && (row.coverage.total > 0 || row.coverage.complete === false)))
       .sort(
         (a, b) =>
           orderIndex(a.category.id) - orderIndex(b.category.id) ||
-          b.thisVal - a.thisVal
+          (fxMode && (!isReportingAmount(a.thisVal) || !isReportingAmount(b.thisVal))
+            ? Number(isReportingAmount(b.thisVal)) - Number(isReportingAmount(a.thisVal)) : b.thisVal - a.thisVal)
       );
 
   const regularRows = tileRows(regularCategories);
@@ -103,14 +111,17 @@ export default function InsightScreen({
   const budgetedCategories = regularCategories.filter(hasBudgetFor);
   const hasBudgets = monthlyBudget > 0 || budgetedCategories.length > 0;
 
-  const regularSpent = regularCategories.reduce((sum, category) => sum + spentOf(category), 0);
-  const externalSpent = externalCategories.reduce((sum, category) => sum + spentOf(category), 0);
+  const regularCoverage = fxMode ? mergeReportingCoverage(regularCategories.map(coverageOf)) : null;
+  const externalCoverage = fxMode ? mergeReportingCoverage(externalCategories.map(coverageOf)) : null;
+  const regularSpent = fxMode ? regularCoverage.amount : regularCategories.reduce((sum, category) => sum + spentOf(category), 0);
+  const externalSpent = fxMode ? externalCoverage.amount : externalCategories.reduce((sum, category) => sum + spentOf(category), 0);
 
   const gaugeBudget =
     monthlyBudget > 0
       ? monthlyBudget
       : budgetedCategories.reduce((sum, category) => sum + (categoryBudgets[category.id] ?? 0), 0);
-  const gaugeSpent =
+  const gaugeCoverage = fxMode ? mergeReportingCoverage((monthlyBudget > 0 ? regularCategories : budgetedCategories).map(coverageOf)) : null;
+  const gaugeSpent = fxMode ? gaugeCoverage.amount :
     monthlyBudget > 0
       ? regularSpent
       : budgetedCategories.reduce((sum, category) => sum + spentOf(category), 0);
@@ -151,7 +162,7 @@ export default function InsightScreen({
 
         {/* Hold the budget cards until data has loaded so a cold launch never
             flashes an empty "No budget set" bar before the cache resolves. */}
-        {!loaded ? null : !hasExpenses ? (
+        {!loaded || (fxMode && !fxReady) ? null : !hasExpenses ? (
           <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />
         ) : (
           <>
@@ -171,6 +182,8 @@ export default function InsightScreen({
                 </View>
               </View>
               <BudgetBar
+                fxMode={fxMode}
+                coverage={gaugeCoverage}
                 spent={gaugeSpent}
                 budget={gaugeBudget}
                 displayCurrency={displayCurrency}
@@ -216,10 +229,11 @@ export default function InsightScreen({
                     <>
                       <View style={styles.dividerRow}>
                         <Text style={styles.dividerLabel}>{t('budget.externalTotal')}</Text>
-                        <Text style={styles.dividerAmount}>
-                          {formatMoneyShort(externalSpent, displayCurrency)}
+                        <Text style={styles.dividerAmount} accessibilityLabel={fxMode ? formatReportingAmount(externalSpent, displayCurrency, t, { coverage: externalCoverage, code: true }) : undefined}>
+                          {fxMode ? formatReportingAmount(externalSpent, displayCurrency, t, { compact: true, coverage: externalCoverage }) : formatMoneyShort(externalSpent, displayCurrency)}
                         </Text>
                       </View>
+                      {fxMode && <ReportingFxStatus coverage={externalCoverage} summary />}
                       <DraggableTileGrid
                         rows={externalRows}
                         displayCurrency={displayCurrency}
@@ -265,7 +279,7 @@ export default function InsightScreen({
 // centered remaining (or over-by) hero figure, a two-segment spent/remaining
 // proportion bar, then two tinted stat tiles (Spent in the budget-zone tone
 // with % used, Budget in the accent tone) with toned icon chips.
-function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t }) {
+export function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t, fxMode = false, coverage }) {
   if (empty) {
     return (
       <View>
@@ -278,13 +292,26 @@ function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t })
     );
   }
 
+  const comparison = fxMode ? budgetPresentation(spent, budget, displayCurrency, coverage) : null;
+  if ((fxMode && !comparison.complete) || !isReportingAmount(spent) || !isReportingAmount(budget)) {
+    return <View>
+      <Text style={[styles.gaugeAmount, { color: colors.textMuted }]}>{t('fx.unavailable')}</Text>
+      <Text style={styles.gaugeCaption}>{t('fx.budgetUnavailable')}</Text>
+      <View style={styles.gaugeTileRow}>
+        <GaugeTile tone={colors.textMuted} icon="money-send-square" value={t('fx.unavailable')} accessibilityLabel={fxMode ? formatReportingAmount(null, displayCurrency, t, { code: true }) : undefined} label={t('budget.spentLabel')} caption="" styles={styles} />
+        <GaugeTile tone={colors.accent} icon="wallet-01" value={formatReportingAmount(budget, displayCurrency, t)} accessibilityLabel={fxMode ? formatReportingAmount(budget, displayCurrency, t, { code: true }) : undefined} label={t('budget.title')} caption={t('budget.perMonth')} styles={styles} />
+      </View>
+      {fxMode && <ReportingFxStatus coverage={coverage} summary />}
+    </View>;
+  }
   const factor = 10 ** getCurrency(displayCurrency).decimals;
-  const rounded = Math.round(spent * factor) / factor;
-  const ratio = budget > 0 ? rounded / budget : 0;
-  const over = rounded > budget;
+  const rounded = fxMode ? comparison.spent : Math.round(spent * factor) / factor;
+  const budgetValue = fxMode ? comparison.budget : budget;
+  const ratio = fxMode ? comparison.ratio : budget > 0 ? rounded / budget : 0;
+  const over = fxMode ? comparison.over : rounded > budget;
   const zoneColor = over ? colors.danger : ratio >= 0.75 ? colors.warning : colors.success;
-  const remaining = over ? rounded - budget : budget - rounded;
-  const pctLabel = ratio > 9.99 ? '>999%' : `${Math.round(ratio * 100)}%`;
+  const remaining = fxMode ? comparison.remaining : over ? rounded - budget : budget - rounded;
+  const pctLabel = ratio > 9.99 ? '>999%' : fxMode && ratio < -9.99 ? '<-999%' : `${Math.round(ratio * 100)}%`;
 
   return (
     <View>
@@ -294,6 +321,7 @@ function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t })
         style={[styles.gaugeAmount, { color: zoneColor }]}
         numberOfLines={1}
         adjustsFontSizeToFit
+        accessibilityLabel={fxMode ? formatReportingAmount(over ? -remaining : remaining, displayCurrency, t, { code: true }) : undefined}
       >
         {over ? `-${formatMoney(remaining, displayCurrency)}` : formatMoney(remaining, displayCurrency)}
       </Text>
@@ -305,7 +333,7 @@ function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t })
           <View
             style={[
               styles.gaugeBarSeg,
-              { flex: over ? 1 : Math.min(rounded, budget), backgroundColor: zoneColor },
+              { flex: over ? 1 : Math.min(rounded, budgetValue), backgroundColor: zoneColor },
             ]}
           />
         )}
@@ -317,7 +345,8 @@ function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t })
         <GaugeTile
           tone={zoneColor}
           icon="money-send-square"
-          value={formatMoneyShort(rounded, displayCurrency)}
+          value={fxMode ? formatReportingAmount(rounded, displayCurrency, t) : formatMoneyShort(rounded, displayCurrency)}
+          accessibilityLabel={fxMode ? formatReportingAmount(rounded, displayCurrency, t, { code: true }) : undefined}
           label={t('budget.spentLabel')}
           caption={t('budget.pctUsed', { pct: pctLabel })}
           styles={styles}
@@ -325,23 +354,25 @@ function BudgetBar({ spent, budget, displayCurrency, empty, styles, colors, t })
         <GaugeTile
           tone={colors.accent}
           icon="wallet-01"
-          value={formatMoneyShort(budget, displayCurrency)}
+          value={fxMode ? formatReportingAmount(budgetValue, displayCurrency, t) : formatMoneyShort(budget, displayCurrency)}
+          accessibilityLabel={fxMode ? formatReportingAmount(budgetValue, displayCurrency, t, { code: true }) : undefined}
           label={t('budget.title')}
           caption={t('budget.perMonth')}
           styles={styles}
         />
       </View>
+      {fxMode && <ReportingFxStatus coverage={coverage} summary />}
     </View>
   );
 }
 
 // One tinted half of the Budget card (the Split summary-tile treatment): toned
 // amount over its label and caption, with a toned icon chip on the right.
-function GaugeTile({ tone, icon, value, label, caption, styles }) {
+function GaugeTile({ tone, icon, value, label, caption, styles, accessibilityLabel }) {
   return (
     <View style={[styles.gaugeTile, { backgroundColor: `${tone}12` }]}>
       <View style={styles.gaugeTileText}>
-        <Text style={[styles.gaugeTileValue, { color: tone }]} numberOfLines={1}>{value}</Text>
+        <Text style={[styles.gaugeTileValue, { color: tone }]} numberOfLines={1} accessibilityLabel={accessibilityLabel}>{value}</Text>
         <Text style={styles.gaugeTileLabel} numberOfLines={1}>{label}</Text>
         <Text style={styles.gaugeTileCaption} numberOfLines={1}>{caption}</Text>
       </View>
@@ -480,10 +511,12 @@ function DraggableTileGrid({ rows, displayCurrency, onEditCategory, onReorder, o
 // editor, where the budget is set. Tapping a row opens the edit modal (presets
 // included — edits/deletes are stored as overrides/tombstones in
 // customCategories); long-press drags to reorder.
-function CategoryRow({
+export function CategoryRow({
   category,
   budget,
   thisVal,
+  fxMode = false,
+  coverage,
   displayCurrency,
   divider,
   onEdit,
@@ -497,10 +530,11 @@ function CategoryRow({
   t,
 }) {
   const factor = 10 ** getCurrency(displayCurrency).decimals;
-  const spent = Math.round(thisVal * factor) / factor;
+  const spent = fxMode ? budgetPresentation(thisVal, budget, displayCurrency, coverage).spent : Math.round(thisVal * factor) / factor;
   // Shared spent-of-budget bar state — see categoryBarState. `over` also tones
   // the amount text above the bar.
-  const bar = categoryBarState({ spent, budget, colors });
+  const bar = fxMode ? reportingCategoryBarState({ spent: thisVal, budget, currency: displayCurrency, coverage, colors })
+    : categoryBarState({ spent, budget, colors });
 
   const dragStyle = dragging
     ? { transform: pan.getTranslateTransform(), zIndex: 10, elevation: 10, opacity: 0.9 }
@@ -514,6 +548,9 @@ function CategoryRow({
         onPressOut={onPressOut}
         delayLongPress={200}
         accessibilityRole="button"
+        accessibilityLabel={fxMode ? [getCategoryLabel(category, t), formatReportingAmount(spent, displayCurrency, t, { coverage, code: true }),
+          budget > 0 ? `${t('budget.title')}: ${formatReportingAmount(budget, displayCurrency, t, { code: true })}` : t('cats.noBudget'),
+          ...reportingStatusKeys({ coverage, summary: true }).map((key) => t(key))].join(', ') : undefined}
         style={({ pressed }) => [styles.catRow, pressed && !dragging && styles.catRowPressed]}
       >
         <View style={[styles.catIconBox, { backgroundColor: `${category.color}1A` }]}>
@@ -529,21 +566,22 @@ function CategoryRow({
               style={[styles.catMonthVal, bar.over && { color: colors.danger }]}
               numberOfLines={1}
             >
-              {formatMoneyShort(spent, displayCurrency)}
+              {fxMode ? formatReportingAmount(spent, displayCurrency, t, { coverage }) : formatMoneyShort(spent, displayCurrency)}
             </Text>
           </View>
           <View style={styles.catRowBottom}>
             <View style={styles.catTrack}>
-              <View
+              {bar.fillPct !== null && <View
                 style={[styles.catFill, { width: `${bar.fillPct}%`, backgroundColor: bar.tone }]}
-              />
+              />}
             </View>
             <Text style={styles.catBudgetVal} numberOfLines={1}>
-              {bar.basis === 'budget'
+              {budget > 0
                 ? formatMoneyShort(budget, displayCurrency)
                 : t('cats.noBudget')}
             </Text>
           </View>
+          {fxMode && <ReportingFxStatus coverage={coverage} summary />}
         </View>
       </Pressable>
     </Animated.View>

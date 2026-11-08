@@ -3,6 +3,19 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { fonts, spacing, useTheme } from '../theme';
 import { formatMoneyShort } from '../format';
+import { useT } from '../i18n';
+import { formatReportingAmount, isReportingAmount } from '../reportingPresentation';
+
+export function spendingChartPath(points) {
+  if (points.length < 2) return '';
+  let path = '', connected = false;
+  for (const point of points) {
+    if (!point) { connected = false; continue; }
+    path += `${connected ? ' L' : ' M'}${point.x},${point.y}`;
+    connected = true;
+  }
+  return path.trim();
+}
 
 const CHART_HEIGHT = 150;
 const PADDING_LEFT = 40;
@@ -68,6 +81,7 @@ function gridSteps(maxVal) {
 // today — that month-to-date vs. whole-month read is the point of it.
 export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mode = 'daily', monthlyTotals, compareTotals }) {
   const { colors } = useTheme();
+  const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(null);
@@ -112,54 +126,56 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
 
     // One scale for both lines — a comparison drawn to its own max would be a
     // lie about the shape it's being compared to.
-    const maxVal = Math.max(...values, ...compareValues, 1);
+    const finiteValues = [...values, ...compareValues].filter(isReportingAmount);
+    const maxVal = Math.max(...finiteValues, 1);
+    const minVal = Math.min(...finiteValues, 0);
+    const magnitude = Math.max(maxVal, Math.abs(minVal));
 
-    const drawWidth = chartWidth - PADDING_LEFT - PADDING_RIGHT;
+    const drawWidth = Math.max(0, chartWidth - PADDING_LEFT - PADDING_RIGHT);
     const drawHeight = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
     const baselineY = PADDING_TOP + drawHeight;
 
     const getX = (i) =>
       slotCount <= 1 ? PADDING_LEFT + drawWidth / 2 : PADDING_LEFT + (i / (slotCount - 1)) * drawWidth;
-    const getY = (value) => PADDING_TOP + drawHeight - (value / maxVal) * drawHeight;
+    const getY = (value) => PADDING_TOP + drawHeight
+      - ((value / magnitude - minVal / magnitude) / (maxVal / magnitude - minVal / magnitude)) * drawHeight;
 
-    const points = values.map((val, i) => ({ x: getX(i), y: getY(val) }));
-    const comparePoints = compareValues.map((val, i) => ({ x: getX(i), y: getY(val) }));
+    const slotXs = values.map((_, i) => getX(i));
+    const points = values.map((val, i) => isReportingAmount(val) ? { x: getX(i), y: getY(val) } : null);
+    const comparePoints = compareValues.map((val, i) => isReportingAmount(val) ? { x: getX(i), y: getY(val) } : null);
 
     // Straight segments, round joins — a single spike day now reads as a crisp
     // peak instead of the balloon a Bezier smoothing pass inflated it into.
-    const toPath = (pts) => {
-      if (pts.length < 2) return '';
-      let d = `M${pts[0].x},${pts[0].y}`;
-      for (let i = 1; i < pts.length; i++) d += ` L${pts[i].x},${pts[i].y}`;
-      return d;
-    };
-    const linePath = toPath(points);
-    const comparePath = toPath(comparePoints);
+    const linePath = spendingChartPath(points);
+    const comparePath = spendingChartPath(comparePoints);
 
     const xLabels = labelSlots.map(({ index, label }) => ({ x: getX(index), label }));
 
-    // Dot markers: every point in monthly mode (few, well-spaced slots); in
-    // daily mode only the newest point — a dot per gridline day read as noise.
+    // A move-only subpath cannot paint an isolated observation. Mark those
+    // islands in both series, keeping complete daily lines uncluttered.
+    const isolated = (series, index) => series[index] && !series[index - 1] && !series[index + 1];
     const dotIndexes = new Set();
-    if (monthly) points.forEach((_, i) => dotIndexes.add(i));
+    points.forEach((_, i) => { if (monthly || isolated(points, i)) dotIndexes.add(i); });
     if (points.length > 0) dotIndexes.add(points.length - 1);
+    const compareDotIndexes = new Set();
+    comparePoints.forEach((_, i) => { if (isolated(comparePoints, i)) compareDotIndexes.add(i); });
 
     const lastPoint = points.length > 0 ? points[points.length - 1] : null;
     const lastVal = values.length > 0 ? values[values.length - 1] : 0;
 
-    const yLabels = gridSteps(maxVal).map((v) => ({ value: v, y: getY(v) }));
+    const yLabels = (finiteValues.length ? gridSteps(maxVal) : []).map((v) => ({ value: v, y: getY(v) }));
 
     return {
-      values, compareValues, slotCount, drawWidth, baselineY,
+      values, compareValues, slotCount, drawWidth, baselineY, slotXs,
       points, comparePoints, linePath, comparePath,
-      xLabels, dotIndexes, lastPoint, lastVal, yLabels,
+      xLabels, dotIndexes, compareDotIndexes, lastPoint, lastVal, yLabels,
     };
   }, [dailyTotals, chartWidth, endDay, monthly, monthlyTotals, compareTotals]);
 
   const {
-    values, compareValues, slotCount, drawWidth, baselineY,
+    values, compareValues, slotCount, drawWidth, baselineY, slotXs,
     points, comparePoints, linePath, comparePath,
-    xLabels, dotIndexes, lastPoint, lastVal, yLabels,
+    xLabels, dotIndexes, compareDotIndexes, lastPoint, lastVal, yLabels,
   } = geom;
 
   const handleInteraction = (e) => {
@@ -178,10 +194,12 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
   const clearActive = () => setActiveIndex((cur) => (cur === null ? cur : null));
 
   const activePoint = activeIndex != null && activeIndex < points.length ? points[activeIndex] : null;
+  const activeAnchor = activeIndex != null && activeIndex < values.length
+    ? { x: slotXs[activeIndex], y: activePoint?.y ?? PADDING_TOP } : null;
   // The comparison's reading at the scrubbed day (it can run out earlier than
   // the selected month — e.g. the 31st against a 30-day previous month).
   const compareActive =
-    activePoint && activeIndex < comparePoints.length ? comparePoints[activeIndex] : null;
+    activeAnchor && activeIndex < comparePoints.length ? comparePoints[activeIndex] : null;
   const tooltipLabel =
     activeIndex == null
       ? ''
@@ -271,12 +289,12 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
               />
             )}
 
-            {/* Dot markers: every point (monthly) + the newest point. The
+            {/* Dot markers: monthly points, daily islands, and the newest point. The
                 newest reads as a solid terminal cap on the thin line; the
                 in-between monthly dots stay small and ringed so a dense run of
                 them doesn't thicken the line. */}
             {points.map((p, i) => {
-              if (!dotIndexes.has(i) || i === activeIndex) return null;
+              if (!p || !dotIndexes.has(i) || i === activeIndex) return null;
               const isLast = i === points.length - 1;
               return (
                 <Circle
@@ -290,6 +308,19 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
                 />
               );
             })}
+
+            {comparePoints.map((p, i) => !p || !compareDotIndexes.has(i) || i === activeIndex ? null : (
+              <Circle
+                key={`compare-dot-${i}`}
+                cx={p.x}
+                cy={p.y}
+                r={2.5}
+                fill={colors.accent}
+                stroke={colors.card}
+                strokeWidth={1.5}
+                opacity={activePoint ? COMPARE_ACTIVE : COMPARE_DIM}
+              />
+            ))}
 
             {compareActive && (
               <Circle
@@ -333,7 +364,7 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
         {/* Floating badge on the newest point (hidden while scrubbing, and
             when the latest value is 0 — a "$0" pill on the baseline is noise,
             e.g. a past month whose final days had no spending). */}
-        {lastPoint && lastVal > 0 && !activePoint && (
+        {lastPoint && lastVal > 0 && !activeAnchor && (
           <View
             style={[
               styles.lastBadge,
@@ -350,38 +381,43 @@ export default function SpendingChart({ dailyTotals, displayCurrency, endDay, mo
           </View>
         )}
 
-        {activePoint && (
+        {activeAnchor && (
           <View
             style={[
               styles.tooltip,
               {
-                left: Math.max(4, Math.min(chartWidth - 76, activePoint.x - 38)),
+                left: Math.max(4, Math.min(chartWidth - 76, activeAnchor.x - 38)),
                 // The comparison row makes the pill ~14px taller, so it needs
                 // that much more clearance before it can sit above the point.
-                top: activePoint.y > (compareActive ? 66 : 52)
-                  ? activePoint.y - (compareActive ? 60 : 46)
-                  : activePoint.y + 14,
+                top: activeAnchor.y > (compareActive ? 66 : 52)
+                  ? activeAnchor.y - (compareActive ? 60 : 46)
+                  : activeAnchor.y + 14,
               },
             ]}
             pointerEvents="none"
           >
             <Text style={styles.tooltipDay}>{tooltipLabel}</Text>
-            <Text style={styles.tooltipValue}>
-              {formatMoneyShort(values[activeIndex], displayCurrency)}
+            <Text style={styles.tooltipValue} accessibilityLabel={formatReportingAmount(values[activeIndex], displayCurrency, t, { code: true })}>
+              {formatReportingAmount(values[activeIndex], displayCurrency, t, { compact: true })}
             </Text>
             {/* Same day, previous month. The dimmed dash echoes the dimmed
                 line, which is what says WHICH line this figure belongs to. */}
             {compareActive && (
               <View style={styles.tooltipCompareRow}>
                 <View style={styles.tooltipCompareSwatch} />
-                <Text style={styles.tooltipCompareValue}>
-                  {formatMoneyShort(compareValues[activeIndex], displayCurrency)}
+                <Text style={styles.tooltipCompareValue} accessibilityLabel={formatReportingAmount(compareValues[activeIndex], displayCurrency, t, { code: true })}>
+                  {formatReportingAmount(compareValues[activeIndex], displayCurrency, t, { compact: true })}
                 </Text>
               </View>
             )}
           </View>
         )}
       </View>
+      {values.some((value) => !isReportingAmount(value)) && (
+        <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: colors.textMuted }}>
+          {t(values.some(isReportingAmount) ? 'fx.chartGaps' : 'fx.chartUnavailable')}
+        </Text>
+      )}
     </View>
   );
 }

@@ -7,8 +7,10 @@ import { formatMoney } from '../format';
 import { HIcon } from '../icons';
 import { spendingRowInteractions } from '../spendingActivity';
 import { HistoricalFxRow } from './HistoricalFxPreview';
+import ReportingFxStatus from './ReportingFxStatus';
+import { formatReportingAmount, isReportingAmount, reportingStatusKeys } from '../reportingPresentation';
 
-export default React.memo(function ExpenseRow({ expense, displayCurrency, categories, groupName, onRequestDelete, onEdit, fxPreview }) {
+export default React.memo(function ExpenseRow({ expense, displayCurrency, categories, groupName, onRequestDelete, onEdit, fxPreview, fxMode = false }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -30,6 +32,12 @@ export default React.memo(function ExpenseRow({ expense, displayCurrency, catego
   const sharedLabel = expense.sourceType === 'shared'
     ? groupName ? t('list.sharedWithGroup', { group: groupName }) : t('list.sharedYourShare')
     : null;
+  const value = fxMode ? expense.fx ?? { status: 'unavailable', amount: null } : null;
+  const amount = fxMode ? value.amount : expense.displayAmount;
+  const amountLabel = formatReportingAmount(amount, displayCurrency, t, { code: fxMode });
+  const originalLabel = formatReportingAmount(expense.amount, expense.currency, t, { code: true });
+  const originalKey = expense.sourceType === 'shared' ? 'fx.yourShare' : 'fx.original';
+  const fxLabel = fxMode ? `, ${t(originalKey)}: ${originalLabel}, ${reportingStatusKeys({ value, verbose: true }).map((key) => t(key)).join(', ')}` : '';
 
   return (
     <Pressable
@@ -37,7 +45,7 @@ export default React.memo(function ExpenseRow({ expense, displayCurrency, catego
       onLongPress={onLongPress}
       delayLongPress={350}
       accessibilityRole="button"
-      accessibilityLabel={`${label}${sharedLabel ? ', ' + sharedLabel : ''}, ${formatMoney(expense.displayAmount, displayCurrency)}`}
+      accessibilityLabel={`${label}${sharedLabel ? ', ' + sharedLabel : ''}, ${amountLabel}${fxLabel}`}
       accessibilityHint={accessibilityHintKey ? t(accessibilityHintKey) : undefined}
       style={({ pressed }) => [
         styles.row,
@@ -55,12 +63,13 @@ export default React.memo(function ExpenseRow({ expense, displayCurrency, catego
         <Text style={styles.categoryLabel}>{getCategoryLabel(category, t)}</Text>
         {sharedLabel && <Text style={styles.sharedLabel} numberOfLines={1}>{sharedLabel}</Text>}
         {__DEV__ && converted && fxPreview && <HistoricalFxRow value={fxPreview} currency={displayCurrency} />}
+        {fxMode && <ReportingFxStatus value={value} />}
       </View>
-      <View style={styles.amounts}>
-        <Text style={styles.amount}>-{formatMoney(expense.displayAmount, displayCurrency)}</Text>
-        {converted && (
+      <View style={[styles.amounts, fxMode && { maxWidth: '55%', flexShrink: 1 }]}>
+        <Text style={styles.amount}>{isReportingAmount(amount) ? (fxMode && amount < 0 ? '+' : '-') : ''}{formatReportingAmount(isReportingAmount(amount) ? Math.abs(amount) : null, displayCurrency, t)}</Text>
+        {(converted || fxMode) && (
           <Text style={styles.originalAmount}>
-            {formatMoney(expense.amount, expense.currency)} {expense.currency}
+            {fxMode ? `${t(originalKey)}: ${originalLabel}` : `${formatMoney(expense.amount, expense.currency)} ${expense.currency}`}
           </Text>
         )}
       </View>

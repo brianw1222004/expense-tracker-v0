@@ -5,8 +5,11 @@ import { fonts, spacing, radius, useTheme, cardShadow } from '../theme';
 import { useT } from '../i18n';
 import { formatMoneyShort } from '../format';
 import { getCategoryLabel } from '../categories';
-import { categoryBarState } from '../budget';
+import { categoryBarState, reportingCategoryBarState } from '../budget';
 import { HIcon } from '../icons';
+import { monthAggregate } from '../browsingMonth';
+import ReportingFxStatus from './ReportingFxStatus';
+import { formatReportingAmount, isCompleteReporting } from '../reportingPresentation';
 
 const DONUT_SIZE = 132;
 const DONUT_STROKE = 20;
@@ -25,7 +28,7 @@ function buildArcs(segments, total) {
   const available = Math.max(0, DONUT_CIRC - totalGap);
   let cursor = 0;
   return segments.map((seg) => {
-    const dash = (seg.value / total) * available;
+    const dash = Math.min(1, Math.max(0, seg.value / total)) * available;
     const offset = DONUT_CIRC * 0.25 - cursor;
     cursor += dash + MIN_GAP;
     return {
@@ -54,6 +57,7 @@ const TOP_ROWS = 3;
 // header jumps to the Insight tab, which hosts the full per-category tile
 // grid on its Categories card.
 export default function CategorySummaryCard({
+  fxMode = false,
   months,
   monthKey,
   displayCurrency,
@@ -66,9 +70,11 @@ export default function CategorySummaryCard({
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const viewMonth = useMemo(
-    () => months.find((m) => m.key === monthKey) ?? { key: monthKey, total: 0, byCategory: {} },
-    [months, monthKey]
+    () => monthAggregate(months, monthKey, fxMode),
+    [months, monthKey, fxMode]
   );
+  const complete = isCompleteReporting(viewMonth.total, fxMode ? viewMonth.coverage : undefined)
+    && Object.entries(viewMonth.byCategory).every(([id, amount]) => isCompleteReporting(amount, fxMode ? viewMonth.categoryCoverage?.[id] : undefined));
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -86,7 +92,19 @@ export default function CategorySummaryCard({
         </Pressable>
       </View>
 
-      <CategoryDonut
+      {!complete ? (
+        <View>
+          <Text style={{ color: colors.textMuted }}>{t('fx.categoriesUnavailable')}</Text>
+          {(allCategories ?? []).filter((category) => Object.prototype.hasOwnProperty.call(viewMonth.byCategory, category.id)
+            && !isCompleteReporting(viewMonth.byCategory[category.id], viewMonth.categoryCoverage?.[category.id])).map((category) => (
+            <Text key={category.id} style={{ color: category.color, marginTop: spacing.xs }}>
+              {getCategoryLabel(category, t)}: {t('fx.unavailable')}
+            </Text>
+          ))}
+        </View>
+      ) : <CategoryDonut
+        fxMode={fxMode}
+        categoryCoverage={viewMonth.categoryCoverage}
         byCategory={viewMonth.byCategory}
         total={viewMonth.total}
         displayCurrency={displayCurrency}
@@ -95,7 +113,8 @@ export default function CategorySummaryCard({
         colors={colors}
         styles={styles}
         t={t}
-      />
+      />}
+      {fxMode && <ReportingFxStatus coverage={viewMonth.coverage} summary />}
     </View>
   );
 }
@@ -103,7 +122,7 @@ export default function CategorySummaryCard({
 // Rounded-segment donut of one month's spending by category. The ring carries
 // the breakdown of ALL categories; beside it we list the top spenders, sharing
 // the same `total` denominator so their percentages match the arcs.
-function CategoryDonut({ byCategory, total, displayCurrency, allCategories, categoryBudgets, colors, styles, t }) {
+function CategoryDonut({ byCategory, total, displayCurrency, allCategories, categoryBudgets, colors, styles, t, fxMode, categoryCoverage }) {
   const segments = useMemo(() => {
     if (total <= 0) return [];
     return (allCategories ?? [])
@@ -147,6 +166,7 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, cate
             style={[styles.donutTotal, { color: colors.textPrimary }]}
             numberOfLines={1}
             adjustsFontSizeToFit
+            accessibilityLabel={fxMode ? formatReportingAmount(total, displayCurrency, t, { code: true }) : undefined}
           >
             {formatMoneyShort(total, displayCurrency)}
           </Text>
@@ -159,6 +179,8 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, cate
           <View key={seg.category.id}>
             {i > 0 && <View style={styles.statDivider} />}
             <TopCategoryRow
+              fxMode={fxMode}
+              coverage={categoryCoverage?.[seg.category.id]}
               seg={seg}
               budget={categoryBudgets?.[seg.category.id] ?? 0}
               displayCurrency={displayCurrency}
@@ -186,8 +208,9 @@ function CategoryDonut({ byCategory, total, displayCurrency, allCategories, cate
 // mirroring the Insight budget gauge; with no budget set the track stays empty
 // and the slot reads "No budget" — via the shared `categoryBarState`, exactly
 // like the Insight rows.
-function TopCategoryRow({ seg, budget, displayCurrency, colors, styles, t }) {
-  const bar = categoryBarState({ spent: seg.value, budget, colors });
+function TopCategoryRow({ seg, budget, displayCurrency, colors, styles, t, fxMode, coverage }) {
+  const bar = fxMode ? reportingCategoryBarState({ spent: seg.value, budget, currency: displayCurrency, coverage, colors })
+    : categoryBarState({ spent: seg.value, budget, colors });
   return (
     <View style={styles.statRow}>
       <View style={[styles.statIconBox, { backgroundColor: `${seg.category.color}1A` }]}>
@@ -202,13 +225,15 @@ function TopCategoryRow({ seg, budget, displayCurrency, colors, styles, t }) {
           <Text
             style={[styles.statSpent, bar.over && { color: colors.danger }]}
             numberOfLines={1}
+            accessibilityLabel={fxMode ? formatReportingAmount(seg.value, displayCurrency, t, { coverage, code: true }) : undefined}
           >
-            {formatMoneyShort(seg.value, displayCurrency)}
+            {fxMode ? formatReportingAmount(seg.value, displayCurrency, t, { coverage }) : formatMoneyShort(seg.value, displayCurrency)}
           </Text>
         </View>
+        {fxMode && <ReportingFxStatus coverage={coverage} summary />}
         <View style={styles.statBarRow}>
           <View style={styles.statBarTrack}>
-            <View style={[styles.statBarFill, { width: `${bar.fillPct}%`, backgroundColor: bar.tone }]} />
+            {bar.fillPct !== null && <View style={[styles.statBarFill, { width: `${bar.fillPct}%`, backgroundColor: bar.tone }]} />}
           </View>
           <Text style={styles.statBudget} numberOfLines={1}>
             {bar.basis === 'budget'

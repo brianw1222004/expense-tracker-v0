@@ -15,6 +15,9 @@ import { useT, useLanguage, getDateNames } from '../i18n';
 import { formatMoney, formatMoneyShort, shiftMonthKey } from '../format';
 import { HistoricalMonthPreview } from '../components/HistoricalFxPreview';
 import { historicalPreviewRows } from '../historicalFxPreview';
+import ReportingFxStatus from '../components/ReportingFxStatus';
+import { formatReportingAmount, isCompleteReporting, mergeReportingCoverage, reportingChange, reportingStatusKeys } from '../reportingPresentation';
+import { summarizeReportingFx } from '../reportingFx';
 
 // The hero chart's granularity toggle: the selected month's per-day line
 // (default) vs. the cross-month trend of the last six months' totals.
@@ -24,6 +27,10 @@ const CHART_MODES = [
 ];
 
 export default function DashboardScreen({
+  fxMode = false,
+  fxReady = true,
+  coverage,
+  previousCoverage,
   fxPreviewEnabled = false,
   fxUserScope,
   spendingSections = [],
@@ -60,24 +67,52 @@ export default function DashboardScreen({
   // month, zero-filled where there's no data. Labels are the language's month
   // names, truncated to 3 chars for the latin scripts (CJK are already short).
   const monthlyTotals = useMemo(() => {
-    const totalByKey = new Map((categoryMonths ?? []).map((m) => [m.key, m.total]));
+    const monthByKey = new Map((categoryMonths ?? []).map((m) => [m.key, m]));
     const names = getDateNames(language).months;
     const out = [];
     let key = monthKey;
     for (let i = 0; i < 6; i++) {
       const name = names[Number(key.slice(5, 7)) - 1];
-      out.unshift({ label: name.length > 4 ? name.slice(0, 3) : name, value: totalByKey.get(key) ?? 0 });
+      const month = monthByKey.get(key);
+      out.unshift({ label: name.length > 4 ? name.slice(0, 3) : name,
+        value: month ? month.total : 0,
+        ...(fxMode ? { key, coverage: month?.coverage ?? { ...summarizeReportingFx([]),
+          ...(month ? { amount: null, complete: false, reason: 'missing-coverage' } : {}) } } : {}) });
       key = shiftMonthKey(key, -1);
     }
     return out;
-  }, [categoryMonths, monthKey, language]);
+  }, [categoryMonths, monthKey, language, fxMode]);
 
-  const delta = monthTotal - (lastMonthTotal ?? 0);
-  const hasLastMonth = (lastMonthTotal ?? 0) > 0;
+  const hasLastMonth = isCompleteReporting(lastMonthTotal) && lastMonthTotal > 0;
+  const delta = isCompleteReporting(monthTotal) && hasLastMonth ? monthTotal - lastMonthTotal : 0;
   // Spending down = good (green ↓), up = bad (red ↑), flat = neutral — mirrors
   // the three-way convention in the category breakdown so an exact tie isn't shown red.
   const heroDir = delta < 0 ? 'down' : delta > 0 ? 'up' : 'flat';
   const deltaPct = hasLastMonth ? (Math.abs(delta) / lastMonthTotal) * 100 : 0;
+  const change = reportingChange(monthTotal, lastMonthTotal, coverage, previousCoverage);
+  const ready = !fxMode || (loaded && fxReady);
+  const canCompare = ready && (fxMode ? change !== null
+    : isCompleteReporting(monthTotal) && isCompleteReporting(lastMonthTotal) && hasLastMonth);
+  const chartVisible = hasExpenses && Boolean(dailyTotals);
+  const comparisonVisible = hasExpenses && (canCompare || (chartVisible && chartMode === 'daily' && prevDailyTotals?.length > 0));
+  const contextCoverage = useMemo(() => {
+    if (!fxMode || !hasExpenses || (!chartVisible && !comparisonVisible)) return null;
+    // Each displayed month participates once, even when also used in the delta.
+    const included = new Map(chartVisible && chartMode === 'monthly'
+      ? monthlyTotals.map((month) => [month.key, month.coverage]) : []);
+    const selected = monthlyTotals.find((month) => month.key === monthKey);
+    included.set(monthKey, coverage ?? selected.coverage);
+    if (comparisonVisible) {
+      const previousKey = shiftMonthKey(monthKey, -1);
+      included.set(previousKey, previousCoverage ?? monthlyTotals.find((month) => month.key === previousKey).coverage);
+    }
+    return mergeReportingCoverage([...included.values()]);
+  }, [fxMode, hasExpenses, chartVisible, comparisonVisible, chartMode, monthlyTotals, monthKey, coverage, previousCoverage]);
+  const sameDisclosure = contextCoverage && reportingStatusKeys({ coverage, summary: true }).join('|')
+    === reportingStatusKeys({ coverage: contextCoverage, summary: true }).join('|');
+  const contextLabel = chartVisible && chartMode === 'monthly'
+    ? t(comparisonVisible ? 'fx.trendComparison' : 'fx.trend')
+    : comparisonVisible ? t('fx.comparison') : t('fx.trend');
 
   return (
     <View style={styles.root}>
@@ -113,17 +148,23 @@ export default function DashboardScreen({
         </View>
 
         <View style={styles.heroNumberRow}>
-          <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit>
-            {formatMoney(monthTotal, displayCurrency)}
+          <Text style={styles.heroTotal} numberOfLines={1} adjustsFontSizeToFit
+            accessibilityLabel={fxMode ? !ready ? t('fx.loading') : formatReportingAmount(monthTotal, displayCurrency, t, { coverage, code: true }) : undefined}>
+            {!ready ? t('fx.loading') : fxMode
+              ? formatReportingAmount(monthTotal, displayCurrency, t, { coverage })
+              : formatReportingAmount(monthTotal, displayCurrency, t)}
           </Text>
-          {hasExpenses && hasLastMonth && (
-            <DeltaBadge value={deltaPct > 999 ? '999+' : deltaPct.toFixed(1)} dir={heroDir} colors={colors} styles={styles} />
+          {hasExpenses && canCompare && (
+            <DeltaBadge value={(fxMode ? change.pct : deltaPct) > 999 ? '999+' : (fxMode ? change.pct : deltaPct).toFixed(1)}
+              dir={fxMode ? change.dir : heroDir} colors={colors} styles={styles} />
           )}
         </View>
 
+        {fxMode && ready && !sameDisclosure && <ReportingFxStatus coverage={coverage} summary />}
+
         {/* No spacer between the figure and the chart — SpendingChart's own
             PADDING_TOP is the whole gap. */}
-        {hasExpenses && dailyTotals && (
+        {ready && hasExpenses && dailyTotals && (
           <SpendingChart
             dailyTotals={dailyTotals}
             // The previous month's per-day line, dimmed behind this one (the
@@ -136,14 +177,16 @@ export default function DashboardScreen({
             monthlyTotals={monthlyTotals}
           />
         )}
+        {fxMode && ready && contextCoverage && <ReportingFxStatus coverage={contextCoverage} summary label={contextLabel} />}
       </View>
 
-      {__DEV__ && fxPreviewEnabled && (
+      {ready && __DEV__ && fxPreviewEnabled && (
         <HistoricalMonthPreview rows={historicalRows} currency={displayCurrency} userScope={fxUserScope} monthKey={monthKey} />
       )}
 
-      {hasExpenses && (
+      {ready && hasExpenses && (
         <CategorySummaryCard
+          fxMode={fxMode}
           months={categoryMonths}
           monthKey={monthKey}
           displayCurrency={displayCurrency}
@@ -190,7 +233,7 @@ export default function DashboardScreen({
         </Pressable>
       )}
 
-      {loaded && !hasExpenses && (
+      {ready && loaded && !hasExpenses && (
         <EmptyState onAdd={onAddPress} onLoadDemo={onLoadDemo} colors={colors} t={t} />
       )}
     </ScrollView>

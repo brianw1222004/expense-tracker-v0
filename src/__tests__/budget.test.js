@@ -11,6 +11,38 @@ const {
   remainingBudget,
   totalAllocatedBudget,
 } = require('../budget');
+const { reportingCategoryBarState } = require('../budget');
+const { budgetPresentation } = require('../reportingPresentation');
+
+describe('opt-in reporting budget presentation', () => {
+  const colors = { success: 'green', warning: 'orange', danger: 'red', textMuted: 'muted' };
+  test.each(['JPY', 'KRW', 'TWD', 'USD'])('uses currency precision for %s without changing source values', (currency) => {
+    const decimals = currency === 'USD' ? 2 : 0;
+    const spent = currency === 'USD' ? 100.004 : 100.4;
+    expect(budgetPresentation(spent, 100, currency)).toMatchObject({ spent: 100, over: false });
+    expect(reportingCategoryBarState({ spent, budget: 100, currency, colors }).over).toBe(false);
+    expect(budgetPresentation(100 + 10 ** -decimals, 100, currency).over).toBe(true);
+    expect(spent).toBe(currency === 'USD' ? 100.004 : 100.4);
+  });
+  test('matches currency display rounding rather than introducing another rounding rule', () => {
+    expect(budgetPresentation(2.675, 2.67, 'USD')).toMatchObject({ spent: 2.67, over: false });
+  });
+  test('does not emit infinite ratios or lose an over-budget bar for extreme finite spending', () => {
+    expect(reportingCategoryBarState({ spent: Number.MAX_VALUE, budget: 0.01, currency: 'USD', colors })).toMatchObject({ over: true, fillPct: 100, ratio: Number.MAX_VALUE });
+    expect(Number.isFinite(budgetPresentation(-Number.MAX_VALUE, 0.01, 'USD').ratio)).toBe(true);
+  });
+  test('preserves legacy unrounded category outcomes and the 75/85 percent warning rules', () => {
+    expect(categoryBarState({ spent: 100.4, budget: 100, colors }).over).toBe(true);
+    expect(reportingCategoryBarState({ spent: 100.4, budget: 100, currency: 'TWD', colors }).over).toBe(false);
+    expect(budgetPresentation(75, 100, 'USD').ratio).toBe(0.75);
+    expect(reportingCategoryBarState({ spent: 75, budget: 100, currency: 'USD', colors }).tone).toBe('green');
+    expect(reportingCategoryBarState({ spent: 85, budget: 100, currency: 'USD', colors }).tone).toBe('orange');
+  });
+  test.each([null, undefined, NaN, Infinity])('does not claim budget status for %p', (spent) => {
+    expect(budgetPresentation(spent, 100, 'USD')).toMatchObject({ complete: false, budget: 100, over: null, remaining: null, ratio: null });
+    expect(reportingCategoryBarState({ spent, budget: 100, currency: 'USD', colors })).toMatchObject({ basis: 'unavailable', over: null, fillPct: null });
+  });
+});
 
 describe('budget allocation helpers', () => {
   test('detects usable overall budgets', () => {

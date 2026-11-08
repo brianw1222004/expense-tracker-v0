@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, radius, spacing, useTheme, cardShadow } from '../theme';
 import { getDateNames, useLanguage, useT } from '../i18n';
 import { getCategory, getCategoryLabel } from '../categories';
-import { buildCalendarWeeks, dateKey, dayLabel, formatMoney } from '../format';
+import { buildCalendarWeeks, dateKey, dayLabel } from '../format';
 import { defaultBrowsingDate } from '../browsingMonth';
 import { canDeleteSpendingActivity, spendingDays, spendingForDay } from '../spendingActivity';
 import EmptyState from '../components/EmptyState';
@@ -14,12 +14,17 @@ import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
 import useHistoricalFxPreview from '../useHistoricalFxPreview';
+import ReportingFxStatus from '../components/ReportingFxStatus';
+import { formatReportingAmount } from '../reportingPresentation';
 
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
 export default function ExpenseListScreen({
+  fxMode = false,
+  fxReady = true,
+  accountKey,
   fxPreviewEnabled = false,
   fxUserScope,
   spendingSections,
@@ -48,6 +53,8 @@ export default function ExpenseListScreen({
   const calMonth = monthNumber - 1;
   const [filter, setFilter] = useState('all');
   const [pendingDelete, setPendingDelete] = useState(null);
+  const deleteOwnerRef = useRef(accountKey);
+  useEffect(() => { setPendingDelete(null); }, [accountKey]);
   const prevTodayRef = useRef(today);
   const prevMonthKeyRef = useRef(monthKey);
   useEffect(() => {
@@ -86,9 +93,9 @@ export default function ExpenseListScreen({
   const activeFilter =
     filter !== 'all' && !presentCategories.some((c) => c.id === filter) ? 'all' : filter;
 
-  const { filteredExpenses, filteredTotal } = useMemo(
-    () => spendingForDay(spendingSections, visibleSelectedDate, activeFilter, categories),
-    [spendingSections, visibleSelectedDate, activeFilter, categories]
+  const { filteredExpenses, filteredTotal, coverage } = useMemo(
+    () => spendingForDay(spendingSections, visibleSelectedDate, activeFilter, categories, fxMode),
+    [spendingSections, visibleSelectedDate, activeFilter, categories, fxMode]
   );
   const historical = useHistoricalFxPreview(filteredExpenses, displayCurrency, fxUserScope,
     __DEV__ && fxPreviewEnabled && loaded);
@@ -119,7 +126,7 @@ export default function ExpenseListScreen({
 
   // Every branch keeps the fixed HeaderGlow wash so the page always matches
   // the glowWashTop status-bar strip App.js paints while the tab UI is up.
-  if (!loaded) {
+  if (!loaded || (fxMode && !fxReady)) {
     return (
       <View style={styles.container}>
         <HeaderGlow id="listHeaderGlow" />
@@ -136,7 +143,9 @@ export default function ExpenseListScreen({
     );
   }
 
-  const deleteCategory = pendingDelete ? getCategory(pendingDelete.category, categories) : null;
+  const deleteTarget = pendingDelete && deleteOwnerRef.current === accountKey
+    ? spendingSections.flatMap((section) => section.data).find((item) => item.rowKey === pendingDelete.rowKey && canDeleteSpendingActivity(item)) : null;
+  const deleteCategory = deleteTarget ? getCategory(deleteTarget.category, categories) : null;
 
   return (
     <View style={styles.container}>
@@ -222,12 +231,14 @@ export default function ExpenseListScreen({
 
         <View style={styles.dayHeader}>
           <Text style={styles.dayHeaderLabel}>{selectedDayText}</Text>
-          {filteredTotal > 0 && (
-            <Text style={styles.dayHeaderTotal}>
-              {formatMoney(filteredTotal, displayCurrency)}
+          {(fxMode || filteredTotal > 0) && (
+            <Text style={styles.dayHeaderTotal} accessibilityLabel={fxMode ? formatReportingAmount(filteredTotal, displayCurrency, t, { coverage, code: true }) : undefined}>
+              {formatReportingAmount(filteredTotal, displayCurrency, t, { coverage })}
             </Text>
           )}
         </View>
+
+        {fxMode && <ReportingFxStatus coverage={coverage} summary style={{ marginHorizontal: spacing.md }} />}
 
         <View style={styles.chipsArea}>
           <ScrollView
@@ -266,6 +277,7 @@ export default function ExpenseListScreen({
         ) : (
           filteredExpenses.map((expense) => (
             <ExpenseRow
+              fxMode={fxMode}
               key={expense.rowKey}
               expense={expense}
               fxPreview={__DEV__ && fxPreviewEnabled ? historical.entries[expense.rowKey] : null}
@@ -273,7 +285,10 @@ export default function ExpenseListScreen({
               categories={categories}
               groupName={groupNames.get(expense.groupId)}
               onRequestDelete={(item) => {
-                if (canDeleteSpendingActivity(item)) setPendingDelete(item);
+                if (canDeleteSpendingActivity(item)) {
+                  deleteOwnerRef.current = accountKey;
+                  setPendingDelete(item);
+                }
               }}
               onEdit={onEditPress}
             />
@@ -282,7 +297,7 @@ export default function ExpenseListScreen({
       </ScrollView>
 
       <Modal
-        visible={pendingDelete != null}
+        visible={deleteTarget != null}
         transparent
         animationType="fade"
         onRequestClose={() => setPendingDelete(null)}
@@ -294,19 +309,19 @@ export default function ExpenseListScreen({
         <View style={styles.modalCenter} pointerEvents="box-none">
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{t('list.deleteTitle')}</Text>
-            {pendingDelete && (
+            {deleteTarget && (
               <View style={styles.modalExpense}>
                 <View style={[styles.modalIcon, { backgroundColor: `${deleteCategory.color}26` }]}>
                   <HIcon name={deleteCategory.emoji} size={20} color={deleteCategory.color} />
                 </View>
                 <View style={styles.modalInfo}>
                   <Text style={styles.modalNote} numberOfLines={1}>
-                    {pendingDelete.note || getCategoryLabel(deleteCategory, t)}
+                    {deleteTarget.note || getCategoryLabel(deleteCategory, t)}
                   </Text>
                   <Text style={styles.modalCategory}>{getCategoryLabel(deleteCategory, t)}</Text>
                 </View>
                 <Text style={styles.modalAmount}>
-                  {formatMoney(pendingDelete.displayAmount, displayCurrency)}
+                  {formatReportingAmount(deleteTarget.amount, deleteTarget.currency, t, { code: true })}
                 </Text>
               </View>
             )}
@@ -324,7 +339,7 @@ export default function ExpenseListScreen({
               </Pressable>
               <Pressable
                 onPress={() => {
-                  if (canDeleteSpendingActivity(pendingDelete)) onDelete(pendingDelete.id);
+                  if (canDeleteSpendingActivity(deleteTarget)) onDelete(deleteTarget.id);
                   setPendingDelete(null);
                 }}
                 accessibilityRole="button"

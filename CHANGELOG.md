@@ -3,6 +3,23 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## FX-4C1 - Historical FX Presentation Safety
+
+- **Added:** Opt-in reporting presentation helpers and compact Historical,
+  Estimated, updating, cached, and unavailable disclosures in English,
+  Traditional Chinese, and Spanish, with original/reporting currency accessibility.
+- **Changed:** Incomplete totals stay unavailable, charts retain missing slots as
+  gaps, and incomplete categories remain identifiable without definitive donut
+  proportions. Expense confirmations use current original transaction amounts.
+  FX-mode budget displays compare currency-rounded values and merge coverage for
+  the exact gauge subset, retaining known budgets when spending is incomplete.
+- **Fixed:** Comparison and trend disclosures use their participating months'
+  coverage without relabeling the selected total. Isolated valid chart points
+  remain visible on both series without connecting across unavailable slots.
+- **Compatibility:** Production Historical FX has NOT yet been activated.
+  Existing static reporting and legacy budget comparisons, developer previews,
+  shared obligations, persistence, and FX requests remain unchanged.
+
 ## FX-4B - Shared Reporting FX Pipeline
 
 - **Added:** An App-owned, account-scoped reporting hook reuses quote outcomes,

@@ -1,3 +1,14 @@
+import { budgetPresentation } from './reportingPresentation';
+
+// Opt-in FX presentation only. Legacy categoryBarState is intentionally intact.
+export function reportingCategoryBarState({ spent, budget, currency, coverage, colors }) {
+  const comparison = budgetPresentation(spent, budget, currency, coverage);
+  if (!comparison.complete) return { basis: 'unavailable', ratio: null, fillPct: null, tone: colors.textMuted, over: null };
+  if (comparison.budget <= 0) return categoryBarState({ spent: comparison.spent, budget: comparison.budget, colors });
+  return { basis: 'budget', ratio: comparison.ratio, fillPct: clampBudgetRatio(comparison.ratio) * 100,
+    tone: budgetZoneTone(comparison.ratio, true, colors), over: comparison.over };
+}
+
 export function clampBudgetRatio(ratio) {
   const n = Number(ratio);
   if (!Number.isFinite(n)) return 0;
