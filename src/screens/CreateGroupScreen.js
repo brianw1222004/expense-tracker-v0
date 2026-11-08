@@ -34,6 +34,7 @@ import { HIcon } from '../icons';
 export default function CreateGroupScreen({
   visible,
   defaultCurrency,
+  currencies,
   customPaymentMethods,
   onAddPaymentMethod,
   onCreate,
@@ -269,6 +270,7 @@ export default function CreateGroupScreen({
       </View>
 
       <CurrencyPicker
+        currencies={currencies}
         visible={currencyOpen}
         value={currency}
         onSelect={(code) => {

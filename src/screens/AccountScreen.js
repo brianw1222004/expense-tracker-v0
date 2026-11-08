@@ -15,7 +15,7 @@ import CurrencyPicker from '../components/CurrencyPicker';
 // The account card leads the sheet with no section header of its own (the page
 // title already says "Account"); Language and Theme get iconized uppercase
 // headers over cards of `SelectRow`s.
-export default function AccountScreen({ visible, settingsLoaded = false, settings, onUpdateSettings, accountEmail, onSignOut, onDeleteAllData, deletingData = false, interactionLocked = false, deleteDisabled = false, onClose }) {
+export default function AccountScreen({ visible, settingsLoaded = false, settings, currencies, onUpdateSettings, accountEmail, onSignOut, onDeleteAllData, deletingData = false, interactionLocked = false, deleteDisabled = false, onClose }) {
   const { colors } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -163,6 +163,7 @@ export default function AccountScreen({ visible, settingsLoaded = false, setting
           </ScrollView>
       {/* Keep the picker inside the sheet's native modal, outside its scroll area. */}
       <CurrencyPicker
+        currencies={currencies}
         visible={visible && currencyOpen && !currencyDisabled}
         value={settings.displayCurrency}
         onSelect={(code) => {

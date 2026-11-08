@@ -82,6 +82,7 @@ export default function SharedSplitForm({
   groups,
   categories = [],
   displayCurrency,
+  currencies,
   onAdd,
   onSave,
   onDelete,
@@ -715,6 +716,7 @@ export default function SharedSplitForm({
       </ScrollView>
 
       <CurrencyPicker
+        currencies={currencies}
         visible={currencyOpen}
         value={currencyCode}
         onSelect={(code) => {

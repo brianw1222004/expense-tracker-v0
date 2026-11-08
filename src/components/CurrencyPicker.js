@@ -10,7 +10,7 @@ import { HIcon } from '../icons';
 // shows the country flag in a circle badge, the code, and the name; tapping a
 // row selects it and closes. With only a handful of currencies the list is short
 // enough that no search field is needed. `value` is the currently-selected code.
-export default function CurrencyPicker({ visible, value, onSelect, onClose }) {
+export default function CurrencyPicker({ visible, value, onSelect, onClose, currencies = CURRENCIES }) {
   const { colors } = useTheme();
   const t = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -38,7 +38,7 @@ export default function CurrencyPicker({ visible, value, onSelect, onClose }) {
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           >
-            {CURRENCIES.map((entry) => {
+            {currencies.map((entry) => {
               const selected = entry.code === value;
               return (
                 <Pressable

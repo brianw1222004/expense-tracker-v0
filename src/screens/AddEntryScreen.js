@@ -41,6 +41,7 @@ export default function AddEntryScreen({
   onChangeEntryMode,
   displayCurrency,
   defaultCurrency,
+  currencies,
   categories,
   editEntry,
   onSubmit,
@@ -367,6 +368,7 @@ export default function AddEntryScreen({
       </ScrollView>
 
       <CurrencyPicker
+        currencies={currencies}
         visible={visible && currencyOpen && !saving}
         value={currencyCode}
         onSelect={(code) => {

@@ -66,6 +66,7 @@ import {
 import { supabase, isSupabaseConfigured } from './src/supabase';
 import { buildDemoExpenses } from './src/demoData';
 import { redenominateBudgets, getCurrency, isSupportedCurrency } from './src/currency';
+import { currenciesByFrequency } from './src/currencyOrder';
 import { saveCategorySettings } from './src/categorySettings';
 import { getAllCategories, getRegularAll, getExternalAll, isPresetCategory } from './src/categories';
 import { dateKey } from './src/format';
@@ -944,6 +945,10 @@ function ExpenseTracker() {
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
 
   const loaded = dataUser != null && dataUser === userId;
+  const orderedCurrencies = useMemo(
+    () => loaded ? currenciesByFrequency(expenses, splitExpenses) : currenciesByFrequency(),
+    [loaded, expenses, splitExpenses]
+  );
   const currentMonthKey = dayStamp.slice(0, 7);
 
   const shiftBrowsingMonth = useCallback((dir) => {
@@ -1150,6 +1155,7 @@ function ExpenseTracker() {
           {addEntryMode === 'shared' ? (
             <SharedSplitForm
               key={addNonce}
+              currencies={orderedCurrencies}
               entryMode={addEntryMode}
               onChangeEntryMode={setAddEntryMode}
               lockedGroupId={sharedLockedGroupId}
@@ -1164,6 +1170,7 @@ function ExpenseTracker() {
           ) : (
             <AddEntryScreen
               key={`${userId}:${addNonce}`}
+              currencies={orderedCurrencies}
               visible={addOpen}
               entryMode={addEntryMode}
               onChangeEntryMode={setAddEntryMode}
@@ -1180,6 +1187,7 @@ function ExpenseTracker() {
           {editingExpense && (
             <AddEntryScreen
               key={`${userId}:${editingExpense.id}`}
+              currencies={orderedCurrencies}
               visible={editingExpense != null}
               displayCurrency={displayCurrency}
               categories={allCategories}
@@ -1204,6 +1212,7 @@ function ExpenseTracker() {
           {editingSplit && (
             <SharedSplitForm
               key={editingSplit.id}
+              currencies={orderedCurrencies}
               editBill={editingSplit}
               lockedGroupId={editingSplit.groupId}
               groups={groups}
@@ -1230,6 +1239,7 @@ function ExpenseTracker() {
         />
 
         <AccountScreen
+          currencies={orderedCurrencies}
           visible={overlay === 'account'}
           settingsLoaded={loaded}
           settings={settings}
@@ -1244,6 +1254,7 @@ function ExpenseTracker() {
         />
 
         <CreateGroupScreen
+          currencies={orderedCurrencies}
           visible={overlay === 'createGroup'}
           defaultCurrency={displayCurrency}
           customPaymentMethods={settings.customPaymentMethods}
@@ -1256,6 +1267,7 @@ function ExpenseTracker() {
         />
 
         <GroupDetailScreen
+          currencies={orderedCurrencies}
           visible={activeGroupId != null}
           group={activeGroup}
           splitExpenses={splitExpenses}

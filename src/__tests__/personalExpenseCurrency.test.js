@@ -89,6 +89,11 @@ for (const name of ['TabBar', 'AddExpenseModal', 'ErrorBoundary', 'RewardCheck',
 const App = require('../../App').default;
 const PersonalForm = jest.requireActual('../screens/AddEntryScreen').default;
 const RealCurrencyPill = jest.requireActual('../components/CurrencyPill').default;
+const SharedForm = jest.requireActual('../screens/SharedSplitForm').default;
+const CreateGroup = jest.requireActual('../screens/CreateGroupScreen').default;
+const GroupDetail = jest.requireActual('../screens/GroupDetailScreen').default;
+const { CURRENCIES } = require('../currency');
+const { currenciesByFrequency } = require('../currencyOrder');
 const storage = require('../storage');
 const AsyncStorage = require('@react-native-async-storage/async-storage');
 const sync = require('../sync');
@@ -529,4 +534,145 @@ it('exposes the disabled currency trigger to native controls and screen readers'
   const pill = renderer(RealCurrencyPill, { value: 'USD', disabled: true });
   expect(pill.tree().props.disabled).toBe(true);
   expect(pill.tree().props.accessibilityState).toEqual({ disabled: true });
+});
+
+it('shares one order across every picker location using raw saved personal and shared records', async () => {
+  const group = { id: 'trip', name: 'Trip', currency: 'GBP', members: [] };
+  const personal = [expense('USD', { id: 'usd', createdAt: 1 }), expense('JPY', { id: 'jpy', createdAt: 1 })];
+  const shared = { id: 'bill', groupId: group.id, currency: 'JPY', amount: 100, paidBy: 'you', shares: { you: 100 }, createdAt: 1 };
+  await storage.saveExpenses('alice', personal);
+  await storage.saveGroups('alice', [group]);
+  await storage.saveSplitExpenses('alice', [shared, { ...shared, id: 'payment', settlement: true, currency: 'EUR' }]);
+  await storage.saveSettings('alice', { ...storage.DEFAULT_SETTINGS, displayCurrency: 'TWD', lastPersonalExpenseCurrency: 'EUR', onboardingDone: true });
+  const app = await mountApp();
+  const draft = openNew(app);
+  const ordered = draft.props.currencies;
+  expect(ordered.map(({ code }) => code).slice(0, 2)).toEqual(['JPY', 'USD']);
+  expect(ordered).toHaveLength(13);
+  expect(draft.props.defaultCurrency).toBe('EUR');
+  for (const screen of ['AccountScreen', 'CreateGroupScreen', 'GroupDetailScreen']) {
+    expect(app.nodes(screen)[0].props.currencies).toBe(ordered);
+  }
+  expect(settingsOf(app).displayCurrency).toBe('TWD');
+  draft.props.onChangeEntryMode('shared'); app.render();
+  expect(app.nodes('SharedSplitForm')[0].props.currencies.map(({ code }) => code)).toEqual(ordered.map(({ code }) => code));
+  app.nodes('GroupDetailScreen')[0].props.onEditBill(shared); app.render();
+  expect(app.nodes('SharedSplitForm').find((node) => node.props.editBill).props.currencies).toEqual(ordered);
+  app.nodes('ExpenseListScreen')[0].props.onEditPress({ sourceType: 'personal', id: 'usd' }); app.render();
+  expect(app.nodes('AddEntryScreen').find((node) => node.props.editEntry).props.currencies).toEqual(ordered);
+});
+
+it('reorders on saved personal creates, edits, and deletes', async () => {
+  const app = await mountApp();
+  const canceled = openNew(app);
+  const unsaved = formRenderer(canceled.props);
+  unsaved.nodes('CurrencyPicker')[0].props.onSelect('CAD'); unsaved.render();
+  canceled.props.onClose(); await settle(app);
+  expect(newForm(app).props.currencies).toEqual(CURRENCIES);
+  await openNew(app).props.onSubmit(expense('JPY')); await settle(app);
+  expect(newForm(app).props.currencies[0].code).toBe('JPY');
+  const saved = (await storage.loadExpenses('alice'))[0];
+  app.nodes('ExpenseListScreen')[0].props.onEditPress({ sourceType: 'personal', id: saved.id }); app.render();
+  await app.nodes('AddEntryScreen').find((node) => node.props.editEntry).props.onSubmit({ ...saved, currency: 'CAD' });
+  await settle(app);
+  expect(newForm(app).props.currencies[0].code).toBe('CAD');
+  app.nodes('ExpenseListScreen')[0].props.onDelete(saved.id); await settle(app);
+  expect(newForm(app).props.currencies).toEqual(CURRENCIES);
+});
+
+it('reorders after saved shared-bill creation, editing, and deletion without counting your share twice', async () => {
+  jest.spyOn(sync, 'enqueueSplitUpsert').mockResolvedValue(undefined);
+  jest.spyOn(sync, 'enqueueSplitDelete').mockResolvedValue(undefined);
+  const group = { id: 'trip', name: 'Trip', currency: 'JPY', members: [] };
+  await storage.saveGroups('alice', [group]);
+  await storage.saveExpenses('alice', [expense('USD', { id: 'personal', createdAt: 1 })]);
+  const app = await mountApp();
+  app.nodes('GroupDetailScreen')[0].props.onAddBill(group.id); app.render();
+  app.nodes('SharedSplitForm')[0].props.onAdd({
+    groupId: group.id, currency: 'JPY', amount: 100, paidBy: 'you', shares: { you: 100 }, createdAt: 1,
+  }); await settle(app);
+  // One personal USD and one JPY bill tie, even though the bill also has a derived spending row.
+  expect(app.nodes('AccountScreen')[0].props.currencies.slice(0, 2).map(({ code }) => code)).toEqual(['USD', 'JPY']);
+  const saved = (await storage.loadSplitExpenses('alice'))[0];
+  app.nodes('GroupDetailScreen')[0].props.onEditBill(saved); app.render();
+  app.nodes('SharedSplitForm').find((node) => node.props.editBill).props.onSave({ ...saved, currency: 'EUR' });
+  await settle(app);
+  expect(app.nodes('AccountScreen')[0].props.currencies.slice(0, 2).map(({ code }) => code)).toEqual(['USD', 'EUR']);
+  app.nodes('GroupDetailScreen')[0].props.onDeleteBill(saved.id); await settle(app);
+  expect(app.nodes('AccountScreen')[0].props.currencies).toEqual(CURRENCIES);
+});
+
+it('uses catalog order during an account switch and only the newly loaded account history afterward', async () => {
+  await storage.saveExpenses('alice', [expense('JPY', { id: 'alice', createdAt: 1 })]);
+  const app = await mountApp();
+  expect(newForm(app).props.currencies[0].code).toBe('JPY');
+  await storage.saveSettings('bob', { ...storage.DEFAULT_SETTINGS, onboardingDone: true });
+  let release;
+  jest.spyOn(storage, 'loadExpenses').mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+  mockAuthListener('SIGNED_IN', { user: { id: 'bob' } }); await settle(app);
+  // The loading surface hides every picker until Bob's collections are ready.
+  expect(app.nodes('AccountScreen')).toEqual([]);
+  expect(app.nodes('AddEntryScreen')).toEqual([]);
+  release([expense('EUR', { id: 'bob', createdAt: 1 })]); await settle(app);
+  expect(newForm(app).props.currencies[0].code).toBe('EUR');
+  expect(newForm(app).props.currencies.indexOf(CURRENCIES.find(({ code }) => code === 'USD')))
+    .toBeLessThan(newForm(app).props.currencies.indexOf(CURRENCIES.find(({ code }) => code === 'JPY')));
+});
+
+it('updates frequency order on sync without replacing the active personal draft or its selection', async () => {
+  let release;
+  sync.syncWithServer.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+  const app = await mountApp();
+  const draft = openNew(app);
+  const form = formRenderer(draft.props);
+  form.nodes('CurrencyPicker')[0].props.onSelect('GBP'); form.render();
+  amountInput(form).props.onChangeText('12.34'); form.render();
+  release({ expenses: [expense('JPY', { id: 'loaded', createdAt: 1 })], settings: null }); await settle(app);
+  expect(newForm(app).key).toBe(draft.key);
+  Object.assign(form.props, newForm(app).props); form.render();
+  expect(form.nodes('CurrencyPicker')[0].props.currencies[0].code).toBe('JPY');
+  expect(formCurrency(form)).toBe('GBP');
+  expect(amountInput(form).props.value).toBe('12.34');
+});
+
+it.each([false, true])('preserves personal default/edited selection when order changes; editing: %s', (editing) => {
+  const form = formRenderer({ defaultCurrency: 'EUR', ...(editing ? { editEntry: expense('CAD', { id: 'old', createdAt: 1 }) } : {}) });
+  form.nodes('CurrencyPill')[0].props.onPress(); form.render();
+  form.props.currencies = currenciesByFrequency([expense('JPY', { id: 'saved' })]); form.render();
+  expect(formCurrency(form)).toBe(editing ? 'CAD' : 'EUR');
+  expect(form.nodes('CurrencyPicker')[0].props.visible).toBe(true);
+  expect(form.props.onSubmit).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('forwards order without changing the group default or saved shared-bill currency; editing: %s', (editing) => {
+  const group = { id: 'trip', name: 'Trip', currency: 'JPY', members: [] };
+  const form = renderer(SharedForm, {
+    groups: [group], displayCurrency: 'TWD', onAdd: jest.fn(),
+    ...(editing ? { editBill: { id: 'bill', groupId: 'trip', currency: 'EUR', amount: 20, paidBy: 'you', shares: { you: 20 }, createdAt: 1 } } : {}),
+  });
+  const selected = editing ? 'EUR' : 'JPY';
+  expect(form.nodes('CurrencyPicker')[0].props.value).toBe(selected);
+  form.props.currencies = currenciesByFrequency([expense('USD', { id: 'saved' })]); form.render();
+  expect(form.nodes('CurrencyPicker')[0].props.currencies).toBe(form.props.currencies);
+  expect(form.nodes('CurrencyPicker')[0].props.value).toBe(selected);
+  form.nodes('CurrencyPicker')[0].props.onSelect('CAD'); form.render();
+  form.props.currencies = [...CURRENCIES].reverse(); form.render();
+  expect(form.nodes('CurrencyPicker')[0].props.value).toBe('CAD');
+  expect(form.props.onAdd).not.toHaveBeenCalled();
+});
+
+it('forwards ordering through group creation and editing without changing their selected currencies', () => {
+  const create = renderer(CreateGroup, { visible: true, defaultCurrency: 'JPY', onCreate: jest.fn() });
+  create.nodes('CurrencyPicker')[0].props.onSelect('EUR'); create.render();
+  create.props.currencies = currenciesByFrequency([expense('USD', { id: 'saved' })]); create.render();
+  expect(create.nodes('CurrencyPicker')[0].props.currencies).toBe(create.props.currencies);
+  expect(create.nodes('CurrencyPicker')[0].props.value).toBe('EUR');
+  const detail = renderer(GroupDetail, {
+    visible: true, group: { id: 'trip', name: 'Trip', currency: 'JPY', members: [] },
+    splitExpenses: [], onUpdateGroup: jest.fn(),
+  });
+  detail.props.currencies = create.props.currencies; detail.render();
+  expect(detail.nodes('CurrencyPicker')[0].props.currencies).toBe(create.props.currencies);
+  expect(detail.nodes('CurrencyPicker')[0].props.value).toBe('JPY');
+  expect(detail.props.onUpdateGroup).not.toHaveBeenCalled();
 });

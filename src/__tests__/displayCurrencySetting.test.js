@@ -44,6 +44,7 @@ const AccountScreen = require('../screens/AccountScreen').default;
 const InsightScreen = require('../screens/InsightScreen').default;
 const CurrencyPicker = require('../components/CurrencyPicker').default;
 const { CURRENCIES } = require('../currency');
+const { currenciesByFrequency } = require('../currencyOrder');
 const { DEFAULT_SETTINGS } = require('../storage');
 const { deriveViewData } = require('../derive');
 const { formatMoney, formatMoneyShort } = require('../format');
@@ -113,6 +114,23 @@ it('presents all supported currencies inside the Account modal and outside its S
   const choices = elements(pickerModal).filter((node) => node.props.accessibilityRole === 'radio');
   expect(choices.map((node) => node.props.accessibilityLabel.split(' ')[0])).toEqual(CURRENCIES.map((entry) => entry.code));
   expect(choices.find((node) => node.props.accessibilityState.selected).props.accessibilityLabel).toMatch(/^USD /);
+});
+
+it('reorders the open picker without changing Display Currency, labels, or selection callbacks', () => {
+  const screen = mountAccount();
+  screen.open();
+  const currencies = currenciesByFrequency([{ id: 'saved', currency: 'JPY' }]);
+  screen.props.currencies = currencies;
+  screen.render();
+  const pickerModal = screen.tree().filter((node) => node.type === 'Modal')[1];
+  const choices = elements(pickerModal).filter((node) => node.props.accessibilityRole === 'radio');
+  expect(choices.map((node) => node.props.accessibilityLabel.split(' ')[0])).toEqual(currencies.map(({ code }) => code));
+  expect(choices.find((node) => node.props.accessibilityState.selected).props.accessibilityLabel).toBe('USD US Dollar');
+  expect(screen.picker().props.visible).toBe(true);
+  expect(screen.props.onUpdateSettings).not.toHaveBeenCalled();
+  choices[0].props.onPress(); screen.render();
+  expect(screen.props.onUpdateSettings).toHaveBeenCalledWith({ displayCurrency: 'JPY' });
+  expect(screen.picker().props.visible).toBe(false);
 });
 
 it('sends only the displayCurrency patch through the supplied settings callback and returns to Account', () => {

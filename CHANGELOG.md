@@ -3,6 +3,16 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## UX-5B3 - Frequently Used Currency Ordering
+
+- **Added:** Currency pickers prioritize currencies used in the current account's
+  saved personal expenses and raw shared bills, counting each saved record once.
+- **Changed:** One ordered list is shared by personal expenses, Account Settings,
+  shared bills, and group creation/editing. Ties and empty history keep catalog order.
+- **Compatibility:** All 13 currencies remain available. Settlements and derived
+  spending rows are excluded; selected values and existing defaults stay unchanged.
+  No new persistence, synchronization, or FX behavior is introduced.
+
 ## UX-5B2 - Remember Personal Expense Currency
 
 - **Added:** A validated, user-scoped, device-local currency preference updated

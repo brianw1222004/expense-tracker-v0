@@ -48,6 +48,7 @@ export default function GroupDetailScreen({
   visible,
   group,
   splitExpenses,
+  currencies,
   customCategories,
   customPaymentMethods,
   onAddPaymentMethod,
@@ -633,6 +634,7 @@ export default function GroupDetailScreen({
       </ScrollView>
 
       <CurrencyPicker
+        currencies={currencies}
         visible={currencyOpen}
         value={group.currency}
         onSelect={(code) => {
