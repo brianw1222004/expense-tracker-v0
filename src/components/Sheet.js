@@ -12,7 +12,8 @@ import { radius, spacing, useTheme } from '../theme';
 //   showHandle    — render the grab-handle nub at the top of the sheet (AccountScreen)
 //   sheetStyle    — override/extend the sheet container style (used for height vs maxHeight)
 //   avoidKeyboard — wrap the overlay in KeyboardAvoidingView instead of a plain View (BudgetScreen)
-export default function Sheet({ visible, onClose, children, showHandle = false, sheetStyle, avoidKeyboard = false }) {
+// onDismiss optionally sequences a following surface after iOS/web dismissal.
+export default function Sheet({ visible, onClose, onDismiss, children, showHandle = false, sheetStyle, avoidKeyboard = false }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -27,7 +28,7 @@ export default function Sheet({ visible, onClose, children, showHandle = false, 
   );
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose} onDismiss={onDismiss}>
       {avoidKeyboard ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

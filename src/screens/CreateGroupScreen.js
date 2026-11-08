@@ -39,6 +39,7 @@ export default function CreateGroupScreen({
   onAddPaymentMethod,
   onCreate,
   onClose,
+  onDismiss,
 }) {
   const { colors } = useTheme();
   const t = useT();
@@ -100,7 +101,7 @@ export default function CreateGroupScreen({
   };
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose} onDismiss={onDismiss}>
       <View style={styles.root}>
         <Pressable
           style={[StyleSheet.absoluteFill, styles.backdrop]}

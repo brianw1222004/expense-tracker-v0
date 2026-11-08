@@ -24,6 +24,7 @@ import InsightScreen from './src/screens/InsightScreen';
 import SplitBillsScreen from './src/screens/SplitBillsScreen';
 import GroupDetailScreen from './src/screens/GroupDetailScreen';
 import CreateGroupScreen from './src/screens/CreateGroupScreen';
+import GroupCreatedSheet from './src/components/GroupCreatedSheet';
 import SharedSplitForm from './src/screens/SharedSplitForm';
 import BudgetScreen from './src/screens/BudgetScreen';
 import AuthScreen from './src/screens/AuthScreen';
@@ -174,6 +175,8 @@ function ExpenseTracker() {
   const [sharedLockedGroupId, setSharedLockedGroupId] = useState(null);
   const [sharedInitialGroupId, setSharedInitialGroupId] = useState(null);
   const [returnToSharedAddAfterCreateGroup, setReturnToSharedAddAfterCreateGroup] = useState(false);
+  const [groupCreatedFlow, setGroupCreatedFlow] = useState(null);
+  const groupCreatedFlowRef = useRef(null);
   // Bumped on every popup open so add forms start fresh. While open, their
   // identity stays stable across preference changes and server refreshes.
   const [addNonce, setAddNonce] = useState(0);
@@ -202,6 +205,11 @@ function ExpenseTracker() {
   if (personalScopeRef.current.userId !== userId) personalScopeRef.current = { userId };
   personalScopeRef.current.ready = Boolean(userId && dataUser === userId);
   if (personalScopeRef.current.ready) personalScopeRef.current.settings = settings;
+  const groupCreationScope = personalScopeRef.current;
+  const groupNavigationRef = useRef(null);
+  groupNavigationRef.current = { userId, ready: Boolean(userId && dataUser === userId), groups, overlay };
+  // Invalidate synchronously so stale callbacks cannot survive an A -> B -> A switch.
+  if (groupCreatedFlowRef.current?.userId !== userId) groupCreatedFlowRef.current = null;
   const language = settings.language;
   const theme = getTheme(settings.theme);
 
@@ -294,6 +302,9 @@ function ExpenseTracker() {
     // A new account-switch load supersedes any in-flight sync.
     const seq = (syncSeqRef.current += 1);
     setDataUser(null);
+    clearGroupCreatedFlow();
+    setReturnToSharedAddAfterCreateGroup(false);
+    setOverlay((current) => current === 'createGroup' ? null : current);
     setAddOpen(false);
     setEditingExpense(null);
     // Clear any prior account's sync-error pill so it can't flash over the next
@@ -481,6 +492,49 @@ function ExpenseTracker() {
     setAddOpen(true);
   }, []);
 
+  const clearGroupCreatedFlow = () => {
+    groupCreatedFlowRef.current = null;
+    setGroupCreatedFlow(null);
+  };
+  const setCreatedFlow = (flow) => {
+    groupCreatedFlowRef.current = flow;
+    setGroupCreatedFlow(flow);
+  };
+  const currentCreatedGroup = (flow) => {
+    const current = groupNavigationRef.current;
+    if (!flow || groupCreatedFlowRef.current !== flow || flow.userId !== current.userId ||
+        !current.ready || deleteDataGuard.current) return null;
+    return current.groups.find((group) => group.id === flow.groupId) ?? null;
+  };
+  const finishGroupCreatedTransition = (flow, source) => {
+    if (!flow || groupCreatedFlowRef.current !== flow || flow.phase !== `closing-${source}`) return;
+    if (!currentCreatedGroup(flow)) { clearGroupCreatedFlow(); return; }
+    if (flow.destination === 'success') {
+      setCreatedFlow({ ...flow, phase: 'success' });
+      return;
+    }
+    // Consume before navigating; repeated dismiss/action callbacks are harmless.
+    clearGroupCreatedFlow();
+    if (flow.destination === 'add') openSharedAddForGroup(flow.groupId);
+    else if (flow.destination === 'resume-add') reopenSharedAdd(flow.groupId);
+    else setActiveGroupId(flow.groupId);
+  };
+  const chooseGroupCreatedAction = (flow, destination) => {
+    if (!flow || groupCreatedFlowRef.current !== flow || flow.phase !== 'success') return;
+    if (!currentCreatedGroup(flow)) { clearGroupCreatedFlow(); return; }
+    setCreatedFlow({ ...flow, phase: 'closing-success', destination });
+  };
+  useEffect(() => {
+    if (groupCreatedFlow && !currentCreatedGroup(groupCreatedFlow)) clearGroupCreatedFlow();
+  }, [groupCreatedFlow, groups, userId, dataUser]);
+  useEffect(() => {
+    // RN dismisses Android's Modal when visible becomes false and does not emit
+    // onDismiss there. Continue after that commit; iOS/web use dismissal completion.
+    if (Platform.OS === 'android' && groupCreatedFlow?.phase.startsWith('closing-')) {
+      finishGroupCreatedTransition(groupCreatedFlow, groupCreatedFlow.phase.slice('closing-'.length));
+    }
+  }, [groupCreatedFlow]);
+
   const persistPersonalExpense = async (expense, editing) => {
     if (!userId || dataUser !== userId || personalSaveRef.current || deleteDataGuard.current ||
         !isSupportedCurrency(expense.currency) || !Number.isFinite(expense.amount) || expense.amount <= 0 ||
@@ -566,6 +620,9 @@ function ExpenseTracker() {
 
   // --- Split bills (synced to Supabase via groups + splits lanes) ------------
   const createGroup = ({ name, currency, members, paymentMethod, icon }) => {
+    const current = groupNavigationRef.current;
+    if (!current.ready || current.userId !== userId || personalScopeRef.current !== groupCreationScope ||
+        current.overlay !== 'createGroup' || deleteDataGuard.current || groupCreatedFlowRef.current) return;
     const group = {
       id: makeId('g'),
       name,
@@ -578,12 +635,8 @@ function ExpenseTracker() {
     setGroups((prev) => [group, ...prev]);
     enqueueGroupUpsert(userId, group);
     setOverlay(null);
-    if (returnToSharedAddAfterCreateGroup) {
-      setActiveGroupId(null);
-      reopenSharedAdd(group.id);
-    } else {
-      setActiveGroupId(group.id);
-    }
+    setActiveGroupId(null);
+    setCreatedFlow({ userId, groupId: group.id, phase: 'closing-create', destination: returnToSharedAddAfterCreateGroup ? 'resume-add' : 'success' });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
@@ -782,6 +835,7 @@ function ExpenseTracker() {
       cancelLabel: translate(language, 'common.cancel'),
     });
     if (!confirmed) return;
+    clearGroupCreatedFlow();
     setOverlay(null);
     // best-effort push of anything still queued on ALL THREE lanes (each lane
     // has its own queue: expenses/settings, groups, splits).
@@ -822,6 +876,7 @@ function ExpenseTracker() {
           setGroups(reset.groups);
           setSplitExpenses(reset.splits);
           setSettings(reset.settings);
+          clearGroupCreatedFlow();
           setOverlay(null);
         },
         signOut: () => supabase.auth.signOut({ scope: 'local' }),
@@ -987,6 +1042,7 @@ function ExpenseTracker() {
     // surface. The add "+" is the tab bar's center button, not a FAB.
     const chromeVisible =
       overlay == null &&
+      groupCreatedFlow == null &&
       !addOpen &&
       editingExpense == null &&
       editingSplit == null &&
@@ -1260,10 +1316,22 @@ function ExpenseTracker() {
           customPaymentMethods={settings.customPaymentMethods}
           onAddPaymentMethod={addCustomPaymentMethod}
           onCreate={createGroup}
+          onDismiss={() => finishGroupCreatedTransition(groupCreatedFlow, 'create')}
           onClose={() => {
+            if (groupCreatedFlowRef.current || groupNavigationRef.current.userId !== userId ||
+                personalScopeRef.current !== groupCreationScope) return;
             setOverlay(null);
             if (returnToSharedAddAfterCreateGroup) reopenSharedAdd();
           }}
+        />
+
+        <GroupCreatedSheet
+          visible={groupCreatedFlow?.phase === 'success' && !!currentCreatedGroup(groupCreatedFlow)}
+          group={currentCreatedGroup(groupCreatedFlow)}
+          onAddFirstBill={() => chooseGroupCreatedAction(groupCreatedFlow, 'add')}
+          onViewGroup={() => chooseGroupCreatedAction(groupCreatedFlow, 'view')}
+          onClose={() => chooseGroupCreatedAction(groupCreatedFlow, 'view')}
+          onDismiss={() => finishGroupCreatedTransition(groupCreatedFlow, 'success')}
         />
 
         <GroupDetailScreen

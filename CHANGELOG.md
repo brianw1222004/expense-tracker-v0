@@ -3,6 +3,18 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## UX-1 - Create Group Success Flow
+
+- **Added:** A compact, localized Group Created sheet with a subtle success
+  checkmark and subtitle, a rounded group summary showing its name, currency, and
+  member count, plus Add First Bill and View Group actions.
+- **Changed:** Standalone group creation offers the success sheet. Dismissal opens
+  Group Detail; canceling the first bill returns to the new group. Native modal
+  handoffs are sequenced and repeated actions cannot navigate twice.
+- **Compatibility:** Creating a group from Add Bill still returns directly with
+  the new group selected. Success navigation is account-scoped and ignores missing
+  groups. Existing optimistic persistence, currencies, and financial logic remain unchanged.
+
 ## UX-5B3 - Frequently Used Currency Ordering
 
 - **Added:** Currency pickers prioritize currencies used in the current account's
