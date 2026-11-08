@@ -3,6 +3,17 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## FX-4A - Reporting FX Valuation Contract
+
+- **Added:** Pure reporting valuations classify identity, historical, estimated,
+  and unavailable amounts, retaining original values and historical provenance.
+- **Changed:** The opt-in contract validates static fallback rates, preserves
+  full precision, and summarizes row coverage, loading, stale observations, and
+  incomplete totals without treating unavailable conversions as zero.
+- **Compatibility:** Internal infrastructure only; Historical FX is not activated
+  in production screens. Existing previews, budgets, debts, settlements, storage,
+  provider requests, and cache behavior remain unchanged.
+
 ## UX-2 - Split Bills Quick Actions
 
 - **Added:** Add Bill on Split Bills opens a chooser of all account groups,

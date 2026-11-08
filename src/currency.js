@@ -30,6 +30,17 @@ const RATES_TO_USD = {
   KRW: 1380, AUD: 1.52, CAD: 1.37, CHF: 0.88, HKD: 7.8, SGD: 1.34, INR: 83.5,
 };
 
+// Strict opt-in lookup for reporting fallback. Unlike legacy convert(), missing
+// rates are not substituted with USD. Existing callers retain their behavior.
+export function getStaticConversionRate(fromCurrency, toCurrency) {
+  if (!isSupportedCurrency(fromCurrency) || !isSupportedCurrency(toCurrency)) return null;
+  const from = RATES_TO_USD[fromCurrency];
+  const to = RATES_TO_USD[toCurrency];
+  if (!Number.isFinite(from) || from <= 0 || !Number.isFinite(to) || to <= 0) return null;
+  const rate = to / from;
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
 // The single conversion helper: every total, chart, and row goes through here,
 // so moving to a live-rate API is a one-function change.
 export function convert(amount, fromCurrency, toCurrency) {
