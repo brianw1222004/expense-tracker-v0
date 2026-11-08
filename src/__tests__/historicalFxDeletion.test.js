@@ -3,6 +3,7 @@ const storage = require('@react-native-async-storage/async-storage');
 const { deleteAllData } = require('../deleteAllData');
 const { getHistoricalFxRate, suspendFxRates, resumeFxRates } = require('../fxRateService');
 const { fxRateCache } = require('../fxRateCache');
+const { createFxRequestQueue } = require('../fxRequestQueue');
 const request = { baseCurrency: 'USD', quoteCurrency: 'TWD', transactionDate: '2026-10-18' };
 const response = () => ({ status: 200, headers: { get: () => null }, text: async () => JSON.stringify([
   { base: 'USD', quote: 'TWD', date: '2026-10-16', rate: 32.426, providers: [{ key: 'BOC', date: '2026-10-16', rate: 32.426 }] },
@@ -15,6 +16,23 @@ const fixture = () => ({ cloudConfigured: false, userId: 'local', ready: true, g
   setBusy: jest.fn(), resetState: jest.fn(), signOut: jest.fn(), onSuccess: jest.fn() });
 beforeEach(async () => { jest.restoreAllMocks(); jest.clearAllMocks(); await storage.clear(); resumeFxRates('local'); });
 afterEach(() => { jest.restoreAllMocks(); resumeFxRates('local'); });
+
+it('cancels the shared worker before Delete All Data and never restarts old queued work after resume', async () => {
+  const started = deferred(), late = deferred(), published = jest.fn();
+  const fetchImpl = jest.fn(async () => { started.resolve(); return late.promise; });
+  const service = (scope, input, extra) => getHistoricalFxRate(scope, input, { ...options, ...extra, fetchImpl });
+  const queue = createFxRequestQueue('local', published, { rateService: service });
+  queue.update([18, 19, 20, 21, 22].map((day) => ({ ...request, transactionDate: `2026-10-${day}` })));
+  await started.promise;
+  queue.cancel(); // App's blocked context cancels its worker before deletion.
+  const f = fixture(); await deleteAllData(f);
+  late.resolve(response()); await queue.done(); await tick();
+  queue.update([request]); await tick();
+  expect(fetchImpl).toHaveBeenCalledTimes(3);
+  expect(published).not.toHaveBeenCalled();
+  expect(await fxRateCache.get('local', request)).toBeNull();
+  expect(f.onSuccess).toHaveBeenCalledTimes(1);
+});
 
 it('clears and verifies only the deleting user FX cache before reporting success', async () => {
   await getHistoricalFxRate('local', request, options); await getHistoricalFxRate('other', request, options);

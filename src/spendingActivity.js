@@ -1,5 +1,8 @@
 import { dateKey } from './format';
 import { getCategory } from './categories';
+import { summarizeReportingFx } from './reportingFx';
+
+export const spendingRowKey = (sourceType, id) => JSON.stringify([sourceType, id]);
 
 // Calendar markers use the same unified sections as the day list.
 export function spendingDays(sections, monthKey) {
@@ -12,13 +15,18 @@ export function spendingDays(sections, monthKey) {
   return days;
 }
 
-export function spendingForDay(sections, selectedDate, categoryId = 'all', categories = []) {
+export function spendingForDay(sections, selectedDate, categoryId = 'all', categories = [], fxMode = false) {
   const section = sections.find(
     (day) => day.data.length && dateKey(day.data[0].createdAt) === selectedDate
   );
   const filteredExpenses = !section ? [] : categoryId === 'all' ? section.data : section.data.filter(
     (item) => getCategory(item.category, categories).id === categoryId
   );
+  if (fxMode || section?.coverage || sections.some((day) => day.coverage)) {
+    const coverage = categoryId === 'all' && section?.coverage ? section.coverage
+      : summarizeReportingFx([...filteredExpenses].sort((a, b) => a.fxOrder - b.fxOrder).map((item) => item.fx));
+    return { filteredExpenses, filteredTotal: coverage.amount, coverage };
+  }
   // With no filter, keep the exact accumulation used by the daily chart,
   // including its floating-point order, rather than summing the sorted rows.
   const filteredTotal = categoryId === 'all'

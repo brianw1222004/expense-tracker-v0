@@ -78,6 +78,7 @@ import {
   shiftBrowsingMonthKey,
 } from './src/browsingMonth';
 import { deriveViewData } from './src/derive';
+import useReportingFx from './src/useReportingFx';
 import { resolveSpendingEdit } from './src/spendingActivity';
 import { overallBalance, yourShareAsExpenses, groupBalances, removeMemberFromBill, YOU, DEFAULT_PAYMENT_METHOD_ID } from './src/splits';
 import { ThemeProvider, getTheme, spacing, fonts, panelShadow, ACCOUNT_FAB_SIZE } from './src/theme';
@@ -85,6 +86,9 @@ import { I18nProvider, translate } from './src/i18n';
 import { HIcon } from './src/icons';
 import { alertInfo, confirmDestructive } from './src/confirm';
 import { deleteAllData } from './src/deleteAllData';
+
+// FX-4B infrastructure only. FX-4C will switch all reporting screens together.
+const REPORTING_FX_ENABLED = false;
 
 const Haptics = Platform.OS === 'web'
   ? { notificationAsync: () => Promise.resolve(), impactAsync: () => Promise.resolve(), NotificationFeedbackType: HapticsModule.NotificationFeedbackType, ImpactFeedbackStyle: HapticsModule.ImpactFeedbackStyle }
@@ -191,6 +195,7 @@ function ExpenseTracker() {
   const [rewardNonce, setRewardNonce] = useState(0);
   // Today's date as state so the memoized stats roll over at midnight / on app resume.
   const [dayStamp, setDayStamp] = useState(() => dateKey(Date.now()));
+  const reportingFxRefreshRef = useRef(null);
   // True when the last full sync attempt (initial load or foreground resume)
   // couldn't reach the server. Drives a dismissable retry pill; cleared on the
   // next successful sync. Never set in local-only mode — there's no server.
@@ -235,7 +240,10 @@ function ExpenseTracker() {
   useEffect(() => {
     const refresh = () => setDayStamp(dateKey(Date.now()));
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refresh();
+      if (state === 'active') {
+        refresh();
+        reportingFxRefreshRef.current?.();
+      }
     });
     const interval = setInterval(refresh, 60 * 1000);
     return () => {
@@ -1100,14 +1108,22 @@ function ExpenseTracker() {
   // the dashboard/category/budget aggregates (the user chose "your share counts
   // as spending") and the unified Expenses view — see deriveViewData.
   const splitShareItems = useMemo(() => yourShareAsExpenses(splitExpenses), [splitExpenses]);
+  const loaded = dataUser != null && dataUser === userId;
+  const reportingFx = useReportingFx({
+    userId, dataUser, accountToken: personalScopeRef.current,
+    expenses, sharedSpending: splitShareItems, currency: displayCurrency, monthKey: browsingMonthKey,
+    enabled: REPORTING_FX_ENABLED, blocked: accountLocked || deletingData, refreshKey: dayStamp,
+  });
+  reportingFxRefreshRef.current = reportingFx.refresh;
 
   const { spendingSections, months, hasSpending } =
     useMemo(
-      () => deriveViewData(expenses, displayCurrency, language, settings.customCategories, undefined, splitShareItems),
+      () => deriveViewData(expenses, displayCurrency, language, settings.customCategories, undefined, splitShareItems,
+        REPORTING_FX_ENABLED && reportingFx.active ? reportingFx : null),
       // dayStamp is a dep-only trigger: it forces re-derivation at midnight (so
       // month/today stats roll over) but is intentionally NOT passed into
       // deriveViewData (which reads `now` itself). Do not remove it as "unused".
-      [expenses, displayCurrency, language, dayStamp, settings.customCategories, splitShareItems]
+      [expenses, displayCurrency, language, dayStamp, settings.customCategories, splitShareItems, reportingFx]
     );
 
   // Overall owed/owe across groups (display currency) for the Split tab + the
@@ -1118,7 +1134,6 @@ function ExpenseTracker() {
   );
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
 
-  const loaded = dataUser != null && dataUser === userId;
   const billSession = billSessionRef.current;
   const orderedCurrencies = useMemo(
     () => loaded ? currenciesByFrequency(expenses, splitExpenses) : currenciesByFrequency(),

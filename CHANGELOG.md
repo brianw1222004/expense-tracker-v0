@@ -3,6 +3,23 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## FX-4B - Shared Reporting FX Pipeline
+
+- **Added:** An App-owned, account-scoped reporting hook reuses quote outcomes,
+  prioritizes the browsing month's six-month window, and derives current spending
+  valuations and coverage without persisting converted amounts.
+- **Changed:** Developer previews and reporting share a bounded, deduplicated
+  request worker. Context guards, cancellation, refresh, and bounded session
+  outcomes protect account changes and deletion. Optional aggregation preserves
+  incomplete totals and coverage through day, month, category, and filtered views.
+- **Fixed:** Explicit refresh replaces a service-canceled worker without reviving
+  obsolete requests or retrying on rerenders. Cancellation clears loading and
+  settles queue completion even when an underlying request ignores abort.
+- **Compatibility:** Production reporting remains explicitly disabled for this
+  pipeline and uses static exchange rates until FX-4C. Existing historical-only
+  previews, budgets, shared debts, settlements, sync, provider, and cache policy
+  remain unchanged.
+
 ## FX-4A - Reporting FX Valuation Contract
 
 - **Added:** Pure reporting valuations classify identity, historical, estimated,

@@ -1,6 +1,6 @@
 import { dateKey } from './format';
 import { valueWithFxQuote } from './fx';
-import { getHistoricalFxRate } from './fxRateService';
+import { createFxRequestQueue } from './fxRequestQueue';
 
 // Accept only the existing unified spending projection, never full shared bills.
 export function historicalPreviewRows(sections, monthKey) {
@@ -43,8 +43,7 @@ function summarize(entries) {
 
 // One short-lived batch for the selected day/month. No persistent amount cache.
 // Deduplicate pair/date lookups, with at most three active requests per batch.
-export function startHistoricalFxPreview(rows, currency, scope, onChange, { rateService = getHistoricalFxRate } = {}) {
-  const controller = new AbortController();
+export function startHistoricalFxPreview(rows, currency, scope, onChange, options = {}) {
   const input = rows.filter((row) => !row.settlement && ['personal', 'shared'].includes(row.sourceType))
     .map((row) => ({ rowKey: row.rowKey, amount: row.amount, currency: row.currency, createdAt: row.createdAt }));
   const entries = initialHistoricalPreview(input, currency).entries;
@@ -57,30 +56,20 @@ export function startHistoricalFxPreview(rows, currency, scope, onChange, { rate
     jobs.get(key).rows.push(row);
   }
   onChange(summarize(entries));
-  const queue = [...jobs.values()];
-  let next = 0;
-  async function worker() {
-    while (!controller.signal.aborted && next < queue.length) {
-      const job = queue[next++];
-      let result;
-      try { result = await rateService(scope, job.request, { signal: controller.signal }); }
-      catch { result = { status: 'temporary-failure', reason: 'network-failure' }; }
-      // A scope suspension invalidates the entire old batch, including queued jobs.
-      if (result.status === 'cancelled') controller.abort();
-      if (controller.signal.aborted) return;
-      for (const row of job.rows) {
-        const value = result.status === 'available'
-          ? valueWithFxQuote(row, currency, job.request.transactionDate, result.quote, { datePolicy: 'previous-observation' })
-          : null;
-        entries[row.rowKey] = value?.status === 'valued'
-          ? { status: 'available', amount: value.amount, transactionDate: value.transactionDate,
-            effectiveDate: value.quote.effectiveDate, provider: value.quote.provider,
-            retrievedAt: value.quote.retrievedAt, stale: result.cache?.stale === true }
-          : { status: 'unavailable', reason: value?.reason ?? result.reason, transactionDate: job.request.transactionDate };
-      }
-      onChange(summarize(entries));
+  const queue = createFxRequestQueue(scope, (request, result) => {
+    const job = jobs.get(JSON.stringify(request));
+    for (const row of job.rows) {
+      const value = result.status === 'available'
+        ? valueWithFxQuote(row, currency, job.request.transactionDate, result.quote, { datePolicy: 'previous-observation' })
+        : null;
+      entries[row.rowKey] = value?.status === 'valued'
+        ? { status: 'available', amount: value.amount, transactionDate: value.transactionDate,
+          effectiveDate: value.quote.effectiveDate, provider: value.quote.provider,
+          retrievedAt: value.quote.retrievedAt, stale: result.cache?.stale === true }
+        : { status: 'unavailable', reason: value?.reason ?? result.reason, transactionDate: job.request.transactionDate };
     }
-  }
-  const done = Promise.all(Array.from({ length: Math.min(3, queue.length) }, worker));
-  return { cancel: () => controller.abort(), done };
+    onChange(summarize(entries));
+  }, options);
+  queue.update([...jobs.values()].map((job) => job.request));
+  return { cancel: queue.cancel, done: queue.done() };
 }

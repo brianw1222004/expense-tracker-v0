@@ -134,6 +134,22 @@ async function mountApp() {
   return app;
 }
 const settingsOf = (app) => app.nodes('AccountScreen')[0].props.settings;
+
+it('keeps the real App on static reporting and issues no App-owned FX requests while disabled', async () => {
+  const rates = jest.spyOn(require('../fxRateService'), 'getHistoricalFxRate').mockResolvedValue({ status: 'unavailable' });
+  try {
+    await storage.saveExpenses('alice', [{ id: 'fx-boundary', amount: 20, currency: 'USD', category: 'food', createdAt: Date.now() }]);
+    const app = await mountApp();
+    const dashboard = app.nodes('DashboardScreen')[0].props;
+    const list = app.nodes('ExpenseListScreen')[0].props;
+    const insight = app.nodes('InsightScreen')[0].props;
+    expect(dashboard.monthTotal).toBe(650);
+    expect(insight.months[0].total).toBe(650);
+    expect(list.spendingSections[0].data[0].displayAmount).toBe(650);
+    expect(list.spendingSections[0].data[0]).not.toHaveProperty('fx');
+    expect(rates).not.toHaveBeenCalled();
+  } finally { rates.mockRestore(); }
+});
 const newForm = (app) => app.nodes('AddEntryScreen').find((node) => !node.props.editEntry);
 function openNew(app) { app.nodes('TabBar')[0].props.onAdd(); app.render(); return newForm(app); }
 const expense = (currency = 'USD', patch = {}) => ({ amount: 10, currency, note: '', category: 'food', ...patch });
