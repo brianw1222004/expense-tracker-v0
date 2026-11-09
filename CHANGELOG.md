@@ -3,6 +3,23 @@
 Milestones on `dev/money-currency`, newest first. This records development work,
 not production releases or version numbers.
 
+## FX-4C2 - Coordinated Historical FX Production Activation
+
+- **Added:** Historical FX is the primary conversion method for production
+  spending reports. Dashboard, Expenses, and Insight share the App-owned
+  valuations and coverage, with explicit Estimated fallback, updating, cached,
+  and incomplete states.
+- **Changed:** Account/context readiness gates reporting, and comparisons, trends,
+  filtered day totals, categories, and budget indicators use the shared snapshot.
+  Developer preview displays and their per-screen request consumers are removed;
+  standalone preview modules remain available for their existing tests.
+- **Fixed:** Same-currency expense rows omit duplicate original amounts while
+  shared rows retain their personal-share label. Category summaries prioritize
+  complete monetary amounts, with wrapping fallbacks for narrow screens.
+- **Compatibility:** Original transaction amounts/currencies, user currency
+  preferences, budget storage and static redenomination, shared obligations,
+  balances, settlements, sync ownership, and provider/cache policy are unchanged.
+
 ## FX-4C1 - Historical FX Presentation Safety
 
 - **Added:** Opt-in reporting presentation helpers and compact Historical,

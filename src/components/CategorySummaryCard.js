@@ -224,7 +224,6 @@ function TopCategoryRow({ seg, budget, displayCurrency, colors, styles, t, fxMod
           {/* A blown budget reddens the figure. */}
           <Text
             style={[styles.statSpent, bar.over && { color: colors.danger }]}
-            numberOfLines={1}
             accessibilityLabel={fxMode ? formatReportingAmount(seg.value, displayCurrency, t, { coverage, code: true }) : undefined}
           >
             {fxMode ? formatReportingAmount(seg.value, displayCurrency, t, { coverage }) : formatMoneyShort(seg.value, displayCurrency)}
@@ -235,7 +234,7 @@ function TopCategoryRow({ seg, budget, displayCurrency, colors, styles, t, fxMod
           <View style={styles.statBarTrack}>
             {bar.fillPct !== null && <View style={[styles.statBarFill, { width: `${bar.fillPct}%`, backgroundColor: bar.tone }]} />}
           </View>
-          <Text style={styles.statBudget} numberOfLines={1}>
+          <Text style={styles.statBudget}>
             {bar.basis === 'budget'
               ? formatMoneyShort(budget, displayCurrency)
               : t('cats.noBudget')}
@@ -279,9 +278,13 @@ const createStyles = (colors) =>
     moreDetailLinkPressed: { opacity: 0.6 },
     donutBody: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
+      columnGap: spacing.md,
+      rowGap: spacing.md,
+      justifyContent: 'center',
       alignItems: 'center',
     },
-    donut: { width: DONUT_SIZE, height: DONUT_SIZE },
+    donut: { width: DONUT_SIZE, height: DONUT_SIZE, flexShrink: 0 },
     donutCenter: {
       alignItems: 'center',
       justifyContent: 'center',
@@ -300,8 +303,10 @@ const createStyles = (colors) =>
       marginTop: 1,
     },
     statCol: {
-      flex: 1,
-      marginLeft: spacing.lg,
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 140,
+      minWidth: 0,
       gap: spacing.sm,
     },
     // Dimmed hairline between the top-category rows beside the donut.
@@ -321,29 +326,42 @@ const createStyles = (colors) =>
     statIconBox: {
       width: 30,
       height: 30,
+      flexShrink: 0,
       borderRadius: 15,
       alignItems: 'center',
       justifyContent: 'center',
     },
     statBody: {
       flex: 1,
+      minWidth: 0,
       gap: 4,
     },
     // Name + spend line of a top-category row.
     statHead: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'baseline',
       justifyContent: 'space-between',
-      gap: spacing.sm,
+      columnGap: spacing.sm,
+      rowGap: 2,
     },
     // Color is applied inline from the category (matching its icon).
     statName: {
+      flexBasis: 48,
+      flexGrow: 1,
       flexShrink: 1,
+      minWidth: 0,
       fontFamily: fonts.bold,
       fontSize: 15,
     },
     // This month's spend, right-aligned on the name line.
     statSpent: {
+      // Keep all digits. A long amount gets its own line before wrapping;
+      // it is never ellipsized or reduced to an unreadable font size.
+      flexShrink: 0,
+      maxWidth: '100%',
+      marginLeft: 'auto',
+      textAlign: 'right',
       color: colors.textPrimary,
       fontFamily: fonts.numBold,
       fontSize: 14,
@@ -353,10 +371,15 @@ const createStyles = (colors) =>
     // month's spend when unbudgeted).
     statBarRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'center',
       gap: spacing.sm,
     },
     statBudget: {
+      flexShrink: 0,
+      maxWidth: '100%',
+      marginLeft: 'auto',
+      textAlign: 'right',
       color: colors.textMuted,
       fontFamily: fonts.numRegular,
       fontSize: 12,
@@ -366,6 +389,8 @@ const createStyles = (colors) =>
     // matching the Insight list's bars.
     statBarTrack: {
       flex: 1,
+      flexBasis: 32,
+      minWidth: 32,
       height: 6,
       borderRadius: 3,
       backgroundColor: colors.background,

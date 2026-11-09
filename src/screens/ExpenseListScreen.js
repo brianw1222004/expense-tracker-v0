@@ -13,7 +13,6 @@ import HeaderGlow from '../components/HeaderGlow';
 import MonthSelector from '../components/MonthSelector';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { HIcon } from '../icons';
-import useHistoricalFxPreview from '../useHistoricalFxPreview';
 import ReportingFxStatus from '../components/ReportingFxStatus';
 import { formatReportingAmount } from '../reportingPresentation';
 
@@ -25,8 +24,6 @@ export default function ExpenseListScreen({
   fxMode = false,
   fxReady = true,
   accountKey,
-  fxPreviewEnabled = false,
-  fxUserScope,
   spendingSections,
   loaded,
   hasSpending,
@@ -97,8 +94,6 @@ export default function ExpenseListScreen({
     () => spendingForDay(spendingSections, visibleSelectedDate, activeFilter, categories, fxMode),
     [spendingSections, visibleSelectedDate, activeFilter, categories, fxMode]
   );
-  const historical = useHistoricalFxPreview(filteredExpenses, displayCurrency, fxUserScope,
-    __DEV__ && fxPreviewEnabled && loaded);
 
   const selectDay = (day) => {
     if (!day) return;
@@ -280,7 +275,6 @@ export default function ExpenseListScreen({
               fxMode={fxMode}
               key={expense.rowKey}
               expense={expense}
-              fxPreview={__DEV__ && fxPreviewEnabled ? historical.entries[expense.rowKey] : null}
               displayCurrency={displayCurrency}
               categories={categories}
               groupName={groupNames.get(expense.groupId)}

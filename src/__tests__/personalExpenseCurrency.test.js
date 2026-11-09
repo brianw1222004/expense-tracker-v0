@@ -60,6 +60,10 @@ jest.mock('../../assets/fonts/LiberationSans-Bold.ttf', () => 2);
 jest.mock('../icons', () => ({ HIcon: 'Icon' }));
 jest.mock('../confirm', () => ({ ...jest.requireActual('../confirm'), alertInfo: jest.fn(async () => {}) }));
 jest.mock('../i18n', () => jest.requireActual('../i18n.js'));
+jest.mock('../fxRateService', () => ({
+  ...jest.requireActual('../fxRateService'),
+  getHistoricalFxRate: jest.fn(async () => ({ status: 'unavailable' })),
+}));
 jest.mock('../useTabSlide', () => () => ({ tab: 'list', changeTab: jest.fn(), screenStyle: () => ({}), swipeHandlers: {} }));
 jest.mock('../supabase', () => ({
   isSupabaseConfigured: true,
@@ -114,12 +118,12 @@ function textOf(node) {
 function renderer(component, props = {}) {
   const frame = { hooks: [], index: 0, effects: [], dirty: false, tree: null };
   mockFrames.push(frame);
-  const render = () => {
+  const render = (effects = true) => {
     do {
       mockFrame = frame; frame.index = 0; frame.effects = []; frame.dirty = false;
       frame.tree = component(props);
-      frame.effects.forEach((effect) => effect());
-    } while (frame.dirty);
+      if (effects) frame.effects.forEach((effect) => effect());
+    } while (effects && frame.dirty);
   };
   render();
   return { props, render, tree: () => frame.tree, nodes: (type) => nodes(frame.tree).filter((node) => node.type === type) };
@@ -135,7 +139,7 @@ async function mountApp() {
 }
 const settingsOf = (app) => app.nodes('AccountScreen')[0].props.settings;
 
-it('keeps the real App on static reporting and issues no App-owned FX requests while disabled', async () => {
+it('enables the common FX reporting model with explicit Estimated fallback on all three screens', async () => {
   const rates = jest.spyOn(require('../fxRateService'), 'getHistoricalFxRate').mockResolvedValue({ status: 'unavailable' });
   try {
     await storage.saveExpenses('alice', [{ id: 'fx-boundary', amount: 20, currency: 'USD', category: 'food', createdAt: Date.now() }]);
@@ -146,8 +150,14 @@ it('keeps the real App on static reporting and issues no App-owned FX requests w
     expect(dashboard.monthTotal).toBe(650);
     expect(insight.months[0].total).toBe(650);
     expect(list.spendingSections[0].data[0].displayAmount).toBe(650);
-    expect(list.spendingSections[0].data[0]).not.toHaveProperty('fx');
-    expect(rates).not.toHaveBeenCalled();
+    expect(list.spendingSections[0].data[0].fx.status).toBe('estimated');
+    for (const screen of [dashboard, list, insight]) {
+      expect(screen.fxMode).toBe(true); expect(screen.fxReady).toBe(true);
+      expect(screen).not.toHaveProperty('fxPreviewEnabled');
+    }
+    expect(dashboard.categoryMonths).toBe(insight.months);
+    expect(dashboard.coverage).toBe(insight.months[0].coverage);
+    expect(rates).toHaveBeenCalledTimes(1);
   } finally { rates.mockRestore(); }
 });
 const newForm = (app) => app.nodes('AddEntryScreen').find((node) => !node.props.editEntry);
@@ -162,6 +172,9 @@ const formCurrency = (form) => form.nodes('CurrencyPill')[0].props.value;
 
 beforeEach(async () => {
   mockFrames = []; global.__DEV__ = false;
+  jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Live network is forbidden in App tests'));
+  require('../fxRateService').getHistoricalFxRate.mockReset().mockResolvedValue({ status: 'unavailable' });
+  for (const scope of ['alice', 'bob', storage.LOCAL_USER]) require('../fxRateService').resumeFxRates(scope);
   cloud.isSupabaseConfigured = true;
   sync.syncWithServer.mockReset().mockResolvedValue(null);
   sync.enqueueExpenseUpsert.mockReset().mockResolvedValue(undefined);
@@ -171,6 +184,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   for (const frame of mockFrames) for (const hook of frame.hooks) hook?.cleanup?.();
+  expect(globalThis.fetch).not.toHaveBeenCalled();
   jest.restoreAllMocks(); delete global.__DEV__;
 });
 
@@ -691,4 +705,256 @@ it('forwards ordering through group creation and editing without changing their 
   expect(detail.nodes('CurrencyPicker')[0].props.currencies).toBe(create.props.currencies);
   expect(detail.nodes('CurrencyPicker')[0].props.value).toBe('JPY');
   expect(detail.props.onUpdateGroup).not.toHaveBeenCalled();
+});
+
+// FX-4C2 exercises the actual App-owned hook and screen props using the same
+// account/form harness; only the rate-service boundary is controlled.
+const fxService = require('../fxRateService');
+const savedFxExpense = (patch = {}) => expense('USD', {
+  id: 'fx-personal', amount: 20, createdAt: Date.now() - 86400000, ...patch,
+});
+const fxObservation = (request, rate = 2, stale = false) => ({ status: 'available', quote: {
+  baseCurrency: request.baseCurrency, quoteCurrency: request.quoteCurrency, rate,
+  effectiveDate: request.transactionDate, sourceType: 'historical', provider: 'frankfurter-v2:BOC',
+  retrievedAt: new Date(Date.now() - (stale ? 2 * 86400000 : 0)).toISOString(),
+}, cache: { stale } });
+const fxGate = () => { let resolve; const promise = new Promise((finish) => { resolve = finish; }); return { promise, resolve }; };
+const fxScreens = (app) => ({ dashboard: app.nodes('DashboardScreen')[0]?.props,
+  list: app.nodes('ExpenseListScreen')[0]?.props, insight: app.nodes('InsightScreen')[0]?.props });
+async function editFxExpense(app, record) {
+  fxScreens(app).list.onEditPress({ sourceType: 'personal', id: record.id }); app.render();
+  expect(await app.nodes('AddEntryScreen').find((node) => node.props.editEntry).props.onSubmit(record)).toBe(true);
+  await settle(app);
+}
+
+describe('production reporting FX integration', () => {
+  beforeEach(() => {
+    // Keep relative transaction dates in the browsing month; only fake Date so
+    // promises, effects, and request completion retain their real scheduling.
+    jest.useFakeTimers({
+      now: new Date(2026, 9, 15, 12),
+      doNotFake: ['hrtime', 'nextTick', 'performance', 'queueMicrotask',
+        'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
+    });
+  });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('gates initial account loading, then shows Estimated/loading immediately before the quote arrives', async () => {
+    const source = savedFxExpense(), cache = fxGate(), quote = fxGate();
+    jest.spyOn(storage, 'loadExpenses').mockImplementationOnce(() => cache.promise);
+    fxService.getHistoricalFxRate.mockImplementation(() => quote.promise);
+    const app = await mountApp();
+    expect(fxScreens(app).dashboard).toBeUndefined(); expect(fxService.getHistoricalFxRate).not.toHaveBeenCalled();
+    cache.resolve([source]); await settle(app);
+    const pending = fxScreens(app);
+    expect(pending.dashboard.monthTotal).toBe(650);
+    expect(pending.dashboard.coverage).toMatchObject({ estimated: 1, loading: 1 });
+    expect(pending.list.spendingSections[0].data[0].fx).toMatchObject({ status: 'estimated', loading: true });
+    for (const screen of Object.values(pending)) expect(screen.fxReady).toBe(true);
+    quote.resolve(fxObservation(fxService.getHistoricalFxRate.mock.calls[0][1])); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(40);
+    expect(fxScreens(app).dashboard.coverage).toMatchObject({ historical: 1, estimated: 0, loading: 0 });
+    expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares full-precision personal/your-share valuations once, excluding settlements and preserving financial sources', async () => {
+    const source = savedFxExpense(), rate = 2.3456789;
+    const group = { id: 'fx-group', name: 'FX group', currency: 'USD', members: [{ id: 'friend', name: 'Friend' }] };
+    const bill = { id: 'fx-bill', groupId: group.id, amount: 100, currency: 'USD', category: 'transport',
+      paidBy: 'you', shares: { you: 25, friend: 75 }, createdAt: source.createdAt };
+    const bills = [bill, { ...bill, id: 'settlement', settlement: true, amount: 5, shares: { friend: 5 } }];
+    const settings = { ...storage.DEFAULT_SETTINGS, displayCurrency: 'TWD', monthlyBudget: 1000,
+      categoryBudgets: { food: 200, transport: 300 }, lastPersonalExpenseCurrency: 'JPY', onboardingDone: true };
+    await storage.saveExpenses('alice', [source]); await storage.saveGroups('alice', [group]);
+    await storage.saveSplitExpenses('alice', bills); await storage.saveSettings('alice', settings);
+    fxService.getHistoricalFxRate.mockImplementation(async (_, request) => fxObservation(request, rate));
+    const app = await mountApp(), { dashboard, list, insight } = fxScreens(app);
+    expect(dashboard.categoryMonths).toBe(insight.months); expect(dashboard.coverage).toBe(insight.months[0].coverage);
+    expect(dashboard.monthTotal).toBeCloseTo(45 * rate, 10);
+    expect(dashboard.dailyTotals.reduce((sum, value) => sum + value, 0)).toBeCloseTo(dashboard.monthTotal, 10);
+    expect(insight.months[0].byCategory).toEqual({ food: 20 * rate, transport: 25 * rate });
+    expect(list.spendingSections[0].data).toHaveLength(2);
+    expect(list.spendingSections[0].data.find((row) => row.sourceType === 'shared')).toMatchObject({ amount: 25, currency: 'USD', displayAmount: 25 * rate });
+    expect(dashboard.coverage).toMatchObject({ total: 2, historical: 2, complete: true });
+    const filtered = require('../spendingActivity').spendingForDay(list.spendingSections, require('../format').dateKey(source.createdAt), 'food', getAllCategories(), true);
+    expect(filtered).toMatchObject({ filteredTotal: 20 * rate, coverage: { total: 1, historical: 1 } });
+    expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+    expect(await storage.loadExpenses('alice')).toEqual([source]); expect(await storage.loadSplitExpenses('alice')).toEqual(bills);
+    expect(await storage.loadSettings('alice')).toMatchObject(settings);
+    expect(app.nodes('SplitBillsScreen')[0].props.summary).toEqual(require('../splits').overallBalance([group], bills, 'TWD'));
+    expect(openNew(app).props.defaultCurrency).toBe('JPY');
+  });
+
+  it.each([false, true])('keeps empty and identity-only reports ready with zero requests (identity=%s)', async (identity) => {
+    if (identity) await storage.saveExpenses('alice', [savedFxExpense({ currency: 'TWD', amount: 7 })]);
+    const app = await mountApp(), screens = fxScreens(app);
+    expect(screens.dashboard.monthTotal).toBe(identity ? 7 : 0);
+    expect(screens.dashboard.coverage).toMatchObject({ complete: true, identity: identity ? 1 : 0, loading: 0 });
+    for (const screen of Object.values(screens)) expect(screen.fxReady).toBe(true);
+    expect(fxService.getHistoricalFxRate).not.toHaveBeenCalled();
+  });
+
+  it('uses valid cached historical quotes without relabeling them Estimated', async () => {
+    const source = savedFxExpense({ createdAt: Date.now() - 3 * 86400000 });
+    await storage.saveExpenses('alice', [source]);
+    fxService.getHistoricalFxRate.mockImplementation(async (_, request) => fxObservation(request, 2, true));
+    const app = await mountApp(), selected = new Date(source.createdAt);
+    const [year, month] = fxScreens(app).dashboard.monthKey.split('-').map(Number);
+    fxScreens(app).list.onShiftMonth((selected.getFullYear() - year) * 12 + selected.getMonth() + 1 - month); await settle(app);
+    const screens = fxScreens(app);
+    expect(screens.dashboard.monthTotal).toBe(40);
+    expect(screens.dashboard.coverage).toMatchObject({ historical: 1, stale: 1, estimated: 0 });
+    expect(screens.list.spendingSections[0].data[0].fx.stale).toBe(true);
+    app.render(); await settle(app); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves unavailable totals instead of falling back to a legacy partial amount', async () => {
+    await storage.saveExpenses('alice', [savedFxExpense(), savedFxExpense({ id: 'invalid', currency: 'ZZZ', category: 'bills' })]);
+    const app = await mountApp(), { dashboard, list, insight } = fxScreens(app);
+    expect(dashboard.monthTotal).toBeNull(); expect(insight.months[0].total).toBeNull();
+    expect(dashboard.coverage).toMatchObject({ complete: false, estimated: 1, unavailable: 1 });
+    expect(list.spendingSections[0].data.find((row) => row.id === 'invalid').displayAmount).toBeNull();
+    for (const screen of [dashboard, list, insight]) expect(screen.fxReady).toBe(true);
+  });
+
+  it('isolates Alice -> Bob -> Alice before effects and rejects abort-ignoring old quotes', async () => {
+    const source = savedFxExpense(), old = fxGate(), current = fxGate();
+    await storage.saveExpenses('alice', [source]);
+    await storage.saveExpenses('bob', [savedFxExpense({ id: 'bob-only', currency: 'TWD', amount: 7 })]);
+    await storage.saveSettings('bob', { ...storage.DEFAULT_SETTINGS, displayCurrency: 'TWD', onboardingDone: true });
+    fxService.getHistoricalFxRate.mockImplementationOnce(() => old.promise).mockImplementationOnce(() => current.promise);
+    const app = await mountApp(), aliceToken = fxScreens(app).list.accountKey;
+    mockAuthListener('SIGNED_IN', { user: { id: 'bob' } }); app.render(false);
+    expect(fxScreens(app).dashboard).toBeUndefined();
+    await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(7); expect(fxScreens(app).list.accountKey).not.toBe(aliceToken);
+    mockAuthListener('SIGNED_IN', { user: { id: 'alice' } }); app.render(false);
+    expect(fxScreens(app).dashboard).toBeUndefined(); await settle(app);
+    expect(fxScreens(app).list.accountKey).not.toBe(aliceToken);
+    const request = fxService.getHistoricalFxRate.mock.calls[0][1];
+    expect(fxService.getHistoricalFxRate.mock.calls[0][2].signal.aborted).toBe(true);
+    old.resolve(fxObservation(request, 99)); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(650);
+    current.resolve(fxObservation(request, 3)); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(60);
+    expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(2);
+  });
+
+  it('changes reporting currency immediately, ignores an old-target quote, and preserves budget redenomination', async () => {
+    const source = savedFxExpense(), old = fxGate(), current = fxGate();
+    await storage.saveExpenses('alice', [source]);
+    await storage.saveSettings('alice', { ...storage.DEFAULT_SETTINGS, displayCurrency: 'TWD', monthlyBudget: 3250,
+      categoryBudgets: { food: 1625 }, lastPersonalExpenseCurrency: 'EUR', onboardingDone: true });
+    fxService.getHistoricalFxRate.mockImplementationOnce(() => old.promise).mockImplementationOnce(() => current.promise);
+    const app = await mountApp();
+    app.nodes('AccountScreen')[0].props.onUpdateSettings({ displayCurrency: 'USD' }); app.render(false);
+    for (const screen of Object.values(fxScreens(app))) expect(screen.displayCurrency).toBe('USD');
+    expect(fxScreens(app).dashboard.monthTotal).toBe(20); // Identity is immediately current, without a request.
+    await settle(app); old.resolve(fxObservation(fxService.getHistoricalFxRate.mock.calls[0][1], 99)); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(20); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+    expect(settingsOf(app)).toMatchObject({ monthlyBudget: 100, categoryBudgets: { food: 50 }, lastPersonalExpenseCurrency: 'EUR' });
+    app.nodes('AccountScreen')[0].props.onUpdateSettings({ displayCurrency: 'JPY' }); await settle(app);
+    current.resolve(fxObservation(fxService.getHistoricalFxRate.mock.calls[1][1], 10)); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(200); expect(await storage.loadExpenses('alice')).toEqual([source]);
+  });
+
+  it('applies a pending quote to the latest edited amount without another request', async () => {
+    const source = savedFxExpense(), gate = fxGate(); await storage.saveExpenses('alice', [source]);
+    fxService.getHistoricalFxRate.mockImplementation(() => gate.promise);
+    const app = await mountApp(); await editFxExpense(app, { ...source, amount: 30 });
+    expect(fxScreens(app).dashboard.monthTotal).toBe(975);
+    gate.resolve(fxObservation(fxService.getHistoricalFxRate.mock.calls[0][1])); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(60); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+    expect((await storage.loadExpenses('alice'))[0]).toMatchObject({ amount: 30, currency: 'USD' });
+    expect(settingsOf(app).lastPersonalExpenseCurrency).toBe('USD');
+  });
+
+  it('uses new keys for date/currency edits, reuses a category-only quote, and removes deleted reporting rows', async () => {
+    const source = savedFxExpense(); await storage.saveExpenses('alice', [source]);
+    fxService.getHistoricalFxRate.mockImplementation(async (_, request) => fxObservation(request));
+    const app = await mountApp();
+    await editFxExpense(app, { ...source, category: 'transport' });
+    expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+    expect(fxScreens(app).insight.months[0].byCategory).toEqual({ transport: 40 });
+    const changedDate = { ...source, createdAt: source.createdAt - 86400000 };
+    await editFxExpense(app, changedDate); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(2);
+    await editFxExpense(app, { ...changedDate, currency: 'EUR' }); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(3);
+    expect(fxService.getHistoricalFxRate.mock.calls.map((call) => call[1].baseCurrency)).toEqual(['USD', 'USD', 'EUR']);
+    expect(fxService.getHistoricalFxRate.mock.calls[0][1].transactionDate).not.toBe(fxService.getHistoricalFxRate.mock.calls[1][1].transactionDate);
+    fxScreens(app).list.onDelete(source.id); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(0); expect(fxScreens(app).list.spendingSections).toEqual([]);
+    expect(await storage.loadExpenses('alice')).toEqual([]);
+  });
+
+  it('revalues a changed saved shared allocation without requesting or counting the full bill again', async () => {
+    const group = { id: 'allocation', currency: 'USD', members: [{ id: 'friend', name: 'Friend' }] };
+    const bill = { id: 'allocation-bill', groupId: group.id, amount: 100, currency: 'USD', paidBy: 'you',
+      shares: { you: 25, friend: 75 }, createdAt: Date.now() - 86400000 };
+    await storage.saveGroups('alice', [group]); await storage.saveSplitExpenses('alice', [bill]);
+    fxService.getHistoricalFxRate.mockImplementation(async (_, request) => fxObservation(request));
+    jest.spyOn(sync, 'enqueueSplitUpsert').mockResolvedValue(undefined);
+    const app = await mountApp(); expect(fxScreens(app).dashboard.monthTotal).toBe(50);
+    app.nodes('GroupDetailScreen')[0].props.onEditBill(bill); app.render();
+    app.nodes('SharedSplitForm').find((node) => node.props.editBill).props.onSave({ ...bill, shares: { you: 40, friend: 60 } });
+    await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(80); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+    expect((await storage.loadSplitExpenses('alice'))[0]).toMatchObject({ amount: 100, currency: 'USD', shares: { you: 40, friend: 60 } });
+  });
+
+  it('reuses overlapping month quotes and the same model for browsing history', async () => {
+    const source = savedFxExpense(), prior = new Date(source.createdAt); prior.setMonth(prior.getMonth() - 1);
+    await storage.saveExpenses('alice', [source, savedFxExpense({ id: 'prior', amount: 5, createdAt: prior.getTime() })]);
+    fxService.getHistoricalFxRate.mockImplementation(async (_, request) => fxObservation(request));
+    const app = await mountApp(); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(2);
+    fxScreens(app).list.onShiftMonth(-1); await settle(app);
+    const screens = fxScreens(app);
+    expect(screens.dashboard.monthTotal).toBe(10);
+    expect(screens.dashboard.monthKey).toBe(screens.list.monthKey); expect(screens.list.monthKey).toBe(screens.insight.monthKey);
+    expect(screens.dashboard.coverage).toMatchObject({ historical: 1, total: 1 });
+    expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(2);
+  });
+
+  it('recovers a service-suspended reporting worker only on foreground refresh, ignoring the obsolete response', async () => {
+    const old = fxGate(); await storage.saveExpenses('alice', [savedFxExpense()]);
+    const response = (request, rate) => ({ status: 200, headers: { get: () => null }, text: async () => JSON.stringify([
+      { base: request.baseCurrency, quote: request.quoteCurrency, date: request.transactionDate, rate,
+        providers: [{ key: 'BOC', date: request.transactionDate, rate }] },
+    ]) });
+    const cache = require('../fxRateCache').createFxRateCache(AsyncStorage);
+    let transports = 0;
+    fxService.getHistoricalFxRate.mockImplementation((scope, request, options) => jest.requireActual('../fxRateService').getHistoricalFxRate(scope, request, {
+      ...options, cache, fetchImpl: async () => ++transports === 1 ? old.promise : response(request, 3),
+    }));
+    const app = await mountApp(); expect(transports).toBe(1);
+    fxService.suspendFxRates('alice'); await settle(app);
+    expect(fxScreens(app).dashboard.coverage).toMatchObject({ estimated: 1, loading: 0 });
+    expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+    fxService.resumeFxRates('alice'); app.render(); await settle(app);
+    expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+    require('react-native').AppState.addEventListener.mock.calls[0][1]('active'); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(60); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(2);
+    old.resolve(response(fxService.getHistoricalFxRate.mock.calls[0][1], 99)); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(60);
+  });
+
+  it('blocks reporting immediately during Delete All Data and cannot repopulate from a late quote after resume', async () => {
+    cloud.isSupabaseConfigured = false;
+    const source = savedFxExpense(), old = fxGate();
+    await storage.saveSettings(storage.LOCAL_USER, { ...storage.DEFAULT_SETTINGS, displayCurrency: 'TWD', onboardingDone: true });
+    await storage.saveExpenses(storage.LOCAL_USER, [source]);
+    fxService.getHistoricalFxRate.mockImplementation(() => old.promise);
+    jest.spyOn(require('../confirm'), 'confirmDestructive').mockResolvedValue(true);
+    const app = await mountApp(); expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+    const deleting = app.nodes('AccountScreen')[0].props.onDeleteAllData(); app.render(false);
+    for (const screen of Object.values(fxScreens(app))) expect(screen.fxReady).toBe(false);
+    expect(fxScreens(app).dashboard.monthTotal).toBeNull(); // Never an implicit static fallback while blocked.
+    app.render(); require('react-native').AppState.addEventListener.mock.calls[0][1]('active'); app.render();
+    await deleting; await settle(app);
+    old.resolve(fxObservation(fxService.getHistoricalFxRate.mock.calls[0][1], 99)); await settle(app);
+    expect(fxScreens(app).dashboard.monthTotal).toBe(0);
+    expect(fxScreens(app).dashboard.coverage).toMatchObject({ total: 0, complete: true });
+    expect(fxScreens(app).list.spendingSections).toEqual([]);
+    expect(await storage.loadExpenses(storage.LOCAL_USER)).toEqual([]);
+    expect(fxService.getHistoricalFxRate).toHaveBeenCalledTimes(1);
+  });
 });

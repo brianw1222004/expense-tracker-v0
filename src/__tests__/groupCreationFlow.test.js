@@ -67,6 +67,9 @@ jest.mock('../sync', () => ({
   enqueueGroupUpsert: jest.fn(), enqueueGroupDelete: jest.fn(), enqueueSplitDelete: jest.fn(),
 }));
 jest.mock('../deleteAllData', () => ({ deleteAllData: jest.fn() }));
+jest.mock('../fxRateService', () => ({
+  ...jest.requireActual('../fxRateService'), getHistoricalFxRate: jest.fn(async () => ({ status: 'unavailable' })),
+}));
 for (const name of ['DashboardScreen', 'AddEntryScreen', 'ExpenseListScreen', 'AccountScreen', 'InsightScreen',
   'SplitBillsScreen', 'GroupDetailScreen', 'CreateGroupScreen', 'SharedSplitForm', 'BudgetScreen', 'AuthScreen', 'OnboardingScreen']) {
   jest.doMock(`../screens/${name}`, () => name);

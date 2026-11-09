@@ -387,11 +387,15 @@ it('keeps genuine empty FX buckets complete and all legacy output shapes unchang
   expect(legacy.months[0]).not.toHaveProperty('coverage');
 });
 
-it('leaves App disabled and production reporting, budgets, and obligations on their existing paths', () => {
+it('activates one App-owned reporting path while budgets and obligations retain their existing calculations', () => {
   const source = fs.readFileSync(require.resolve('../../App.js'), 'utf8');
-  expect(source).toMatch(/const REPORTING_FX_ENABLED = false;/);
+  expect(source).toMatch(/const REPORTING_FX_ENABLED = true;/);
   expect(source.match(/useReportingFx\(/g)).toHaveLength(1);
-  expect(source).toContain('REPORTING_FX_ENABLED && reportingFx.active ? reportingFx : null');
+  expect(source).toContain('REPORTING_FX_ENABLED ? reportingFx : null');
+  expect(source).not.toContain('fxPreviewEnabled');
+  for (const path of ['../screens/DashboardScreen.js', '../screens/ExpenseListScreen.js', '../components/ExpenseRow.js']) {
+    expect(fs.readFileSync(require.resolve(path), 'utf8')).not.toMatch(/HistoricalMonthPreview|useHistoricalFxPreview|HistoricalFxRow/);
+  }
   const group = { id: 'g', currency: 'USD', members: [{ id: 'friend' }] };
   const bills = [{ groupId: 'g', amount: 100, currency: 'USD', paidBy: 'you', shares: { you: 25, friend: 75 } }];
   expect(groupBalances(group, bills)).toEqual({ friend: 75 });

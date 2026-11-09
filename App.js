@@ -87,8 +87,8 @@ import { HIcon } from './src/icons';
 import { alertInfo, confirmDestructive } from './src/confirm';
 import { deleteAllData } from './src/deleteAllData';
 
-// FX-4B infrastructure only. FX-4C will switch all reporting screens together.
-const REPORTING_FX_ENABLED = false;
+// Spending reports share historical valuations; obligations keep their own math.
+const REPORTING_FX_ENABLED = true;
 
 const Haptics = Platform.OS === 'web'
   ? { notificationAsync: () => Promise.resolve(), impactAsync: () => Promise.resolve(), NotificationFeedbackType: HapticsModule.NotificationFeedbackType, ImpactFeedbackStyle: HapticsModule.ImpactFeedbackStyle }
@@ -1115,11 +1115,13 @@ function ExpenseTracker() {
     enabled: REPORTING_FX_ENABLED, blocked: accountLocked || deletingData, refreshKey: dayStamp,
   });
   reportingFxRefreshRef.current = reportingFx.refresh;
+  const reportingReady = loaded && reportingFx.active && reportingFx.userId === userId
+    && reportingFx.currency === displayCurrency && reportingFx.accountToken === personalScopeRef.current;
 
   const { spendingSections, months, hasSpending } =
     useMemo(
       () => deriveViewData(expenses, displayCurrency, language, settings.customCategories, undefined, splitShareItems,
-        REPORTING_FX_ENABLED && reportingFx.active ? reportingFx : null),
+        REPORTING_FX_ENABLED ? reportingFx : null),
       // dayStamp is a dep-only trigger: it forces re-derivation at midnight (so
       // month/today stats roll over) but is intentionally NOT passed into
       // deriveViewData (which reads `now` itself). Do not remove it as "unused".
@@ -1151,7 +1153,7 @@ function ExpenseTracker() {
   // zero-filled array) when that month has no data at all, so the chart draws
   // no second line rather than a flat one along the baseline.
   const heroView = useMemo(
-    () => dashboardBrowsingMonthView(months, browsingMonthKey),
+    () => dashboardBrowsingMonthView(months, browsingMonthKey, REPORTING_FX_ENABLED),
     [months, browsingMonthKey]
   );
 
@@ -1198,9 +1200,10 @@ function ExpenseTracker() {
           </View>
           <Animated.View style={[styles.screen, screenStyle('dashboard')]} pointerEvents={tab === 'dashboard' ? 'auto' : 'none'}>
             <DashboardScreen
-              fxPreviewEnabled={__DEV__ && loaded && tab === 'dashboard' && chromeVisible && !deletingData && !accountLocked}
-              fxUserScope={__DEV__ && loaded ? userId : null}
-              spendingSections={spendingSections}
+              fxMode={REPORTING_FX_ENABLED}
+              fxReady={reportingReady}
+              coverage={heroView.coverage}
+              previousCoverage={heroView.prevCoverage}
               loaded={loaded}
               hasExpenses={hasSpending}
               monthTotal={heroView.total}
@@ -1223,8 +1226,9 @@ function ExpenseTracker() {
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('list')]} pointerEvents={tab === 'list' ? 'auto' : 'none'}>
             <ExpenseListScreen
-              fxPreviewEnabled={__DEV__ && loaded && tab === 'list' && chromeVisible && !deletingData && !accountLocked}
-              fxUserScope={__DEV__ && loaded ? userId : null}
+              fxMode={REPORTING_FX_ENABLED}
+              fxReady={reportingReady}
+              accountKey={personalScopeRef.current}
               spendingSections={spendingSections}
               loaded={loaded}
               hasSpending={hasSpending}
@@ -1263,6 +1267,8 @@ function ExpenseTracker() {
           </Animated.View>
           <Animated.View style={[styles.screen, screenStyle('insight')]} pointerEvents={tab === 'insight' ? 'auto' : 'none'}>
             <InsightScreen
+              fxMode={REPORTING_FX_ENABLED}
+              fxReady={reportingReady}
               loaded={loaded}
               hasExpenses={hasSpending}
               displayCurrency={displayCurrency}

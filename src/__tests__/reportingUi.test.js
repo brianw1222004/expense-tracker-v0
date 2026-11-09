@@ -358,3 +358,100 @@ it('leaves legacy static comparisons and chart values unchanged without FX discl
   expect(text(card)).toContain('NT$50'); expect(text(card)).toMatch(/150\.0\s*%/);
   for (const key of ['fx.historical', 'fx.includesEstimates', 'fx.updating', 'fx.trendComparison']) expect(text(card)).not.toContain(t(key));
 });
+
+it.each(['en', 'zh', 'es'])('omits duplicate identity amounts from both visible and accessible expense text in %s', (language) => {
+  mockLanguage = language;
+  const source = personal({ amount: 52.75 }), row = fixture([source], [], historical, 'USD').spendingSections[0].data[0];
+  const onEdit = jest.fn(), onRequestDelete = jest.fn();
+  const ui = render(ExpenseRow, { expense: row, fxMode: true, displayCurrency: 'USD', categories: getAllCategories(), onEdit, onRequestDelete });
+  expect(text(ui.tree()).match(/\$52\.75/g)).toHaveLength(1);
+  expect(text(ui.tree())).not.toContain(t('fx.original'));
+  const button = ui.nodes('Pressable')[0];
+  expect(button.props.accessibilityLabel.match(/\$52\.75/g)).toHaveLength(1);
+  expect(button.props.accessibilityLabel.match(/USD/g)).toHaveLength(1);
+  expect(button.props.accessibilityLabel).not.toContain(t('fx.original'));
+  button.props.onPress(); button.props.onLongPress();
+  expect(resolveSpendingEdit(onEdit.mock.calls[0][0], [source], [], []).record).toEqual(source);
+  expect(onRequestDelete).toHaveBeenCalledWith(row);
+});
+
+it.each(['en', 'zh', 'es'].flatMap((language) => ['historical', 'estimated'].map((status) => [language, status])))(
+  'keeps original currency/amount and FX disclosure for a converted expense in %s (%s)', (language, status) => {
+  mockLanguage = language;
+  const row = fixture([personal({ amount: 52.75 })], [], status === 'historical' ? historical : () => ({ status: 'unavailable' })).spendingSections[0].data[0];
+  expect(row.fx.status).toBe(status);
+  const ui = render(ExpenseRow, { expense: row, fxMode: true, displayCurrency: 'TWD', categories: getAllCategories() });
+  expect(text(ui.tree())).toContain(`${t('fx.original')}: $52.75 USD`);
+  const label = ui.nodes('Pressable')[0].props.accessibilityLabel;
+  expect(label.match(/\$52\.75/g)).toHaveLength(1);
+  expect(label).toContain('TWD'); expect(label).toContain('USD');
+  expect(label).toContain(t(status === 'historical' ? 'fx.historical' : 'fx.estimated'));
+});
+
+it.each(['en', 'zh', 'es'].flatMap((language) => [false, true].map((group) => [language, group])))(
+  'keeps same-currency shared spending identifiable as your share in %s (group label=%s)', (language, withGroup) => {
+  mockLanguage = language;
+  const bill = { id: 'share-polish', groupId: 'g', amount: 100, currency: 'USD', category: 'food', createdAt: date, shares: { you: 25, friend: 75 } };
+  const row = fixture([], [bill], historical, 'USD').spendingSections[0].data[0], onEdit = jest.fn();
+  const ui = render(ExpenseRow, { expense: row, fxMode: true, displayCurrency: 'USD', categories: getAllCategories(), groupName: withGroup ? 'Ski trip' : undefined, onEdit });
+  const expectedShare = translate(language, withGroup ? 'list.sharedWithGroup' : 'list.sharedYourShare', { group: 'Ski trip' });
+  expect(text(ui.tree())).toContain(expectedShare);
+  expect(text(ui.tree()).match(/\$25\.00/g)).toHaveLength(1); expect(text(ui.tree())).not.toContain('$100.00');
+  const button = ui.nodes('Pressable')[0];
+  expect(button.props.accessibilityLabel).toContain(expectedShare);
+  expect(button.props.accessibilityLabel.match(/\$25\.00/g)).toHaveLength(1);
+  expect(button.props.onLongPress).toBeUndefined(); button.props.onPress();
+  expect(resolveSpendingEdit(onEdit.mock.calls[0][0], [], [bill], [{ id: 'g' }]).record).toEqual(bill);
+});
+
+function longCategoryFixture(currency, amount, onMoreDetail = jest.fn()) {
+  const category = { id: 'large-shopping', custom: true, label: 'Shopping for the entire extended family and household', color: '#CC5C9F', emoji: 'shopping-bag-01' };
+  const categoryCoverage = summarizeReportingFx([{ amount, currency, status: 'identity' }]);
+  return { category, props: { fxMode: true, displayCurrency: currency, monthKey: '2026-10', allCategories: [category],
+    months: [{ key: '2026-10', total: amount, byCategory: { [category.id]: amount }, coverage: categoryCoverage,
+      categoryCoverage: { [category.id]: categoryCoverage } }], categoryBudgets: { [category.id]: amount / 2 }, onMoreDetail } };
+}
+const mergedStyle = (node) => Object.assign({}, ...[node.props.style].flat().filter(Boolean));
+
+it.each([
+  ['TWD', 4321, 'NT$4,321'],
+  ['JPY', 123456789012, '¥123,456,789,012'],
+  ['KRW', 987654321098, '₩987,654,321,098'],
+  ['USD', 1234567.89, '$1,234,567.89'],
+  ['AUD', 1234567.89, 'A$1,234,567.89'],
+])('keeps the complete %s category amount readable while a long name may truncate', (currency, amount, expected) => {
+  const onMoreDetail = jest.fn(), { category, props } = longCategoryFixture(currency, amount, onMoreDetail);
+  const ui = render(CategorySummary, props);
+  const name = ui.nodes('Text').find((node) => text(node) === category.label);
+  expect(name.props.numberOfLines).toBe(1); expect(mergedStyle(name).flexShrink).toBe(1);
+  const spending = ui.nodes('Text').find((node) => text(node) === expected);
+  expect(spending).toBeDefined(); expect(spending.props.numberOfLines).toBeUndefined();
+  expect(spending.props.adjustsFontSizeToFit).not.toBe(true);
+  expect(mergedStyle(spending)).toMatchObject({ flexShrink: 0, maxWidth: '100%', textAlign: 'right', fontSize: 14 });
+  expect(spending.props.accessibilityLabel).toBe(`${expected} ${currency}`);
+  const heading = ui.nodes('View').find((node) => [node.props.children].flat().includes(spending));
+  expect(mergedStyle(heading).flexWrap).toBe('wrap');
+  ui.nodes('Pressable')[0].props.onPress(); expect(onMoreDetail).toHaveBeenCalledTimes(1);
+});
+
+it.each([320, 360, 375, 393])('provides a wrapping fallback for a narrow %dpx category card without shrinking monetary text', (width) => {
+  const { props } = longCategoryFixture('TWD', 1234567890123456), ui = render(CategorySummary, props);
+  const card = ui.nodes('View')[0], body = ui.nodes('View').find((node) => mergedStyle(node).columnGap === 16 && mergedStyle(node).flexWrap === 'wrap');
+  const donut = ui.nodes('View').find((node) => mergedStyle(node).width === 132);
+  const column = ui.nodes('View').find((node) => mergedStyle(node).flexBasis === 140);
+  const available = width - 2 * mergedStyle(card).marginHorizontal - 2 * mergedStyle(card).padding;
+  expect(mergedStyle(body).flexWrap).toBe('wrap'); expect(mergedStyle(donut).flexShrink).toBe(0);
+  expect(mergedStyle(donut).width + mergedStyle(body).columnGap + mergedStyle(column).flexBasis > available).toBe(width === 320);
+  const amount = ui.nodes('Text').find((node) => text(node) === 'NT$1,234,567,890,123,456');
+  expect(amount.props.numberOfLines).toBeUndefined(); expect(mergedStyle(amount).maxWidth).toBe('100%');
+  expect(mergedStyle(amount).fontSize).toBe(14);
+});
+
+it('keeps the Insight budget action and category editor navigation unchanged', () => {
+  const onEditBudgets = jest.fn(), ui = render(Insight, insightProps(fixture(), { categoryBudgets: { food: 500 }, onEditBudgets }));
+  ui.nodes('Pressable').find((node) => text(node).trim() === t('budget.edit')).props.onPress();
+  expect(onEditBudgets).toHaveBeenCalledTimes(1);
+  const category = getAllCategories().find((item) => item.id === 'food');
+  ui.nodes('Pressable').find((node) => node.props.accessibilityLabel?.startsWith(getCategoryLabel(category, t) + ',')).props.onPress(); ui.update();
+  expect(ui.nodes('AddCategoryModal')[0].props).toMatchObject({ visible: true, editingCategory: { id: 'food' }, initialBudget: 500 });
+});
